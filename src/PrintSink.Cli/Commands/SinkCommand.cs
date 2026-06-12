@@ -1,5 +1,6 @@
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using PrintSink.Core.Processing;
 using System.CommandLine;
 
 namespace PrintSink.Cli.Commands;
@@ -40,16 +41,22 @@ internal static class SinkCommand
         {
             Description = "Optional fixture PDL file path.",
         };
+        Option<string?> outputOption = new("--output", "-o")
+        {
+            Description = "Optional output path for file-backed endpoints.",
+        };
 
         Command command = new("test", "Resolve a fixture PDL stream through a PrintSink endpoint.");
         command.Options.Add(endpointOption);
         command.Options.Add(contentTypeOption);
         command.Options.Add(inputOption);
-        command.SetAction(parseResult =>
+        command.Options.Add(outputOption);
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
             string endpointText = parseResult.GetRequiredValue(endpointOption);
             string contentType = parseResult.GetRequiredValue(contentTypeOption);
             string? inputPath = parseResult.GetValue(inputOption);
+            string? outputPath = parseResult.GetValue(outputOption);
 
             if (!EndpointParser.TryParse(endpointText, out EndpointKind endpointKind))
             {
@@ -64,7 +71,26 @@ internal static class SinkCommand
             }
 
             VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
-            PdlPlan plan = new PdlRouter().Resolve(contentType, endpoint);
+            if (!endpoint.RequiresTargetFile && !string.IsNullOrWhiteSpace(outputPath))
+            {
+                context.Error.WriteLine($"Endpoint '{endpoint.QueueName}' is not file-backed and does not accept --output.");
+                return CliExitCodes.ValidationFailed;
+            }
+
+            CapturingSink cloudSink = new();
+            ISink fileSink = new TargetStreamSink();
+            EndpointSinkResolver sinkResolver = new(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = fileSink,
+                [EndpointKind.Xps] = fileSink,
+                [EndpointKind.PostScript] = fileSink,
+                [EndpointKind.PwgRaster] = fileSink,
+                [EndpointKind.Cloud] = cloudSink,
+            });
+            FixtureVirtualPrinterJob job = new(contentType, endpoint, inputPath, outputPath);
+            VirtualPrinterJobProcessor processor = new(new PdlRouter(), new FixturePdlConverter(), sinkResolver);
+            VirtualPrinterJobResult result = await processor.ProcessAsync(job, cancellationToken).ConfigureAwait(false);
+            PdlPlan plan = result.Plan;
 
             context.Output.WriteLine($"Endpoint: {endpoint.QueueName}");
             context.Output.WriteLine($"Source: {plan.SourceFormat?.ToString() ?? "Unknown"}");
@@ -72,15 +98,27 @@ internal static class SinkCommand
             context.Output.WriteLine($"Action: {plan.ActionKind}");
             context.Output.WriteLine($"Conversion: {plan.ConversionKind?.ToString() ?? "None"}");
             context.Output.WriteLine($"Reason: {plan.Reason}");
+            context.Output.WriteLine($"Status: {result.Status}");
 
             if (!string.IsNullOrWhiteSpace(inputPath))
             {
                 context.Output.WriteLine($"InputBytes: {new FileInfo(inputPath).Length}");
             }
 
-            return plan.ActionKind == PdlActionKind.Reject
-                ? CliExitCodes.ValidationFailed
-                : CliExitCodes.Success;
+            if (!string.IsNullOrWhiteSpace(outputPath))
+            {
+                context.Output.WriteLine($"Output: {outputPath}");
+            }
+
+            long outputBytes = endpoint.Kind == EndpointKind.Cloud
+                ? cloudSink.BytesWritten
+                : job.OutputBytes;
+            context.Output.WriteLine($"OutputBytes: {outputBytes}");
+            job.DeleteTemporaryOutput();
+
+            return result.Status == Core.Abstractions.VirtualPrinterJobStatus.Succeeded
+                ? CliExitCodes.Success
+                : CliExitCodes.ValidationFailed;
         });
 
         return command;

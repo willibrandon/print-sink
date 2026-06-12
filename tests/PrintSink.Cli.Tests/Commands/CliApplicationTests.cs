@@ -46,6 +46,100 @@ public sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies sink testing writes passthrough fixture bytes to a file-backed endpoint.
+    /// </summary>
+    [TestMethod]
+    public async Task Sink_test_writes_passthrough_fixture_to_output()
+    {
+        string directory = CreateTestDirectory();
+        string inputPath = Path.Combine(directory, "input.pdf");
+        string outputPath = Path.Combine(directory, "output.pdf");
+        byte[] inputBytes = "%PDF-1.7 fixture"u8.ToArray();
+        await File.WriteAllBytesAsync(inputPath, inputBytes, TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync(
+                "sink",
+                "test",
+                "--endpoint",
+                "pdf",
+                "--content-type",
+                "application/pdf",
+                "--input",
+                inputPath,
+                "--output",
+                outputPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.Success, exitCode);
+            Assert.Contains("Status: Succeeded", output);
+            Assert.Contains($"Output: {outputPath}", output);
+            CollectionAssert.AreEqual(inputBytes, await File.ReadAllBytesAsync(outputPath, TestContext.CancellationToken).ConfigureAwait(false));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies sink testing writes deterministic converted fixture bytes to a file-backed endpoint.
+    /// </summary>
+    [TestMethod]
+    public async Task Sink_test_writes_converted_fixture_to_output()
+    {
+        string directory = CreateTestDirectory();
+        string inputPath = Path.Combine(directory, "input.oxps");
+        string outputPath = Path.Combine(directory, "output.pdf");
+        await File.WriteAllTextAsync(inputPath, "xps fixture", TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync(
+                "sink",
+                "test",
+                "--endpoint",
+                "pdf",
+                "--content-type",
+                "application/oxps",
+                "--input",
+                inputPath,
+                "--output",
+                outputPath).ConfigureAwait(false);
+
+            string outputText = await File.ReadAllTextAsync(outputPath, TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.Success, exitCode);
+            Assert.Contains("Conversion: XpsToPdf", output);
+            Assert.IsTrue(outputText.StartsWith("PrintSink fixture conversion: XpsToPdf", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies cloud sink tests reject file-output paths.
+    /// </summary>
+    [TestMethod]
+    public async Task Sink_test_rejects_output_path_for_cloud_endpoint()
+    {
+        (int exitCode, _, string error) = await InvokeAsync(
+            "sink",
+            "test",
+            "--endpoint",
+            "cloud",
+            "--content-type",
+            "application/pdf",
+            "--output",
+            "cloud.pdf").ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+        Assert.Contains("does not accept --output", error);
+    }
+
+    /// <summary>
     /// Verifies manifest linting against a packaged virtual-printer manifest fixture.
     /// </summary>
     [TestMethod]
@@ -147,9 +241,16 @@ public sealed class CliApplicationTests
         return (exitCode, output.ToString(), error.ToString());
     }
 
-    private async Task<string> CreateManifestFixtureAsync(string manifest)
+    private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private async Task<string> CreateManifestFixtureAsync(string manifest)
+    {
+        string directory = CreateTestDirectory();
         string configDirectory = Path.Combine(directory, "Config");
         Directory.CreateDirectory(configDirectory);
 
