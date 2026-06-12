@@ -31,7 +31,7 @@ internal static class QueuesCommand
 
             foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
             {
-                string sink = endpoint.RequiresTargetFile ? endpoint.DefaultExtension ?? "file" : "custom";
+                string sink = GetSinkDisplay(endpoint);
                 string installed = GetInstalledStatus(installedQueues, endpoint);
                 context.Output.WriteLine(
                     $"{endpoint.QueueName}\t{endpoint.TargetFormat}\t{endpoint.PreferredInputFormat}\t{sink}\t{installed}");
@@ -56,5 +56,17 @@ internal static class QueuesCommand
         }
 
         return installedQueues.Contains(endpoint.QueueName) ? "yes" : "no";
+    }
+
+    private static string GetSinkDisplay(VirtualEndpoint endpoint)
+    {
+        if (!endpoint.RequiresTargetFile)
+        {
+            return "custom";
+        }
+
+        return endpoint.OutputExtensions.Count == 0
+            ? "file"
+            : string.Join(",", endpoint.OutputExtensions);
     }
 }

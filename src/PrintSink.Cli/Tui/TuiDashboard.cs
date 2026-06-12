@@ -31,7 +31,7 @@ internal static class TuiDashboard
 
             foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
             {
-                string sink = endpoint.RequiresTargetFile ? endpoint.DefaultExtension ?? "file" : "custom";
+                string sink = GetSinkDisplay(endpoint);
                 widgets.Add(stack.Text(
                     $"{endpoint.QueueName} | target={endpoint.TargetFormat} | input={endpoint.PreferredInputFormat} | sink={sink}"));
             }
@@ -56,5 +56,17 @@ internal static class TuiDashboard
             .Build();
 
         return await terminal.RunAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string GetSinkDisplay(VirtualEndpoint endpoint)
+    {
+        if (!endpoint.RequiresTargetFile)
+        {
+            return "custom";
+        }
+
+        return endpoint.OutputExtensions.Count == 0
+            ? "file"
+            : string.Join(",", endpoint.OutputExtensions);
     }
 }

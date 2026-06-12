@@ -41,7 +41,7 @@ public sealed class CliApplicationTests
         Assert.AreEqual(CliExitCodes.Success, exitCode);
         Assert.AreEqual(string.Empty, error);
         Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tyes", output);
-        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.oxps\tno", output);
+        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.xps,.oxps\tno", output);
     }
 
     /// <summary>
@@ -55,6 +55,7 @@ public sealed class CliApplicationTests
 
         Assert.AreEqual(CliExitCodes.Success, exitCode);
         Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tunknown", output);
+        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.xps,.oxps\tunknown", output);
         Assert.Contains("warning: installed queue status unavailable: print stack unavailable", error);
     }
 

@@ -49,5 +49,6 @@ public sealed class TuiDashboardTests
         string screenText = snapshot.GetScreenText();
         Assert.Contains("PrintSink", screenText);
         Assert.Contains("PrintSink - PDF", screenText);
+        Assert.Contains(".xps,.oxps", screenText);
     }
 }
