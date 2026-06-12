@@ -336,7 +336,17 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
                 .SaveWatermarkOptionsAsync(endpoint.PrinterUri, options)
                 .ConfigureAwait(false);
 
-            UiDispatch.Post(() => setStatus($"Saved settings for {endpoint.QueueName}."));
+            string refreshStatus;
+            try
+            {
+                refreshStatus = InstalledVirtualPrinterReader.RefreshCapabilities(endpoint.Kind);
+            }
+            catch (Exception ex)
+            {
+                refreshStatus = $"Capability refresh failed: {ex.Message}";
+            }
+
+            UiDispatch.Post(() => setStatus($"Saved settings for {endpoint.QueueName}. {refreshStatus}"));
         }
         catch (Exception ex)
         {
