@@ -1,5 +1,6 @@
 using PrintSink.Core.Endpoints;
 using System.CommandLine;
+using System.Text;
 
 namespace PrintSink.Cli.Commands;
 
@@ -27,15 +28,15 @@ internal static class QueuesCommand
         command.SetAction(_ =>
         {
             PrinterQueueSnapshot installedQueues = readInstalledQueues();
-            context.Output.WriteLine("Queue\tTarget\tPreferred\tSink\tInstalled");
-
-            foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
+            string[][] rows = [.. EndpointCatalog.All.Select(endpoint => new[]
             {
-                string sink = GetSinkDisplay(endpoint);
-                string installed = GetInstalledStatus(installedQueues, endpoint);
-                context.Output.WriteLine(
-                    $"{endpoint.QueueName}\t{endpoint.TargetFormat}\t{endpoint.PreferredInputFormat}\t{sink}\t{installed}");
-            }
+                endpoint.QueueName,
+                endpoint.TargetFormat.ToString(),
+                endpoint.PreferredInputFormat.ToString(),
+                GetSinkDisplay(endpoint),
+                GetInstalledStatus(installedQueues, endpoint),
+            })];
+            WriteTable(context.Output, ["Queue", "Target", "Preferred", "Sink", "Installed"], rows);
 
             if (!installedQueues.IsAvailable)
             {
@@ -46,6 +47,48 @@ internal static class QueuesCommand
         });
 
         return command;
+    }
+
+    private static void WriteTable(TextWriter output, string[] headings, string[][] rows)
+    {
+        int[] widths = GetColumnWidths(headings, rows);
+        output.WriteLine(FormatRow(headings, widths));
+        output.WriteLine(FormatRow([.. headings.Select((heading, index) => new string('-', Math.Max(heading.Length, widths[index])))], widths));
+
+        foreach (string[] row in rows)
+        {
+            output.WriteLine(FormatRow(row, widths));
+        }
+    }
+
+    private static int[] GetColumnWidths(string[] headings, string[][] rows)
+    {
+        int[] widths = [.. headings.Select(heading => heading.Length)];
+        foreach (string[] row in rows)
+        {
+            for (int index = 0; index < row.Length; index++)
+            {
+                widths[index] = Math.Max(widths[index], row[index].Length);
+            }
+        }
+
+        return widths;
+    }
+
+    private static string FormatRow(string[] cells, int[] widths)
+    {
+        StringBuilder row = new();
+        for (int index = 0; index < cells.Length; index++)
+        {
+            if (index > 0)
+            {
+                row.Append("  ");
+            }
+
+            row.Append(index == cells.Length - 1 ? cells[index] : cells[index].PadRight(widths[index]));
+        }
+
+        return row.ToString();
     }
 
     private static string GetInstalledStatus(PrinterQueueSnapshot installedQueues, VirtualEndpoint endpoint)

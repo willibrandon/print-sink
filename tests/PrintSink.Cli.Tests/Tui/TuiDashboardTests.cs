@@ -72,7 +72,7 @@ public sealed class TuiDashboardTests
         using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(context => TuiDashboard.Build(context, model))
             .WithHeadless()
-            .WithDimensions(100, 30)
+            .WithDimensions(120, 50)
             .Build();
         using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         cancellation.CancelAfter(TimeSpan.FromSeconds(5));
@@ -111,6 +111,57 @@ public sealed class TuiDashboardTests
         Assert.Contains("Job completed", screenText);
         Assert.Contains("PrintSink - PDF", screenText);
         Assert.Contains(".xps,.oxps", screenText);
+        Assert.Contains("Actions", screenText);
+        Assert.Contains("Refresh dashboard", screenText);
+        Assert.Contains("Shell commands", screenText);
+        Assert.DoesNotContain("Commands", screenText);
+    }
+
+    /// <summary>
+    /// Verifies that the dashboard refresh action can be activated from the keyboard.
+    /// </summary>
+    [TestMethod]
+    public async Task Dashboard_refresh_action_responds_to_enter()
+    {
+        TuiDashboardModel model = await TuiDashboardModel
+            .LoadAsync(Environment.CurrentDirectory, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        bool refreshed = false;
+
+        using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+            .WithHex1bApp(context => TuiDashboard.Build(context, model, () => refreshed = true, "Ready."))
+            .WithHeadless()
+            .WithDimensions(100, 30)
+            .Build();
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
+
+        Task<int> runTask = terminal.RunAsync(cancellation.Token);
+        await new Hex1bTerminalInputSequenceBuilder()
+            .WaitUntil(
+                screen => screen.ContainsText("Refresh dashboard"),
+                TimeSpan.FromSeconds(2),
+                "Refresh dashboard action")
+            .Enter()
+            .WaitUntil(
+                _ => refreshed,
+                TimeSpan.FromSeconds(2),
+                "refresh action invocation")
+            .Ctrl()
+            .Key(Hex1bKey.C)
+            .Build()
+            .ApplyAsync(terminal, cancellation.Token)
+            .ConfigureAwait(false);
+
+        cancellation.Cancel();
+
+        try
+        {
+            await runTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private static string CreateTestDirectory()

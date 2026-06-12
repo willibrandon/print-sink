@@ -28,6 +28,7 @@ public sealed class CliApplicationTests
         Assert.Contains("PrintSink - PDF", output);
         Assert.Contains("PrintSink - PWG Raster", output);
         Assert.Contains("PrintSink - PCLm", output);
+        Assert.DoesNotContain("\t", output);
     }
 
     /// <summary>
@@ -41,8 +42,8 @@ public sealed class CliApplicationTests
 
         Assert.AreEqual(CliExitCodes.Success, exitCode);
         Assert.AreEqual(string.Empty, error);
-        Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tyes", output);
-        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.xps,.oxps\tno", output);
+        Assert.Contains("PrintSink - PDF         Pdf         Oxps        .pdf        yes", output);
+        Assert.Contains("PrintSink - XPS         Oxps        Oxps        .xps,.oxps  no", output);
     }
 
     /// <summary>
@@ -55,8 +56,8 @@ public sealed class CliApplicationTests
             PrinterQueueSnapshot.Unavailable("print stack unavailable")).ConfigureAwait(false);
 
         Assert.AreEqual(CliExitCodes.Success, exitCode);
-        Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tunknown", output);
-        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.xps,.oxps\tunknown", output);
+        Assert.Contains("PrintSink - PDF         Pdf         Oxps        .pdf        unknown", output);
+        Assert.Contains("PrintSink - XPS         Oxps        Oxps        .xps,.oxps  unknown", output);
         Assert.Contains("warning: installed queue status unavailable: print stack unavailable", error);
     }
 

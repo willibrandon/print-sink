@@ -18,8 +18,19 @@ internal static class TuiDashboard
     /// <returns>The dashboard root widget.</returns>
     public static Hex1bWidget Build(RootContext context, TuiDashboardModel model)
     {
+        return Build(context, model, static () => { }, "Ready.");
+    }
+
+    internal static Hex1bWidget Build(
+        RootContext context,
+        TuiDashboardModel model,
+        Action refreshDashboard,
+        string actionStatus)
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(refreshDashboard);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionStatus);
 
         return context.VStack(stack =>
         {
@@ -28,6 +39,14 @@ internal static class TuiDashboard
                 stack.Text("PrintSink"),
                 stack.Text("Virtual printer diagnostics"),
                 stack.Text($"Queues: {EndpointCatalog.All.Count}"),
+                stack.Text(""),
+                stack.Text("Actions"),
+                stack.Text("Tab focuses actions. Enter or Space activates the focused action."),
+                stack.Button("Refresh dashboard").OnClick(_ => refreshDashboard()),
+                stack.Text($"Status: {actionStatus}"),
+                stack.Text(""),
+                stack.Text("Shell commands"),
+                stack.Text("Run from shell: queues | manifest lint | pdc validate | ticket map | sink test"),
                 stack.Text(""),
                 stack.Text("Validation"),
                 stack.Text($"Manifest: {FormatStatus(model.Manifest.Succeeded)} | {TrimPath(model.Manifest.Path)}"),
@@ -84,10 +103,6 @@ internal static class TuiDashboard
                     $"{endpoint.QueueName} | target={endpoint.TargetFormat} | input={endpoint.PreferredInputFormat} | sink={sink}"));
             }
 
-            widgets.Add(stack.Text(""));
-            widgets.Add(stack.Text("Commands"));
-            widgets.Add(stack.Text("queues | manifest lint | pdc validate | ticket map | sink test"));
-
             return [.. widgets];
         });
     }
@@ -110,12 +125,18 @@ internal static class TuiDashboard
     /// <returns>The terminal exit code.</returns>
     public static async Task<int> RunAsync(string workingDirectory, CancellationToken cancellationToken)
     {
-        TuiDashboardModel model = await TuiDashboardModel
-            .LoadAsync(workingDirectory, cancellationToken)
+        TuiDashboardRuntimeState state = await TuiDashboardRuntimeState
+            .CreateAsync(workingDirectory, cancellationToken)
             .ConfigureAwait(false);
 
         using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-            .WithHex1bApp(context => Build(context, model))
+            .WithHex1bApp(
+                _ => { },
+                app =>
+                {
+                    state.Attach(app);
+                    return context => Build(context, state.Model, state.Refresh, state.Status);
+                })
             .Build();
 
         return await terminal.RunAsync(cancellationToken).ConfigureAwait(false);

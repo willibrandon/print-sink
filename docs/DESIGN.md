@@ -614,6 +614,7 @@ support calls, and in CI checks that should not start a WinUI process.
   - queue and endpoint list;
   - manifest/PDC validation status;
   - recent diagnostics/events from the local store;
+  - focusable operator actions, such as refreshing the dashboard;
   - fixture-driven route and sink test runner.
 
 The CLI/TUI uses `PrintSink.Core` abstractions and OS/package tooling. It does not try to instantiate
