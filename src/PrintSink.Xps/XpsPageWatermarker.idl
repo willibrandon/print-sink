@@ -18,6 +18,8 @@ namespace PrintSink.Xps
         Double ImageRotationDegrees;
         Double ImageOffsetX;
         Double ImageOffsetY;
+
+        Windows.Storage.Streams.IRandomAccessStream ApplyToPackage(Windows.Storage.Streams.IRandomAccessStream source);
     }
 
     runtimeclass XpsSequentialDocument

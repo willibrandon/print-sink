@@ -108,6 +108,12 @@
     </Link>
   </ItemDefinitionGroup>
 
+  <ItemDefinitionGroup>
+    <Link>
+      <ModuleDefinitionFile>PrintSink.Xps.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CppWinRT" />
   </ItemGroup>
@@ -131,6 +137,11 @@
 
   <ItemGroup>
     <Midl Include="XpsPageWatermarker.idl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PrintSink.Xps.def" />
+    <None Include="PrintSink.Xps.dll.manifest" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" Condition="'$(MSBuildRuntimeType)' != 'Core'" />

@@ -36,6 +36,8 @@ namespace winrt::PrintSink::Xps::implementation
         void ImageOffsetX(double value);
         double ImageOffsetY() const;
         void ImageOffsetY(double value);
+        winrt::Windows::Storage::Streams::IRandomAccessStream ApplyToPackage(
+            winrt::Windows::Storage::Streams::IRandomAccessStream const& source);
         void ApplyWatermarksToXpsPage(winrt::com_ptr<IXpsOMPage> const& xpsPage);
 
     private:
@@ -57,6 +59,7 @@ namespace winrt::PrintSink::Xps::implementation
 
         void AddWatermarkText(winrt::com_ptr<IXpsOMPage> const& xpsPage);
         void AddWatermarkImage(winrt::com_ptr<IXpsOMPage> const& xpsPage);
+        void ApplyWatermarksToPackage(winrt::com_ptr<IXpsOMPackage> const& package);
         winrt::com_ptr<IXpsOMFontResource> CreateFontResource(std::wstring const& fontFilePath);
         winrt::com_ptr<IXpsOMSolidColorBrush> CreateTextBrush();
         winrt::com_ptr<IXpsOMImageResource> CreateImageResource(std::wstring const& imageFilePath);

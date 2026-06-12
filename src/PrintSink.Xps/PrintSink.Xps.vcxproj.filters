@@ -9,6 +9,10 @@
       <UniqueIdentifier>{2f276c69-57fb-4f4c-b1d0-1fb4bf6e94d6}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{d41efc29-04d8-4f97-8bcb-d9a55f65bc9f}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;manifest</Extensions>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -45,5 +49,13 @@
     <Midl Include="XpsPageWatermarker.idl">
       <Filter>Source Files</Filter>
     </Midl>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="PrintSink.Xps.def">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="PrintSink.Xps.dll.manifest">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

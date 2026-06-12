@@ -1,5 +1,4 @@
 using PrintSink.Core.Watermark;
-using Windows.Graphics.Printing.Workflow;
 using Windows.Storage.Streams;
 
 namespace PrintSink.Xps.Projections;
@@ -11,7 +10,16 @@ public sealed class NativeXpsPageWatermarker
 {
     private const int BufferSize = 81920;
 
-    private readonly PrintSink.Xps.XpsPageWatermarker watermarker = new();
+    private readonly PrintSink.Xps.XpsPageWatermarker watermarker;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="NativeXpsPageWatermarker"/> class.
+    /// </summary>
+    public NativeXpsPageWatermarker()
+    {
+        using NativeXpsActivationContext activationContext = NativeXpsActivationContext.Activate();
+        watermarker = new PrintSink.Xps.XpsPageWatermarker();
+    }
 
     /// <summary>
     /// Applies text watermark options to the native watermarker.
@@ -64,11 +72,9 @@ public sealed class NativeXpsPageWatermarker
         }
 
         input.Seek(0);
-        using IInputStream sourceInput = input.GetInputStreamAt(0);
-        PrintWorkflowObjectModelSourceFileContent sourceContent = new(sourceInput);
-        PrintSink.Xps.XpsSequentialDocument document = new(sourceContent);
-        using IInputStream watermarked = document.GetWatermarkedStream(watermarker);
-        return await ReadToMemoryAsync(watermarked, cancellationToken).ConfigureAwait(false);
+        using IRandomAccessStream watermarked = watermarker.ApplyToPackage(input);
+        using IInputStream watermarkedInput = watermarked.GetInputStreamAt(0);
+        return await ReadToMemoryAsync(watermarkedInput, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<MemoryStream> ReadToMemoryAsync(

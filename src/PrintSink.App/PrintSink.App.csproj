@@ -107,6 +107,9 @@
         <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd">
             <TargetPath>PrintSink.Xps.winmd</TargetPath>
         </AppxPackagePayload>
+        <AppxPackagePayload Include="..\PrintSink.Xps\PrintSink.Xps.dll.manifest">
+            <TargetPath>PrintSink.Xps.dll.manifest</TargetPath>
+        </AppxPackagePayload>
         <AppxPackagePayload Include="..\PrintSink.Xps.Projections\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Xps.Projections.dll">
             <TargetPath>PrintSink.Xps.Projections.dll</TargetPath>
         </AppxPackagePayload>
@@ -139,6 +142,7 @@
         <ItemGroup>
             <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.dll" />
             <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd" />
+            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\PrintSink.Xps.dll.manifest" />
         </ItemGroup>
         <Copy
             SourceFiles="@(_PrintSinkXpsAsset)"

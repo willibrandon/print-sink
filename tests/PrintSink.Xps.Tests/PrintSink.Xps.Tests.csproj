@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkWindowsTargetFramework)</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64;ARM64;X86</Platforms>
+    <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
+    <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
+    <PrintSinkXpsOutput>..\..\src\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)</PrintSinkXpsOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PrintSink.Core\PrintSink.Core.csproj" />
+    <ProjectReference Include="..\..\src\PrintSink.Xps.Projections\PrintSink.Xps.Projections.csproj" />
+    <ProjectReference Include="..\..\src\PrintSink.Xps\PrintSink.Xps.vcxproj" ReferenceOutputAssembly="false" Condition="'$(MSBuildRuntimeType)' != 'Core'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(PrintSinkXpsOutput)\PrintSink.Xps.dll" Link="PrintSink.Xps.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(PrintSinkXpsOutput)\PrintSink.Xps.dll')" />
+    <None Include="$(PrintSinkXpsOutput)\PrintSink.Xps.winmd" Link="PrintSink.Xps.winmd" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(PrintSinkXpsOutput)\PrintSink.Xps.winmd')" />
+    <None Include="..\..\src\PrintSink.Xps\PrintSink.Xps.dll.manifest" Link="PrintSink.Xps.dll.manifest" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <Target Name="ValidatePrintSinkXpsNativeOutput" BeforeTargets="ResolveReferences" Condition="'$(MSBuildRuntimeType)' != 'Core' And !Exists('$(PrintSinkXpsOutput)\PrintSink.Xps.dll')">
+    <Error Text="PrintSink.Xps native output was not found at '$(PrintSinkXpsOutput)'. Build PrintSink.Xps with Visual Studio/MSBuild before running XPS component tests." />
+  </Target>
+
+</Project>

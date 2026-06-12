@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "XpsPageWatermarker.h"
 #include "XpsPageWatermarker.g.cpp"
+#include <shcore.h>
 
 namespace winrt::PrintSink::Xps::implementation
 {
@@ -149,6 +150,42 @@ namespace winrt::PrintSink::Xps::implementation
         imageOffsetY = value;
     }
 
+    winrt::Windows::Storage::Streams::IRandomAccessStream XpsPageWatermarker::ApplyToPackage(
+        winrt::Windows::Storage::Streams::IRandomAccessStream const& source)
+    {
+        winrt::com_ptr<IStream> inputStream;
+        winrt::check_hresult(::CreateStreamOverRandomAccessStream(
+            winrt::get_unknown(source),
+            __uuidof(IStream),
+            inputStream.put_void()));
+
+        winrt::com_ptr<IXpsOMPackage> package;
+        winrt::check_hresult(xpsFactory->CreatePackageFromStream(inputStream.get(), FALSE, package.put()));
+        ApplyWatermarksToPackage(package);
+
+        winrt::Windows::Storage::Streams::InMemoryRandomAccessStream output;
+        winrt::com_ptr<IStream> outputStream;
+        winrt::check_hresult(::CreateStreamOverRandomAccessStream(
+            winrt::get_unknown(output),
+            __uuidof(IStream),
+            outputStream.put_void()));
+
+        winrt::com_ptr<IXpsOMPackage1> package1 = package.try_as<IXpsOMPackage1>();
+        if (package1)
+        {
+            XPS_DOCUMENT_TYPE documentType{};
+            winrt::check_hresult(package1->GetDocumentType(&documentType));
+            winrt::check_hresult(package1->WriteToStream1(outputStream.get(), FALSE, documentType));
+        }
+        else
+        {
+            winrt::check_hresult(package->WriteToStream(outputStream.get(), FALSE));
+        }
+
+        output.Seek(0);
+        return output;
+    }
+
     void XpsPageWatermarker::ApplyWatermarksToXpsPage(winrt::com_ptr<IXpsOMPage> const& xpsPage)
     {
         if (!text.empty())
@@ -258,6 +295,38 @@ namespace winrt::PrintSink::Xps::implementation
         winrt::com_ptr<IXpsOMVisualCollection> pageVisuals;
         winrt::check_hresult(xpsPage->GetVisuals(pageVisuals.put()));
         winrt::check_hresult(pageVisuals->Append(imagePathVisual.get()));
+    }
+
+    void XpsPageWatermarker::ApplyWatermarksToPackage(winrt::com_ptr<IXpsOMPackage> const& package)
+    {
+        winrt::com_ptr<IXpsOMDocumentSequence> documentSequence;
+        winrt::check_hresult(package->GetDocumentSequence(documentSequence.put()));
+
+        winrt::com_ptr<IXpsOMDocumentCollection> documents;
+        winrt::check_hresult(documentSequence->GetDocuments(documents.put()));
+
+        UINT32 documentCount{};
+        winrt::check_hresult(documents->GetCount(&documentCount));
+        for (UINT32 documentIndex = 0; documentIndex < documentCount; ++documentIndex)
+        {
+            winrt::com_ptr<IXpsOMDocument> document;
+            winrt::check_hresult(documents->GetAt(documentIndex, document.put()));
+
+            winrt::com_ptr<IXpsOMPageReferenceCollection> pageReferences;
+            winrt::check_hresult(document->GetPageReferences(pageReferences.put()));
+
+            UINT32 pageCount{};
+            winrt::check_hresult(pageReferences->GetCount(&pageCount));
+            for (UINT32 pageIndex = 0; pageIndex < pageCount; ++pageIndex)
+            {
+                winrt::com_ptr<IXpsOMPageReference> pageReference;
+                winrt::check_hresult(pageReferences->GetAt(pageIndex, pageReference.put()));
+
+                winrt::com_ptr<IXpsOMPage> page;
+                winrt::check_hresult(pageReference->GetPage(page.put()));
+                ApplyWatermarksToXpsPage(page);
+            }
+        }
     }
 
     winrt::com_ptr<IXpsOMFontResource> XpsPageWatermarker::CreateFontResource(std::wstring const& fontFilePath)
