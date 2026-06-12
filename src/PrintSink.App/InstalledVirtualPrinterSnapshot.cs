@@ -14,6 +14,7 @@ internal sealed class InstalledVirtualPrinterSnapshot
         string? printerUri,
         string? deviceKind,
         bool? canModifyUserDefaultPrintTicket,
+        string? userDefaultPrintTicketName,
         string? error)
     {
         EndpointKind = endpointKind;
@@ -22,6 +23,7 @@ internal sealed class InstalledVirtualPrinterSnapshot
         PrinterUri = printerUri;
         DeviceKind = deviceKind;
         CanModifyUserDefaultPrintTicket = canModifyUserDefaultPrintTicket;
+        UserDefaultPrintTicketName = userDefaultPrintTicketName;
         Error = error;
     }
 
@@ -36,6 +38,8 @@ internal sealed class InstalledVirtualPrinterSnapshot
     internal string? DeviceKind { get; }
 
     internal bool? CanModifyUserDefaultPrintTicket { get; }
+
+    internal string? UserDefaultPrintTicketName { get; }
 
     internal string? Error { get; }
 }

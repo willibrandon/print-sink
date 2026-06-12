@@ -29,6 +29,7 @@ internal static class InstalledVirtualPrinterReader
                         null,
                         null,
                         null,
+                        null,
                         null);
             }
 
@@ -42,6 +43,7 @@ internal static class InstalledVirtualPrinterReader
                     endpoint.Kind,
                     false,
                     "Unavailable",
+                    null,
                     null,
                     null,
                     null,
@@ -69,6 +71,7 @@ internal static class InstalledVirtualPrinterReader
                 printDevice.PrinterUri?.ToString(),
                 printDevice.DeviceKind.ToString(),
                 printDevice.CanModifyUserDefaultPrintTicket,
+                printDevice.UserDefaultPrintTicket?.Name,
                 null);
         }
         catch (Exception ex)
@@ -77,6 +80,7 @@ internal static class InstalledVirtualPrinterReader
                 endpoint.Kind,
                 true,
                 "Installed, details unavailable",
+                null,
                 null,
                 null,
                 null,
