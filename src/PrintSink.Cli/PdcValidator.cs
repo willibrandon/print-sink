@@ -1,5 +1,6 @@
 using System.Xml;
 using System.Xml.Linq;
+using PrintSink.Core.Capabilities;
 
 namespace PrintSink.Cli;
 
@@ -36,9 +37,10 @@ internal static class PdcValidator
             return new ValidationResult(false, messages);
         }
 
-        if (document.Root?.Name.LocalName != "PrintDeviceCapabilities")
+        IReadOnlyList<string> coreMessages = PrintDeviceCapabilitiesValidator.Validate(document);
+        foreach (string message in coreMessages)
         {
-            messages.Add("error: PDC root element must be PrintDeviceCapabilities.");
+            messages.Add($"error: {message}");
         }
 
         if (messages.Count == 0)

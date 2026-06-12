@@ -67,6 +67,28 @@ public sealed class CliApplicationTests
         }
     }
 
+    /// <summary>
+    /// Verifies PDC validation rejects files that are not Print Schema Framework v2 PDC documents.
+    /// </summary>
+    [TestMethod]
+    public async Task Pdc_validate_reports_core_shape_errors()
+    {
+        string pdcPath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.xml");
+        await File.WriteAllTextAsync(pdcPath, "<PrintDeviceCapabilities />", TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync("pdc", "validate", "--pdc", pdcPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("error: PDC root element must use the Print Schema Framework v2 namespace.", output);
+        }
+        finally
+        {
+            File.Delete(pdcPath);
+        }
+    }
+
     private async Task<(int ExitCode, string Output, string Error)> InvokeAsync(params string[] args)
     {
         using StringWriter output = new();
