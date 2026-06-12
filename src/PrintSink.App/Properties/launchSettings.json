@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "PrintSink.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "PrintSink.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+<Project Sdk="MSTest.Sdk/3.11.1">
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkTargetFramework)</TargetFramework>
+    <RootNamespace>PrintSink.Core.Tests</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PrintSink.Core\PrintSink.Core.csproj" />
+  </ItemGroup>
+</Project>
