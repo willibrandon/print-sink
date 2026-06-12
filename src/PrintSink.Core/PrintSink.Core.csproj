@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkTargetFramework)</TargetFramework>
+    <RootNamespace>PrintSink</RootNamespace>
+  </PropertyGroup>
+</Project>
