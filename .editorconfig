@@ -29,3 +29,7 @@ dotnet_diagnostic.CA1515.severity = none
 dotnet_diagnostic.CA1819.severity = none
 dotnet_diagnostic.CA1852.severity = none
 dotnet_diagnostic.CA2007.severity = none
+
+[src/PrintSink.App/**/*.cs]
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA5392.severity = none
