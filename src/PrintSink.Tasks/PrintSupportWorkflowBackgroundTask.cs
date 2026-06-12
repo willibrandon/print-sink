@@ -59,12 +59,12 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             bool succeeded = state.Run(() =>
             {
-                if (!CompleteJobUi(args))
+                LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
+                if (!CompleteJobUi(args, settingsStore))
                 {
                     return;
                 }
 
-                LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
                 JobProcessingOptions? jobProcessingOptions = settingsStore
                     .ConsumeJobProcessingOptionsAsync()
                     .GetAwaiter()
@@ -93,8 +93,19 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         }
     }
 
-    private static bool CompleteJobUi(PrintWorkflowPdlModificationRequestedEventArgs args)
+    private static bool CompleteJobUi(
+        PrintWorkflowPdlModificationRequestedEventArgs args,
+        LocalSettingsStore settingsStore)
     {
+        JobUiOptions options = settingsStore
+            .GetJobUiOptionsAsync()
+            .GetAwaiter()
+            .GetResult();
+        if (!options.LaunchJobUi)
+        {
+            return true;
+        }
+
         if (!args.UILauncher.IsUILaunchEnabled())
         {
             return true;

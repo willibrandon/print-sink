@@ -84,6 +84,12 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
         LocalSettingsStore settingsStore)
     {
+        JobUiOptions options = await settingsStore.GetJobUiOptionsAsync().ConfigureAwait(false);
+        if (!options.LaunchJobUi)
+        {
+            return new JobUiCompletionResult(true, false);
+        }
+
         if (!args.UILauncher.IsUILaunchEnabled())
         {
             return new JobUiCompletionResult(true, false);

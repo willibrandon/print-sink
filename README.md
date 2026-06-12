@@ -22,7 +22,8 @@ Build the full solution:
 Run tests:
 
 ```powershell
-dotnet test PrintSink.slnx --no-build -p:Platform=x64
+.\test.ps1 -Configuration Debug -Platform x64 -NoBuild
+.\test-app.ps1 -Configuration Debug -Platform x64 -NoBuild
 ```
 
 `dotnet build` is useful for managed checks. The full solution uses MSBuild because `PrintSink.Xps` is a C++/WinRT project.
@@ -37,6 +38,13 @@ Run the CLI:
 
 ```powershell
 dotnet run --project src\PrintSink.Cli -- --help
+```
+
+For unattended print-stack checks, the packaged alias can skip foreground Job UI:
+
+```powershell
+printsink-app.exe --disable-job-ui
+printsink-app.exe --enable-job-ui
 ```
 
 More detail lives in [docs/BUILD.md](docs/BUILD.md) and [docs/TESTING.md](docs/TESTING.md).

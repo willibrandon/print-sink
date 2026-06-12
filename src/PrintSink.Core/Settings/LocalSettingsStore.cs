@@ -10,6 +10,7 @@ namespace PrintSink.Core.Settings;
 /// </summary>
 public sealed class LocalSettingsStore : ISettingsStore
 {
+    private const string JobUiOptionsFileName = "job-ui-options.json";
     private const string PendingJobOptionsFileName = "pending-job-options.json";
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
@@ -61,6 +62,39 @@ public sealed class LocalSettingsStore : ISettingsStore
         Directory.CreateDirectory(rootDirectory);
 
         string path = GetWatermarkPath(rootDirectory, printerUri);
+        await using FileStream output = File.Create(path);
+        await JsonSerializer
+            .SerializeAsync(output, options, SerializerOptions, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<JobUiOptions> GetJobUiOptionsAsync(CancellationToken cancellationToken = default)
+    {
+        string path = GetJobUiOptionsPath(rootDirectory);
+        if (!File.Exists(path))
+        {
+            return JobUiOptions.Default;
+        }
+
+        await using FileStream input = File.OpenRead(path);
+        JobUiOptions? options = await JsonSerializer
+            .DeserializeAsync<JobUiOptions>(input, SerializerOptions, cancellationToken)
+            .ConfigureAwait(false);
+
+        return options ?? JobUiOptions.Default;
+    }
+
+    /// <inheritdoc />
+    public async Task SaveJobUiOptionsAsync(
+        JobUiOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        Directory.CreateDirectory(rootDirectory);
+
+        string path = GetJobUiOptionsPath(rootDirectory);
         await using FileStream output = File.Create(path);
         await JsonSerializer
             .SerializeAsync(output, options, SerializerOptions, cancellationToken)
@@ -122,5 +156,10 @@ public sealed class LocalSettingsStore : ISettingsStore
     private static string GetJobProcessingOptionsPath(string rootDirectory)
     {
         return Path.Combine(rootDirectory, PendingJobOptionsFileName);
+    }
+
+    private static string GetJobUiOptionsPath(string rootDirectory)
+    {
+        return Path.Combine(rootDirectory, JobUiOptionsFileName);
     }
 }

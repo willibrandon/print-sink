@@ -143,6 +143,56 @@ public sealed class LocalSettingsStoreTests
     }
 
     /// <summary>
+    /// Verifies missing job UI options default to launching foreground job UI.
+    /// </summary>
+    [TestMethod]
+    public async Task GetJobUiOptionsAsync_returns_default_when_missing()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+
+        try
+        {
+            JobUiOptions options = await store
+                .GetJobUiOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(options.LaunchJobUi);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies job UI options round-trip through local JSON storage.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveJobUiOptionsAsync_round_trips_headless_setting()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+
+        try
+        {
+            await store
+                .SaveJobUiOptionsAsync(new JobUiOptions(false), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            JobUiOptions options = await store
+                .GetJobUiOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsFalse(options.LaunchJobUi);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies missing pending job options return null.
     /// </summary>
     [TestMethod]

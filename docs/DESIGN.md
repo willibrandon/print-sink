@@ -547,6 +547,9 @@ instead of XAML pages:
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
   `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
   persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
+- Headless automation sets package-local `JobUiOptions` through `printsink-app.exe --disable-job-ui`.
+  Background tasks then skip `LaunchAndCompleteUIAsync` and process jobs directly. The normal default is
+  restored with `printsink-app.exe --enable-job-ui`.
 
 The UI is made from small Reactor components under `Screens/` and `Components/`. State that must cross
 the UI/background boundary lives in `PrintSink.Core` models and stores, not in WinUI controls.

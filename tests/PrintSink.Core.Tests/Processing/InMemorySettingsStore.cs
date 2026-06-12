@@ -6,6 +6,7 @@ namespace PrintSink.Core.Tests.Processing;
 internal sealed class InMemorySettingsStore : ISettingsStore
 {
     private readonly Dictionary<Uri, WatermarkOptions> watermarkOptions = [];
+    private JobUiOptions jobUiOptions = JobUiOptions.Default;
 
     /// <inheritdoc />
     public Task<WatermarkOptions> GetWatermarkOptionsAsync(
@@ -27,6 +28,23 @@ internal sealed class InMemorySettingsStore : ISettingsStore
         ArgumentNullException.ThrowIfNull(options);
 
         watermarkOptions[printerUri] = options;
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<JobUiOptions> GetJobUiOptionsAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(jobUiOptions);
+    }
+
+    /// <inheritdoc />
+    public Task SaveJobUiOptionsAsync(
+        JobUiOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        jobUiOptions = options;
         return Task.CompletedTask;
     }
 

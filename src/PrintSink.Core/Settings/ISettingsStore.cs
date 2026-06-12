@@ -16,6 +16,21 @@ public interface ISettingsStore
     Task<WatermarkOptions> GetWatermarkOptionsAsync(Uri printerUri, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the package-wide foreground job UI options.
+    /// </summary>
+    /// <param name="cancellationToken">A token that cancels the read.</param>
+    /// <returns>The persisted job UI options, or default options when none exist.</returns>
+    Task<JobUiOptions> GetJobUiOptionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves package-wide foreground job UI options.
+    /// </summary>
+    /// <param name="options">The job UI options.</param>
+    /// <param name="cancellationToken">A token that cancels the write.</param>
+    /// <returns>A task that completes when the settings are saved.</returns>
+    Task SaveJobUiOptionsAsync(JobUiOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Saves watermark settings for a virtual printer.
     /// </summary>
     /// <param name="printerUri">The virtual printer URI.</param>

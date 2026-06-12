@@ -71,6 +71,8 @@ When the package is already installed:
 tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
 ```
 
+`-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
+
 To remove the queues after assertion:
 
 ```powershell
@@ -86,6 +88,7 @@ The script validates the installed package before provisioning:
 - `WinRT.Host.dll`, `PrintSink.Tasks.winmd`, `PrintSink.Xps.dll`, and the registered activatable classes.
 
 It then runs `printsink-app.exe --install-virtual-printers` and fails with `%TEMP%\PrintSink.App.headless.log` if provisioning fails. App execution aliases are verified against the signed MSIX package, not loose development registration.
+Before provisioning, the harness runs `printsink-app.exe --disable-job-ui` so background print activations can complete without showing the foreground Job UI. It restores the default with `printsink-app.exe --enable-job-ui` after the assertions.
 
 The harness must assert these queues:
 

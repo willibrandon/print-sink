@@ -3,6 +3,7 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using PrintSink.Core.Settings;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace PrintSink.App;
@@ -12,6 +13,8 @@ namespace PrintSink.App;
 /// </summary>
 internal sealed class ManagementScreen : Component
 {
+    private static readonly object[] EmptyDependencies = [];
+
     /// <summary>
     /// Renders the management dashboard.
     /// </summary>
@@ -21,6 +24,7 @@ internal sealed class ManagementScreen : Component
         IReadOnlyList<VirtualEndpoint> endpoints = EndpointCatalog.All;
         var (selectedKind, setSelectedKind) = UseState(EndpointKind.Pdf);
         var (statusText, setStatusText) = UseState("Ready.");
+        var (jobUiOptions, setJobUiOptions) = UseState(JobUiOptions.Default);
         var (installedPrinters, setInstalledPrinters) =
             UseState<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>>(InstalledVirtualPrinterReader.ReadAll());
 
@@ -30,6 +34,12 @@ internal sealed class ManagementScreen : Component
         PdlPlan route = router.Resolve(
             PdlFormatInfo.GetContentType(selectedEndpoint.PreferredInputFormat),
             selectedEndpoint);
+
+        UseEffect(() =>
+        {
+            _ = LoadJobUiOptionsAsync(setJobUiOptions, setStatusText);
+            return static () => { };
+        }, EmptyDependencies);
 
         return ScrollView(
             VStack(20,
@@ -44,8 +54,10 @@ internal sealed class ManagementScreen : Component
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
                     RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
-                    () =>
-                    RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText))))
+                    () => RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText),
+                    jobUiOptions.LaunchJobUi,
+                    () => _ = SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText),
+                    () => _ = SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText))))
             .Padding(32)
             .MaxWidth(1180)
             .HAlign(HorizontalAlignment.Center);
@@ -135,7 +147,13 @@ internal sealed class ManagementScreen : Component
                 Pipeline()));
     }
 
-    private static BorderElement ValidationPanel(string statusText, Action refreshQueues, Action openDiagnostics)
+    private static BorderElement ValidationPanel(
+        string statusText,
+        Action refreshQueues,
+        Action refreshCapabilities,
+        bool launchJobUi,
+        Action enableJobUi,
+        Action disableJobUi)
     {
         return CardSurface(
             VStack(14,
@@ -147,7 +165,13 @@ internal sealed class ManagementScreen : Component
                     .Set(text => text.TextWrapping = TextWrapping.Wrap),
                 HStack(12,
                     Button("Refresh queues", refreshQueues),
-                    Button("Refresh capabilities", openDiagnostics)),
+                    Button("Refresh capabilities", refreshCapabilities),
+                    Button("Enable Job UI", enableJobUi)
+                        .IsEnabled(!launchJobUi),
+                    Button("Headless jobs", disableJobUi)
+                        .IsEnabled(launchJobUi)),
+                TextBlock($"Job UI: {(launchJobUi ? "Enabled" : "Headless")}")
+                    .Foreground(Theme.SecondaryText),
                 TextBlock(statusText)
                     .Foreground(Theme.SecondaryText)));
     }
@@ -328,6 +352,50 @@ internal sealed class ManagementScreen : Component
         catch (Exception ex)
         {
             setStatusText($"Capability refresh failed: {ex.Message}");
+        }
+    }
+
+    private static async Task LoadJobUiOptionsAsync(
+        Action<JobUiOptions> setJobUiOptions,
+        Action<string> setStatusText)
+    {
+        try
+        {
+            JobUiOptions options = await AppSettingsStoreFactory
+                .Create()
+                .GetJobUiOptionsAsync()
+                .ConfigureAwait(false);
+
+            UiDispatch.Post(() => setJobUiOptions(options));
+        }
+        catch (Exception ex)
+        {
+            UiDispatch.Post(() => setStatusText($"Job UI setting load failed: {ex.Message}"));
+        }
+    }
+
+    private static async Task SaveJobUiOptionsAsync(
+        bool launchJobUi,
+        Action<JobUiOptions> setJobUiOptions,
+        Action<string> setStatusText)
+    {
+        JobUiOptions options = new(launchJobUi);
+        try
+        {
+            await AppSettingsStoreFactory
+                .Create()
+                .SaveJobUiOptionsAsync(options)
+                .ConfigureAwait(false);
+
+            UiDispatch.Post(() =>
+            {
+                setJobUiOptions(options);
+                setStatusText(launchJobUi ? "Job UI enabled." : "Headless jobs enabled.");
+            });
+        }
+        catch (Exception ex)
+        {
+            UiDispatch.Post(() => setStatusText($"Job UI setting save failed: {ex.Message}"));
         }
     }
 }

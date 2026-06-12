@@ -192,6 +192,33 @@ public sealed class AppPackageTests
         }
     }
 
+    /// <summary>
+    /// Verifies packaged job UI options round-trip through package-backed local settings.
+    /// </summary>
+    [TestMethod]
+    public async Task App_settings_store_round_trips_job_ui_options_inside_package_identity()
+    {
+        string rootDirectory = ResetPackagedSettingsDirectory();
+        LocalSettingsStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.Create();
+
+        try
+        {
+            await store
+                .SaveJobUiOptionsAsync(new JobUiOptions(false), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            JobUiOptions actual = await store
+                .GetJobUiOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsFalse(actual.LaunchJobUi);
+        }
+        finally
+        {
+            DeleteDirectory(rootDirectory);
+        }
+    }
+
     private static string ResetPackagedSettingsDirectory()
     {
         string rootDirectory = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.GetRootDirectory();

@@ -54,6 +54,19 @@ Success means the command registers or updates the package and opens a real Prin
 
 When automation launches the app for verification, close the app process after the check unless the next person explicitly wants it left open.
 
+## Headless Package Commands
+
+These commands run through the packaged app execution alias and do not show the WinUI shell:
+
+```powershell
+printsink-app.exe --install-virtual-printers
+printsink-app.exe --remove-virtual-printers
+printsink-app.exe --disable-job-ui
+printsink-app.exe --enable-job-ui
+```
+
+`--disable-job-ui` makes background print activations process jobs without launching the foreground Job UI. Use it for unattended E2E runs, then restore the default with `--enable-job-ui`.
+
 ## CLI
 
 ```powershell

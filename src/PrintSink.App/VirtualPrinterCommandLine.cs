@@ -24,12 +24,14 @@ internal static class VirtualPrinterCommandLine
         List<string> commandArgs = [.. args, .. GetActivationArguments(activationArguments)];
         bool install = Contains(commandArgs, "--install-virtual-printers");
         bool remove = Contains(commandArgs, "--remove-virtual-printers");
-        if (!install && !remove)
+        bool enableJobUi = Contains(commandArgs, "--enable-job-ui");
+        bool disableJobUi = Contains(commandArgs, "--disable-job-ui");
+        if (!install && !remove && !enableJobUi && !disableJobUi)
         {
             return null;
         }
 
-        if (install && remove)
+        if ((install && remove) || (enableJobUi && disableJobUi))
         {
             SetCommandLineExitCode(activationArguments, Failure);
             return Failure;
@@ -39,11 +41,20 @@ internal static class VirtualPrinterCommandLine
         Deferral? deferral = GetCommandLineDeferral(activationArguments);
         try
         {
+            if (enableJobUi || disableJobUi)
+            {
+                await AppSettingsStoreFactory
+                    .Create()
+                    .SaveJobUiOptionsAsync(new(enableJobUi), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (install)
             {
                 await VirtualPrinterInstaller.InstallAllAsync(cancellationToken).ConfigureAwait(false);
             }
-            else
+
+            if (remove)
             {
                 await VirtualPrinterInstaller.RemoveAllAsync(cancellationToken).ConfigureAwait(false);
             }

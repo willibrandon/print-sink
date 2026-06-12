@@ -124,12 +124,12 @@ function New-AppxNamespaceManager {
     )
 
     $namespaceManager = [System.Xml.XmlNamespaceManager]::new($Manifest.NameTable)
-    $namespaceManager.AddNamespace('appx', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
-    $namespaceManager.AddNamespace('uap3', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/3')
-    $namespaceManager.AddNamespace('desktop', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10')
-    $namespaceManager.AddNamespace('printsupport', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10')
-    $namespaceManager.AddNamespace('printsupport2', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
-    return $namespaceManager
+    $namespaceManager.AddNamespace('appx', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10') | Out-Null
+    $namespaceManager.AddNamespace('uap3', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/3') | Out-Null
+    $namespaceManager.AddNamespace('desktop', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10') | Out-Null
+    $namespaceManager.AddNamespace('printsupport', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10') | Out-Null
+    $namespaceManager.AddNamespace('printsupport2', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2') | Out-Null
+    return ,$namespaceManager
 }
 
 function Assert-ManifestNode {
@@ -146,6 +146,22 @@ function Assert-ManifestNode {
     }
 
     return $node
+}
+
+function Get-InstalledPackageManifestPath {
+    param(
+        [string] $PackageRoot
+    )
+
+    $candidateNames = @('Package.appxmanifest', 'AppxManifest.xml')
+    foreach ($candidateName in $candidateNames) {
+        $candidatePath = Join-PackagePath -PackageRoot $PackageRoot -RelativePath $candidateName
+        if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+            return $candidatePath
+        }
+    }
+
+    throw "Installed package manifest was not found under $PackageRoot."
 }
 
 function Get-ExpectedVirtualPrinterValue {
@@ -168,18 +184,18 @@ function Assert-InstalledPackageShape {
         [object[]] $ExpectedVirtualPrinters
     )
 
+    if ($Package.IsDevelopmentMode) {
+        throw "Package '$($Package.PackageFullName)' is registered in development mode. Install a signed MSIX with -PackagePath for E2E provisioning."
+    }
+
     $installLocation = $Package.InstallLocation
     if ([string]::IsNullOrWhiteSpace($installLocation) -or -not (Test-Path -LiteralPath $installLocation -PathType Container)) {
         throw "Package install location is unavailable for $($Package.PackageFullName)."
     }
 
-    $manifestPath = Join-PackagePath -PackageRoot $installLocation -RelativePath 'Package.appxmanifest'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        throw "Installed package manifest was not found: $manifestPath"
-    }
-
+    $manifestPath = Get-InstalledPackageManifestPath -PackageRoot $installLocation
     [xml] $manifest = Get-Content -LiteralPath $manifestPath -Raw
-    $namespaceManager = New-AppxNamespaceManager -Manifest $manifest
+    [System.Xml.XmlNamespaceManager] $namespaceManager = New-AppxNamespaceManager -Manifest $manifest
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//uap3:Extension[@Category="windows.appExecutionAlias"]/uap3:AppExecutionAlias/desktop:ExecutionAlias[@Alias="printsink-app.exe"]' -Description 'the printsink-app.exe execution alias' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportWorkflow" and @EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask"]' -Description 'the print support workflow extension' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportExtension" and @EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask"]' -Description 'the print support extension background task' | Out-Null
@@ -280,6 +296,28 @@ function Assert-InstalledPackageShape {
     }
 }
 
+function Invoke-PrintSinkAppCommand {
+    param(
+        [string[]] $Arguments,
+        [string] $Description
+    )
+
+    $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
+    Remove-Item $headlessLog -ErrorAction SilentlyContinue
+
+    & printsink-app.exe @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        $diagnostic = if (Test-Path $headlessLog) {
+            Get-Content $headlessLog -Raw
+        }
+        else {
+            'No headless diagnostic log was written.'
+        }
+
+        throw "$Description failed with exit code $LASTEXITCODE. $diagnostic"
+    }
+}
+
 if (-not $SkipPackageInstall) {
     if ([string]::IsNullOrWhiteSpace($PackagePath)) {
         throw 'Pass -PackagePath or use -SkipPackageInstall when the package is already installed.'
@@ -295,61 +333,43 @@ if (-not $SkipPackageInstall) {
 $package = Get-InstalledPackage -Name $PackageName
 $packageShape = Assert-InstalledPackageShape -Package $package -ExpectedVirtualPrinters $expectedVirtualPrinters
 
-$headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
-Remove-Item $headlessLog -ErrorAction SilentlyContinue
-
 $alias = Get-Command printsink-app.exe -ErrorAction SilentlyContinue
 if ($null -eq $alias) {
     throw 'printsink-app.exe was not registered. Install the signed MSIX package before running E2E.'
 }
 
-& printsink-app.exe --install-virtual-printers
-if ($LASTEXITCODE -ne 0) {
-    $diagnostic = if (Test-Path $headlessLog) {
-        Get-Content $headlessLog -Raw
+Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
+try {
+    Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
+
+    $printers = Get-Printer
+    $installedNames = @($printers | ForEach-Object Name)
+    $missingQueues = @($expectedQueues | Where-Object { $installedNames -notcontains $_ })
+
+    if ($missingQueues.Count -gt 0) {
+        throw "Missing PrintSink queues: $($missingQueues -join ', ')"
     }
-    else {
-        'No headless diagnostic log was written.'
-    }
 
-    throw "Headless virtual-printer provisioning failed with exit code $LASTEXITCODE. $diagnostic"
-}
-
-$printers = Get-Printer
-$installedNames = @($printers | ForEach-Object Name)
-$missingQueues = @($expectedQueues | Where-Object { $installedNames -notcontains $_ })
-
-if ($missingQueues.Count -gt 0) {
-    throw "Missing PrintSink queues: $($missingQueues -join ', ')"
-}
-
-$result = [ordered]@{
-    windowsVersion = [Environment]::OSVersion.Version.ToString()
-    architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-    package = [ordered]@{
-        name = $package.Name
-        fullName = $package.PackageFullName
-        familyName = $package.PackageFamilyName
-        version = $package.Version.ToString()
-        installLocation = $package.InstallLocation
-    }
-    packageShape = $packageShape
-    queues = @($expectedQueues)
-}
-
-if ($Cleanup) {
-    Remove-Item $headlessLog -ErrorAction SilentlyContinue
-    & printsink-app.exe --remove-virtual-printers
-    if ($LASTEXITCODE -ne 0) {
-        $diagnostic = if (Test-Path $headlessLog) {
-            Get-Content $headlessLog -Raw
+    $result = [ordered]@{
+        windowsVersion = [Environment]::OSVersion.Version.ToString()
+        architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+        package = [ordered]@{
+            name = $package.Name
+            fullName = $package.PackageFullName
+            familyName = $package.PackageFamilyName
+            version = $package.Version.ToString()
+            installLocation = $package.InstallLocation
         }
-        else {
-            'No headless diagnostic log was written.'
-        }
-
-        throw "Headless virtual-printer cleanup failed with exit code $LASTEXITCODE. $diagnostic"
+        packageShape = $packageShape
+        queues = @($expectedQueues)
     }
-}
 
-$result | ConvertTo-Json -Depth 4
+    if ($Cleanup) {
+        Invoke-PrintSinkAppCommand -Arguments @('--remove-virtual-printers') -Description 'Headless virtual-printer cleanup'
+    }
+
+    $result | ConvertTo-Json -Depth 4
+}
+finally {
+    Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Restoring foreground job UI'
+}
