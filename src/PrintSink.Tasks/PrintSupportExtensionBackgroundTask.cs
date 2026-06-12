@@ -77,6 +77,11 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
                 args.UpdatePrintDeviceCapabilities(updatedCapabilities);
 
+                if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
+                {
+                    ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
+                }
+
                 if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
                 {
                     XmlDocument resources = args.GetCurrentPrintDeviceResources();
@@ -104,6 +109,19 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         XmlDocument result = new();
         result.LoadXml(updatedDocument.ToString(SaveOptions.DisableFormatting));
         return result;
+    }
+
+    private static void ConfigureMxdcImageQuality(PrintSupportMxdcImageQualityConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        configuration.TextOutputQuality = XpsImageQuality.Png;
+        configuration.DraftOutputQuality = XpsImageQuality.JpegHighCompression;
+        configuration.NormalOutputQuality = XpsImageQuality.JpegMediumCompression;
+        configuration.HighOutputQuality = XpsImageQuality.JpegLowCompression;
+        configuration.PhotographicOutputQuality = XpsImageQuality.Png;
+        configuration.AutomaticOutputQuality = XpsImageQuality.JpegMediumCompression;
+        configuration.FaxOutputQuality = XpsImageQuality.JpegHighCompression;
     }
 
     private static XmlDocument ApplyPrintSinkResources(
