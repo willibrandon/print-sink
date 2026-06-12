@@ -3,6 +3,9 @@ using System.Xml.Linq;
 
 namespace PrintSink.Cli;
 
+/// <summary>
+/// Validates the package manifest shape needed by PrintSink.
+/// </summary>
 internal static class ManifestLinter
 {
     private static readonly string[] RequiredExtensionCategories =
@@ -13,6 +16,11 @@ internal static class ManifestLinter
         "windows.printSupportJobUI",
     ];
 
+    /// <summary>
+    /// Lints an MSIX package manifest.
+    /// </summary>
+    /// <param name="manifestPath">The manifest path.</param>
+    /// <returns>The lint result.</returns>
     public static ManifestLintResult Lint(string manifestPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);

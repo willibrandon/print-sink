@@ -4,8 +4,15 @@ using static Microsoft.UI.Reactor.Factories;
 
 ReactorApp.Run<App>("PrintSink.App", width: 900, height: 600);
 
+/// <summary>
+/// Hosts the PrintSink Reactor application.
+/// </summary>
 class App : Component
 {
+    /// <summary>
+    /// Renders the application shell.
+    /// </summary>
+    /// <returns>The root Reactor element.</returns>
     public override Element Render()
     {
         var (name, setName) = UseState("World");

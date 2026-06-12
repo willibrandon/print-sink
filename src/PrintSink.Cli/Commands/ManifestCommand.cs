@@ -2,8 +2,16 @@ using System.CommandLine;
 
 namespace PrintSink.Cli.Commands;
 
+/// <summary>
+/// Creates manifest inspection commands.
+/// </summary>
 internal static class ManifestCommand
 {
+    /// <summary>
+    /// Creates the manifest command.
+    /// </summary>
+    /// <param name="context">The CLI context.</param>
+    /// <returns>The configured command.</returns>
     public static Command Create(CliContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

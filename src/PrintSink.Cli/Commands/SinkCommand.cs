@@ -4,8 +4,16 @@ using System.CommandLine;
 
 namespace PrintSink.Cli.Commands;
 
+/// <summary>
+/// Creates sink test commands.
+/// </summary>
 internal static class SinkCommand
 {
+    /// <summary>
+    /// Creates the sink command.
+    /// </summary>
+    /// <param name="context">The CLI context.</param>
+    /// <returns>The configured command.</returns>
     public static Command Create(CliContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

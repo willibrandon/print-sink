@@ -2,8 +2,16 @@ using System.CommandLine;
 
 namespace PrintSink.Cli.Commands;
 
+/// <summary>
+/// Creates PDC inspection commands.
+/// </summary>
 internal static class PdcCommand
 {
+    /// <summary>
+    /// Creates the PDC command.
+    /// </summary>
+    /// <param name="context">The CLI context.</param>
+    /// <returns>The configured command.</returns>
     public static Command Create(CliContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

@@ -3,8 +3,16 @@ using System.Xml.Linq;
 
 namespace PrintSink.Cli;
 
+/// <summary>
+/// Validates Print Device Capabilities XML fixtures.
+/// </summary>
 internal static class PdcValidator
 {
+    /// <summary>
+    /// Validates basic PDC XML shape.
+    /// </summary>
+    /// <param name="pdcPath">The PDC file path.</param>
+    /// <returns>The validation result.</returns>
     public static ValidationResult Validate(string pdcPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pdcPath);

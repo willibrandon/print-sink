@@ -4,8 +4,16 @@ using System.Xml.Linq;
 
 namespace PrintSink.Cli;
 
+/// <summary>
+/// Reads print-ticket fixtures for CLI inspection.
+/// </summary>
 internal static class TicketMapper
 {
+    /// <summary>
+    /// Summarizes a print-ticket fixture.
+    /// </summary>
+    /// <param name="ticketPath">The print-ticket file path.</param>
+    /// <returns>The print-ticket summary result.</returns>
     public static TicketMapResult Map(string ticketPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ticketPath);

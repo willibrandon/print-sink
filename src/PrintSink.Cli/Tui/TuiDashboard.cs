@@ -4,8 +4,16 @@ using PrintSink.Core.Endpoints;
 
 namespace PrintSink.Cli.Tui;
 
+/// <summary>
+/// Renders the PrintSink Hex1b diagnostics dashboard.
+/// </summary>
 internal static class TuiDashboard
 {
+    /// <summary>
+    /// Builds the dashboard widget tree.
+    /// </summary>
+    /// <param name="context">The Hex1b root context.</param>
+    /// <returns>The dashboard root widget.</returns>
     public static Hex1bWidget Build(RootContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -36,6 +44,11 @@ internal static class TuiDashboard
         });
     }
 
+    /// <summary>
+    /// Runs the dashboard in a terminal.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token for the terminal session.</param>
+    /// <returns>The terminal exit code.</returns>
     public static async Task<int> RunAsync(CancellationToken cancellationToken)
     {
         using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()

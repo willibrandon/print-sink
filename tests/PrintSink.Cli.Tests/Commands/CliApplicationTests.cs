@@ -22,8 +22,8 @@ public sealed class CliApplicationTests
         (int exitCode, string output, _) = await InvokeAsync("queues").ConfigureAwait(false);
 
         Assert.AreEqual(0, exitCode);
-        StringAssert.Contains(output, "PrintSink - PDF");
-        StringAssert.Contains(output, "PrintSink - PWG Raster");
+        Assert.Contains("PrintSink - PDF", output);
+        Assert.Contains("PrintSink - PWG Raster", output);
     }
 
     /// <summary>
@@ -41,8 +41,8 @@ public sealed class CliApplicationTests
             "application/oxps").ConfigureAwait(false);
 
         Assert.AreEqual(0, exitCode);
-        StringAssert.Contains(output, "Action: Convert");
-        StringAssert.Contains(output, "Conversion: XpsToPdf");
+        Assert.Contains("Action: Convert", output);
+        Assert.Contains("Conversion: XpsToPdf", output);
     }
 
     /// <summary>
@@ -59,7 +59,7 @@ public sealed class CliApplicationTests
             (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
 
             Assert.AreEqual(0, exitCode);
-            StringAssert.Contains(output, "ok: manifest package shape is valid.");
+            Assert.Contains("ok: manifest package shape is valid.", output);
         }
         finally
         {

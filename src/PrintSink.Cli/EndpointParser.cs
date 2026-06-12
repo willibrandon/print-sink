@@ -2,8 +2,17 @@ using PrintSink.Core.Endpoints;
 
 namespace PrintSink.Cli;
 
+/// <summary>
+/// Parses endpoint names accepted by CLI commands.
+/// </summary>
 internal static class EndpointParser
 {
+    /// <summary>
+    /// Tries to parse a command-line endpoint name.
+    /// </summary>
+    /// <param name="text">The endpoint text.</param>
+    /// <param name="endpointKind">The parsed endpoint kind when parsing succeeds.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse(string text, out EndpointKind endpointKind)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
