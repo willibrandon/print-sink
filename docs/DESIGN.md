@@ -4,7 +4,7 @@
 **Solution / assembly / root namespace:** `PrintSink`
 **Author:** Brandon Williams
 **Status:** Design — approved for implementation
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-12
 **Target platform:** Windows 11 24H2 (build 26100) and later; Windows Server 2025+
 
 ---
@@ -34,12 +34,15 @@ PSA v4 surface exposes** — no feature is descoped.
    `windows.printSupportVirtualPrinterWorkflow` contract.
 2. Implement the full PSA v4 feature set (see the **Feature Completeness Matrix**, §4).
 3. Be the most modern possible C#/.NET implementation: **.NET 10**, **WinUI 3 / Windows App SDK**,
-   **CsWinRT 2.2+** projections, **single-project MSIX** packaging.
+   **Microsoft.UI.Reactor** for the foreground UI, **CsWinRT 2.2+** projections,
+   **single-project MSIX** packaging.
 4. Strict engineering standards: **one type per file**, **triple-slash XML docs on every public member**,
    nullable reference types, analyzers as errors.
 5. Fully tested following Microsoft's current guidance, using the current test stack
-   (**MSTest 3.x on Microsoft.Testing.Platform**, .NET 10), plus a deterministic manual
+   (**MSTest on Microsoft.Testing.Platform**, .NET 10), plus a deterministic manual
    end-to-end print-stack validation plan.
+6. Ship a companion `PrintSink.Cli` executable: command-line automation through
+   `System.CommandLine`, with a Hex1b TUI for local diagnostics and operator workflows.
 
 ### 1.2 Non-goals
 
@@ -107,13 +110,14 @@ Alongside the job path, three **shared PSA contracts** are reused by the virtual
 
 PrintSink is a **single MSIX package** containing one WinUI 3 executable plus a CsWinRT-hosted
 background-task component and a native XPS component. The print system activates the background-task
-classes in-process via `WinRT.Host.dll`.
+classes in-process via `WinRT.Host.dll`. A separate `PrintSink.Cli` executable ships for developer and
+operator workflows; it references the same core library but is not an OS print activation entry point.
 
 ```
 ┌───────────────────────────── PrintSink.msix (single-project MSIX) ─────────────────────────────┐
 │                                                                                                 │
-│  PrintSink.App  (WinUI 3, .NET 10, WinExe, packaged)        ← foreground / UI activations       │
-│    • App activation router (Launch / SettingsUI / JobUI)                                        │
+│  PrintSink.App  (WinUI 3 + Microsoft.UI.Reactor, .NET 10, packaged) ← foreground activations    │
+│    • Reactor root + activation router (Launch / SettingsUI / JobUI)                             │
 │    • Settings preferences UI  (printSupportSettingsUI)                                           │
 │    • Job UI / preview         (printSupportJobUI, incl. VirtualPrinterUIDataAvailable)           │
 │    • Management / diagnostics UI (user launch)                                                   │
@@ -131,14 +135,22 @@ classes in-process via `WinRT.Host.dll`.
 │  PrintSink.Xps    (C++/WinRT component)  +  PrintSink.Xps.Projections (C# projection assembly)   │
 │    • XPS Object Model watermarking (text + image), page wrapping, sequential streaming          │
 │                                                                                                 │
+│  PrintSink.Cli    (.NET 10 console app; System.CommandLine + Hex1b)                             │
+│    • Scriptable queue/config validation commands                                                 │
+│    • Terminal diagnostics dashboard for local development and support                            │
+│                                                                                                 │
 │  Config\*.xml (PDC/PDR per printer)   Strings\<lang>\*.resw (localization)   Assets\*            │
 └─────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.1 Why these components
 
-- **WinUI 3 / Windows App SDK on .NET 10** is the most modern packaged-app stack and the one
+- **WinUI 3 / Windows App SDK on .NET 10** is the modern packaged-app stack and the one
   Microsoft's current PSA sample targets. It supersedes UWP for new work.
+- **Microsoft.UI.Reactor** is the foreground UI model. The app is code-first WinUI: no XAML pages,
+  no code-behind layer, and no duplicated view-model ceremony when a small Reactor component owns the
+  screen state cleanly. The project still stays MSIX-shaped, with `Package.appxmanifest`, assets,
+  launch profiles, and package identity preserved.
 - **Separate `PrintSink.Tasks` CsWinRT component** is required: the OS activates the background tasks
   as WinRT activatable classes hosted by `WinRT.Host.dll`. Setting `CsWinRTComponent=true` produces the
   host + a `.winmd` whose activatable class IDs are referenced from the package manifest.
@@ -149,6 +161,9 @@ classes in-process via `WinRT.Host.dll`.
   managed XPS-OM in modern .NET (the old `System.Printing`/`System.Windows.Xps` is WPF/.NET-Framework
   only). Watermarking and page-level XPS manipulation must go through C++/WinRT, consumed from C# via a
   CsWinRT projection assembly. This is exactly how Microsoft's sample is structured.
+- **`PrintSink.Cli`** keeps automation separate from the packaged foreground app. `System.CommandLine`
+  owns parsing and command dispatch. Hex1b owns the terminal UI. The CLI references the Hex1b NuGet
+  package and shares logic only through `PrintSink.Core`.
 
 > **Build consequence:** because of the C++/WinRT component, the solution **must build with MSBuild /
 > Visual Studio 2026**, not `dotnet build` (the CLI cannot compile `.vcxproj`). This is accepted as the
@@ -204,20 +219,24 @@ print-sink/
 │  ├─ TESTING.md                        # test plan + manual E2E runbook
 │  └─ BUILD.md                          # MSBuild/VS build & deploy steps
 ├─ src/
-│  ├─ PrintSink.App/                    # WinUI 3 packaged app (Single-project MSIX)
+│  ├─ PrintSink.App/                    # WinUI 3 + Reactor packaged app (Single-project MSIX)
 │  │  ├─ Package.appxmanifest
 │  │  ├─ app.manifest
-│  │  ├─ App.xaml(.cs)                   # one type: App (activation router)
+│  │  ├─ App.cs                           # top-level Reactor entry point
+│  │  ├─ AppRoot.cs                       # Reactor root component + shell routing
 │  │  ├─ Activation/                     # one handler type per file
 │  │  │  ├─ SettingsActivationHandler.cs
 │  │  │  ├─ JobActivationHandler.cs
 │  │  │  └─ LaunchActivationHandler.cs
-│  │  ├─ Views/  (one Page per file)     # SettingsPage, JobPreviewPage, ManagementPage, …
-│  │  ├─ ViewModels/ (one VM per file)
-│  │  ├─ Controls/ (PreviewPaginationControl, WatermarkPreviewControl, …)
+│  │  ├─ Screens/                         # ManagementScreen, SettingsScreen, JobPreviewScreen
+│  │  ├─ Components/                      # PreviewPagination, WatermarkPreview, QueueList, …
 │  │  ├─ Config/  PrinterPdf.pdc.xml, PrinterPdf.pdr.xml, … (one per endpoint)
 │  │  ├─ Strings/<lang>/Resources.resw, IppMediaTypes.resw, CustomMediaTypes.resw
 │  │  └─ Assets/
+│  ├─ PrintSink.Cli/                     # System.CommandLine + Hex1b companion app
+│  │  ├─ Program.cs
+│  │  ├─ Commands/                        # queue, manifest, pdc, ticket, sink, tui
+│  │  └─ Tui/                             # Hex1b views and terminal state
 │  ├─ PrintSink.Tasks/                   # CsWinRT component (WinRT.Host.dll producer)
 │  │  ├─ VirtualPrinterBackgroundTask.cs
 │  │  ├─ PrintSupportWorkflowBackgroundTask.cs
@@ -237,15 +256,16 @@ print-sink/
 │  │  └─ SynchronizedSequentialStream.{h,cpp,idl}
 │  └─ PrintSink.Xps.Projections/         # C# projection of PrintSink.Xps (.csproj)
 └─ tests/
-   ├─ PrintSink.Core.Tests/              # MSTest 3.x on Microsoft.Testing.Platform (.NET 10)
+   ├─ PrintSink.Core.Tests/              # MSTest on Microsoft.Testing.Platform (.NET 10)
+   ├─ PrintSink.Cli.Tests/               # command parsing, output, and Hex1b state tests
    ├─ PrintSink.Xps.Tests/               # exercises XPS-OM via the C# projection
    └─ PrintSink.App.Tests/               # packaged WinUI test app (in-package, MTP)
 ```
 
 **Naming:** root namespace `PrintSink`, with logical sub-namespaces (`PrintSink.Core.Pdl`,
-`PrintSink.Tasks`, `PrintSink.App.Views`, `PrintSink.Xps`). The activatable-class IDs in the manifest
-therefore read `PrintSink.Tasks.VirtualPrinterBackgroundTask`, etc. Assembly name = project name; the
-root namespace token is always `PrintSink`.
+`PrintSink.Cli.Commands`, `PrintSink.Tasks`, `PrintSink.App.Screens`, `PrintSink.Xps`). The
+activatable-class IDs in the manifest therefore read `PrintSink.Tasks.VirtualPrinterBackgroundTask`,
+etc. Assembly name = project name; the root namespace token is always `PrintSink`.
 
 ### 5.1 Project settings (key properties)
 
@@ -275,6 +295,26 @@ root namespace token is always `PrintSink`.
   <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   <Nullable>enable</Nullable>
 </PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="Microsoft.UI.Reactor" />
+</ItemGroup>
+```
+
+The Reactor template defaults to an unpackaged development app. PrintSink keeps the Reactor entry point
+and component model, but the project is explicitly MSIX-shaped because the PSA contracts require package
+identity and manifest extensions.
+
+`PrintSink.Cli.csproj`
+```xml
+<PropertyGroup>
+  <OutputType>Exe</OutputType>
+  <TargetFramework>net10.0</TargetFramework>
+  <RootNamespace>PrintSink.Cli</RootNamespace>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="System.CommandLine" />
+  <PackageReference Include="Hex1b" />
+</ItemGroup>
 ```
 
 ---
@@ -487,19 +527,24 @@ and `PdlModificationRequested`:
 - `CreateJobOnPrinter[WithAttributes]` → convert/copy to target stream →
   `CompleteStreamSubmission(Succeeded)`; abort via `AbortPrintFlow(reason)` on failure/cancel.
 
-### 7.4 `PrintSink.App` — activation router + UIs
+### 7.4 `PrintSink.App` — Reactor shell + activation router
 
-`App` (WinUI 3) routes activation via
-`AppInstance.GetCurrent().GetActivatedEventArgs().Kind`:
+`App.cs` is the top-level Reactor entry point. It starts `ReactorApp.Run<AppRoot>()`, and `AppRoot`
+owns the WinUI window, shell state, and screen selection. Activation is still resolved through
+`AppInstance.GetCurrent().GetActivatedEventArgs().Kind`, but the result is routed to Reactor screens
+instead of XAML pages:
 
-- `Launch` → **ManagementPage** (diagnostics: list installed PrintSink queues, get/set
+- `Launch` → **ManagementScreen** (diagnostics: list installed PrintSink queues, get/set
   `UserDefaultPrintTicket`, trigger `RefreshPrintDeviceCapabilities`, IPP URL info).
-- `PrintSupportSettingsUI` → **SettingsPage**, created **modal to `OwnerWindowId`** via
+- `PrintSupportSettingsUI` → **SettingsScreen**, created **modal to `OwnerWindowId`** via
   `Win32Interop.GetWindowFromWindowId` (the v4 WinAppSDK requirement).
-- `PrintSupportJobUI` → **JobPreviewPage**; subscribes
+- `PrintSupportJobUI` → **JobPreviewScreen**; subscribes
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
   `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
   persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
+
+The UI is made from small Reactor components under `Screens/` and `Components/`. State that must cross
+the UI/background boundary lives in `PrintSink.Core` models and stores, not in WinUI controls.
 
 Because the background task cannot mutate XPS while the UI is up, the UI→background handshake is: UI
 collects options → writes to local settings → returns `Completed` → background task reads options and
@@ -534,6 +579,28 @@ ISink                { Task WriteAsync(Stream pdl, ...) }  → FileSink, CloudSi
 The `Tasks` classes implement adapters that wrap the real WinRT args into these interfaces. This is what
 makes ~90% of the logic unit-testable off the print stack (see §9).
 
+### 7.7 `PrintSink.Cli` — command line + TUI
+
+`PrintSink.Cli` is a normal .NET console app. It is useful before the package is installed, during
+support calls, and in CI checks that should not start a WinUI process.
+
+- `System.CommandLine` commands:
+  - `queues` — list expected and installed PrintSink queues when the local print stack is available.
+  - `manifest lint` — validate package manifest entries, preferred input formats, passthrough formats,
+    PDC/PDR paths, and endpoint consistency.
+  - `pdc validate` — validate PDC/PDR XML and custom feature wiring.
+  - `ticket map` — convert a fixture print ticket into the IPP attribute model and show merge results.
+  - `sink test` — run a fixture PDL stream through the selected sink without a live PSA activation.
+  - `tui` — start the Hex1b terminal UI.
+- Hex1b TUI:
+  - queue and endpoint list;
+  - manifest/PDC validation status;
+  - recent diagnostics/events from the local store;
+  - fixture-driven route and sink test runner.
+
+The CLI/TUI uses `PrintSink.Core` abstractions and OS/package tooling. It does not try to instantiate
+live PSA event objects; those stay behind the activation adapters.
+
 ---
 
 ## 8. Cross-cutting concerns
@@ -562,11 +629,11 @@ makes ~90% of the logic unit-testable off the print stack (see §9).
 
 Microsoft's current guidance for WinUI 3 / Windows App SDK is **MSTest running on the
 Microsoft.Testing.Platform (MTP)**, including the **packaged WinUI MSTest app template** for tests that
-must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.NET 10** throughout.
+must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 10** throughout.
 
 ### 9.1 Test layers
 
-1. **Unit tests — `PrintSink.Core.Tests`** (MSTest 3.x / MTP, plain .NET, runs under `dotnet test` and in
+1. **Unit tests — `PrintSink.Core.Tests`** (MSTest / MTP, plain .NET, runs under `dotnet test` and in
    CI). Covers the bulk of the logic because Core has no print-stack dependency:
    - `PdlRouter`: every (content type × endpoint) → expected `PdlPlan` (conversion type / copy /
      reject). Table-driven `[DataRow]`.
@@ -578,15 +645,18 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.
    - Manifest lint: validate `PreferredInputFormat` ∈ allowed set, `MaxVersion` numeric, `PdcFile`
      present, `OutputFileTypes` ↔ endpoint kind consistency (a unit test over the shipped manifest +
      PDC files).
-2. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64): drive the C++/WinRT component through
+2. **CLI tests — `PrintSink.Cli.Tests`** (MSTest / MTP, plain .NET): cover command parsing, exit codes,
+   output formatting, manifest/PDC validation commands, and Hex1b state transitions without requiring a
+   real terminal session.
+3. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64): drive the C++/WinRT component through
    its C# projection with a small fixture OXPS document; assert the watermarked stream is non-empty,
    parses as valid XPS, and contains the watermark glyph run / image part. `XpsGenerationFailed` path
    asserted with a corrupt fixture.
-3. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app, MTP): run with package
+4. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app, MTP): run with package
    identity to validate activation routing logic, `OwnerWindowId` modality wiring, settings persistence
-   visible across the UI/background boundary, and ViewModel behavior. UI automation (optional) via
+   visible across the UI/background boundary, and Reactor screen behavior. UI automation (optional) via
    **Appium + WinAppDriver** for the Settings/Job pages.
-4. **End-to-end / manual print-stack validation — `docs/TESTING.md` runbook.** The live PSA activation
+5. **End-to-end / manual print-stack validation — `docs/TESTING.md` runbook.** The live PSA activation
    (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E is a
    **scripted, deterministic manual gate**, executed on a clean Windows 11 26100+ VM with test-signing:
    - Install the signed package; assert all five queues appear (`Get-Printer`).
@@ -604,8 +674,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.
 
 ### 9.2 Test tooling
 
-- `Directory.Packages.props` pins: `MSTest` (3.x), `Microsoft.Testing.Platform`,
-  `Microsoft.Testing.Extensions.CodeCoverage`, `Microsoft.Windows.CsWinRT`, `Microsoft.WindowsAppSDK`.
+- `Directory.Packages.props` pins: `MSTest`, `Microsoft.Testing.Platform`,
+  `Microsoft.Testing.Extensions.CodeCoverage`, `Microsoft.Windows.CsWinRT`, `Microsoft.WindowsAppSDK`,
+  `Microsoft.UI.Reactor`, `System.CommandLine`, and `Hex1b`.
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
 - CI runs unit + Xps + packaged-app tests on `windows-2025` runners (MSBuild, x64 and ARM64);
@@ -617,9 +688,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.
 
 - **Build:** Visual Studio 2026 or MSBuild (`msbuild PrintSink.slnx /p:Platform=x64 /p:Configuration=Release`).
   `dotnet` CLI is **not** supported for the full solution (C++/WinRT). Unit-test projects that don't
-  reference the native component still run under `dotnet test`.
+  reference the native component still run under `dotnet test`; `PrintSink.Cli` also builds and runs
+  under `dotnet run`.
 - **Build order:** `PrintSink.Xps` (.winmd+.dll) → `PrintSink.Xps.Projections` → `PrintSink.Core` →
-  `PrintSink.Tasks` (.winmd + WinRT.Host.dll) → `PrintSink.App` (packages everything). MSBuild targets
+  `PrintSink.Tasks` (.winmd + WinRT.Host.dll) → `PrintSink.App` (packages everything) plus
+  `PrintSink.Cli`. MSBuild targets
   copy `PrintSink.Tasks.winmd` and the XPS side-by-side manifest into the package output, as in the
   reference sample.
 - **Packaging:** single-project MSIX (`EnableMsixTooling`, `WindowsPackageType=MSIX`,
@@ -651,21 +724,25 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.
 
 1. **Host stack:** Windows App SDK / WinUI 3 on .NET 10 (not UWP). — Most modern, matches current MS
    sample.
-2. **Native XPS via C++/WinRT** (`PrintSink.Xps`) — required for full watermarking; accept MSBuild-only
+2. **Foreground UI model:** Microsoft.UI.Reactor. — Code-first WinUI keeps the app compact while
+   retaining the packaged MSIX shape required by PSA activation.
+3. **Native XPS via C++/WinRT** (`PrintSink.Xps`) — required for full watermarking; accept MSBuild-only
    build.
-3. **Five virtual printers** (PDF, XPS, PostScript, Cloud, PWG-Raster) to exercise file output, cloud
+4. **Five virtual printers** (PDF, XPS, PostScript, Cloud, PWG-Raster) to exercise file output, cloud
    sink, passthrough, and every PDL converter — full feature coverage, not a single demo queue.
-4. **`PrintSink.Core` abstraction layer** so logic is unit-testable off the print stack — chosen over
+5. **`PrintSink.Core` abstraction layer** so logic is unit-testable off the print stack — chosen over
    testing only via the live stack.
-5. **Virtual Printer WinRT projections:** target a Windows App SDK / `Microsoft.Windows.SDK.NET.Ref`
+6. **CLI/TUI model:** `System.CommandLine` for scriptable commands and Hex1b for terminal UI. The
+   project references the Hex1b NuGet package.
+7. **Virtual Printer WinRT projections:** target a Windows App SDK / `Microsoft.Windows.SDK.NET.Ref`
    build that projects the `Windows.Devices.Printers` v4 / virtual-printer surface. The reference sample
    temporarily `#if VIRTUAL_PRINTER_DISABLED`-gated these because an older ref package conflicted with
    `IppPrintDevice`. **PrintSink resolves this by pinning to a ref package that includes the projections;
    if a conflict remains, author a scoped CsWinRT projection (`CsWinRTIncludes`) for the virtual-printer
    namespace only.** No functionality is left disabled.
-6. **Testing:** MSTest 3.x on Microsoft.Testing.Platform, .NET 10, plus scripted manual E2E — the current
+8. **Testing:** MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted manual E2E — the current
    Microsoft-recommended stack.
-7. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.
+9. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.
 
 ---
 
@@ -673,11 +750,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.
 
 | M | Deliverable |
 | --- | --- |
-| M0 | Repo scaffolding: `PrintSink.slnx`, `Directory.Build/Packages.props`, `.editorconfig`, `global.json`, analyzer/doc gates. |
-| M1 | `PrintSink.Core` + full unit tests (router, PDC editor, IPP mapper, settings). |
+| M0 | Repo scaffolding: `PrintSink.slnx`, `Directory.Build/Packages.props`, `.editorconfig`, `global.json`, analyzer/doc gates, Reactor MSIX shell, CLI package wiring. |
+| M1 | `PrintSink.Core` + full unit tests (router, PDC editor, IPP mapper, settings), plus `PrintSink.Cli` command skeleton and tests. |
 | M2 | `PrintSink.Xps` + `PrintSink.Xps.Projections` + component tests (watermark fidelity). |
 | M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
-| M4 | `PrintSink.App`: activation router, Settings UI (modal), Job UI/preview, Management UI. |
+| M4 | `PrintSink.App`: Reactor activation router, Settings UI (modal), Job UI/preview, Management UI; `PrintSink.Cli tui` Hex1b dashboard. |
 | M5 | Manifest (5 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
 | M6 | Packaged-app tests + E2E runbook automation; CI on windows-2025 (x64/ARM64). |
 | M7 | Full E2E validation pass on clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
@@ -697,5 +774,8 @@ modality, PDC refresh, and cancel paths.
 - End of servicing plan for third-party printer drivers on Windows —
   https://learn.microsoft.com/en-us/windows-hardware/drivers/print/end-of-servicing-plan-for-third-party-printer-drivers-on-windows
 - Reference sample (local): `D:\SRC\print-oem-samples\PSASamples\WinAppSdk\CSharp`
+- Microsoft.UI.Reactor NuGet package: https://www.nuget.org/packages/Microsoft.UI.Reactor
+- Hex1b NuGet package: https://www.nuget.org/packages/Hex1b
+- System.CommandLine NuGet package: https://www.nuget.org/packages/System.CommandLine
 - `Windows.Graphics.Printing.PrintSupport`, `Windows.Graphics.Printing.Workflow`,
   `Windows.Devices.Printers` WinRT namespaces; CsWinRT (`Microsoft.Windows.CsWinRT`).

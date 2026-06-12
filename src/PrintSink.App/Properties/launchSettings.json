@@ -1,11 +1,11 @@
 {
   "profiles": {
-    "PrintSink.App": {
-      "commandName": "Project",
+    "PrintSink.App (Package)": {
+      "commandName": "MsixPackage",
       "nativeDebugging": false
     },
-    "PrintSink.App Devtools": {
-      "commandName": "Project",
+    "PrintSink.App Devtools (Package)": {
+      "commandName": "MsixPackage",
       "commandLineArgs": "--devtools",
       "nativeDebugging": false
     }
