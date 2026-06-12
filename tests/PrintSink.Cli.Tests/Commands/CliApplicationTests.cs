@@ -393,8 +393,11 @@ public sealed class CliApplicationTests
             (int exitCode, string output, _) = await InvokeAsync("ticket", "map", "--ticket", ticketPath).ConfigureAwait(false);
 
             Assert.AreEqual(CliExitCodes.Success, exitCode);
-            Assert.Contains("IPP attributes: 2", output);
+            Assert.Contains("IPP attributes: 5", output);
             Assert.Contains("copies: 2", output);
+            Assert.Contains("finishings: 20", output);
+            Assert.Contains("output-bin: automationoutputbin", output);
+            Assert.Contains("page-delivery: oddpagesthenevenpages", output);
             Assert.Contains("sides: two-sided-short-edge", output);
         }
         finally
@@ -646,6 +649,15 @@ public sealed class CliApplicationTests
                          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
           <psf:Feature name="psk:JobDuplexAllDocumentsContiguously">
             <psf:Option name="psk:TwoSidedShortEdge" />
+          </psf:Feature>
+          <psf:Feature name="psk:JobOutputBin">
+            <psf:Option name="printsink:AutomationOutputBin" />
+          </psf:Feature>
+          <psf:Feature name="psk:JobPageOrder">
+            <psf:Option name="printsink:OddPagesThenEvenPages" />
+          </psf:Feature>
+          <psf:Feature name="psk:JobStapleAllDocuments">
+            <psf:Option name="printsink:StapleUpperLeft" />
           </psf:Feature>
           <psf:ParameterInit name="psk:JobCopiesAllDocuments">
             <psf:Value xsi:type="xsd:integer">2</psf:Value>

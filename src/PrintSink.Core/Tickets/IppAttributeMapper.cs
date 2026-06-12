@@ -19,7 +19,10 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
             ["PageMediaSize"] = option => IppAttributeValue.Single("media", NormalizeKeyword(option)),
             ["PageMediaType"] = option => IppAttributeValue.Single("media-type", NormalizeKeyword(option)),
             ["JobInputBin"] = option => IppAttributeValue.Single("media-source", NormalizeKeyword(option)),
+            ["JobOutputBin"] = option => IppAttributeValue.Single("output-bin", NormalizeKeyword(option)),
             ["JobDuplexAllDocumentsContiguously"] = MapDuplex,
+            ["JobPageOrder"] = MapPageOrder,
+            ["JobStapleAllDocuments"] = MapStaple,
             ["PageOutputColor"] = MapColor,
             ["PageOrientation"] = MapOrientation,
             ["PageOutputQuality"] = MapQuality,
@@ -158,6 +161,16 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
         };
     }
 
+    private static IppAttributeValue? MapPageOrder(string option)
+    {
+        return option switch
+        {
+            "Standard" or "SameOrder" => IppAttributeValue.Single("page-delivery", "same-order"),
+            "Reverse" or "ReverseOrder" => IppAttributeValue.Single("page-delivery", "reverse-order"),
+            _ => IppAttributeValue.Single("page-delivery", NormalizeKeyword(option)),
+        };
+    }
+
     private static IppAttributeValue? MapQuality(string option)
     {
         return option switch
@@ -165,6 +178,20 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
             "Draft" => IppAttributeValue.Single("print-quality", "3"),
             "Normal" => IppAttributeValue.Single("print-quality", "4"),
             "High" or "Photo" => IppAttributeValue.Single("print-quality", "5"),
+            _ => null,
+        };
+    }
+
+    private static IppAttributeValue? MapStaple(string option)
+    {
+        return option switch
+        {
+            "None" or "Off" => IppAttributeValue.Single("finishings", "3"),
+            "Staple" => IppAttributeValue.Single("finishings", "4"),
+            "StapleUpperLeft" or "StapleTopLeft" => IppAttributeValue.Single("finishings", "20"),
+            "StapleBottomLeft" => IppAttributeValue.Single("finishings", "21"),
+            "StapleTopRight" => IppAttributeValue.Single("finishings", "22"),
+            "StapleBottomRight" => IppAttributeValue.Single("finishings", "23"),
             _ => null,
         };
     }

@@ -26,6 +26,9 @@ public sealed class IppAttributeMapperTests
         Assert.AreEqual("monochrome", attributes["print-color-mode"].Values[0]);
         Assert.AreEqual("4", attributes["orientation-requested"].Values[0]);
         Assert.AreEqual("5", attributes["print-quality"].Values[0]);
+        Assert.AreEqual("automationoutputbin", attributes["output-bin"].Values[0]);
+        Assert.AreEqual("oddpagesthenevenpages", attributes["page-delivery"].Values[0]);
+        Assert.AreEqual("20", attributes["finishings"].Values[0]);
     }
 
     /// <summary>
@@ -108,6 +111,15 @@ public sealed class IppAttributeMapperTests
               </psf:Feature>
               <psf:Feature name="psk:PageOutputQuality">
                 <psf:Option name="psk:High" />
+              </psf:Feature>
+              <psf:Feature name="psk:JobOutputBin">
+                <psf:Option name="printsink:AutomationOutputBin" />
+              </psf:Feature>
+              <psf:Feature name="psk:JobPageOrder">
+                <psf:Option name="printsink:OddPagesThenEvenPages" />
+              </psf:Feature>
+              <psf:Feature name="psk:JobStapleAllDocuments">
+                <psf:Option name="printsink:StapleUpperLeft" />
               </psf:Feature>
               <psf:ParameterInit name="psk:JobCopiesAllDocuments">
                 <psf:Value xsi:type="xsd:integer">3</psf:Value>
