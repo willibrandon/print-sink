@@ -39,8 +39,11 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         var (imageHeight, setImageHeight) = UseState(144d);
         var (imageOpacity, setImageOpacity) = UseState(0.28d);
         var (imageRotation, setImageRotation) = UseState(0d);
+        var (jobPassword, setJobPassword) = UseState(string.Empty);
+        var (passwordEncryptionIndex, setPasswordEncryptionIndex) = UseState(0);
         Ref<JobUiDeferralState> jobState = UseRef(new JobUiDeferralState());
         ReactorWindow? window = UseWindow();
+        string[] passwordEncryptionMethods = ["sha2-256", "none"];
 
         async Task PickImageAsync()
         {
@@ -220,6 +223,10 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                                 .AutomationName("Image rotation")
                                 .IsEnabled(imageEnabled)
                                 .Grid(row: 0, column: 3)),
+                        PasswordBox(jobPassword, setJobPassword, "Job password")
+                            .AutomationName("Job password"),
+                        ComboBox(passwordEncryptionMethods, passwordEncryptionIndex, setPasswordEncryptionIndex)
+                            .AutomationName("Job password encryption"),
                         HStack(12,
                             Button(
                                 "Continue",
@@ -236,6 +243,8 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                                     imageHeight,
                                     imageOpacity,
                                     imageRotation,
+                                    jobPassword,
+                                    passwordEncryptionMethods[passwordEncryptionIndex],
                                     setStatus))
                                 .IsEnabled(canContinue),
                             Button(
@@ -296,6 +305,8 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         double imageHeight,
         double imageOpacity,
         double imageRotation,
+        string jobPassword,
+        string passwordEncryptionMethod,
         Action<string> setStatus)
     {
         if (textEnabled && string.IsNullOrWhiteSpace(text))
@@ -333,10 +344,13 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         WatermarkOptions watermarkOptions = textWatermark is null && imageWatermark is null
             ? WatermarkOptions.Disabled
             : new WatermarkOptions(true, textWatermark, imageWatermark);
+        JobPasswordOptions? jobPasswordOptions = string.IsNullOrWhiteSpace(jobPassword)
+            ? null
+            : JobPasswordOptions.FromPassword(jobPassword, passwordEncryptionMethod);
 
         try
         {
-            JobProcessingOptions options = new(watermarkOptions);
+            JobProcessingOptions options = new(watermarkOptions, jobPasswordOptions);
             await AppSettingsStoreFactory
                 .Create()
                 .SaveJobProcessingOptionsAsync(options)

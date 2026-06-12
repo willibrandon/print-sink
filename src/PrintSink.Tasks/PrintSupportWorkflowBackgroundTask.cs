@@ -3,7 +3,9 @@ using Windows.Devices.Printers;
 using Windows.Graphics.Printing.Workflow;
 using Windows.Storage.Streams;
 using PrintSink.Core.Pdl;
+using PrintSink.Core.Settings;
 using PrintSink.Core.Tickets;
+using Windows.Security.Cryptography;
 using WinRtIppAttributeValue = Windows.Devices.Printers.IppAttributeValue;
 
 namespace PrintSink.Tasks;
@@ -56,10 +58,19 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             bool succeeded = state.Run(() =>
             {
+                if (!CompleteJobUi(args))
+                {
+                    return;
+                }
+
+                LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
+                JobProcessingOptions? jobProcessingOptions = settingsStore
+                    .ConsumeJobProcessingOptionsAsync()
+                    .GetAwaiter()
+                    .GetResult();
                 PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
                 PrinterDocumentFormatPlan plan = GetDocumentFormatPlan(args, sourceContent.ContentType);
-                PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, plan.TargetContentType);
-                ClearPendingJobOptions();
+                PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, plan.TargetContentType, jobProcessingOptions);
                 SubmitPdl(args, sourceContent, targetStream, plan);
 
                 targetStream.CompleteStreamSubmission(PrintWorkflowSubmittedStatus.Succeeded);
@@ -79,6 +90,29 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             deferral.Complete();
             state.CompleteWhenIdle();
         }
+    }
+
+    private static bool CompleteJobUi(PrintWorkflowPdlModificationRequestedEventArgs args)
+    {
+        if (!args.UILauncher.IsUILaunchEnabled())
+        {
+            return true;
+        }
+
+        PrintWorkflowUICompletionStatus uiResult = args.UILauncher
+            .LaunchAndCompleteUIAsync()
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
+        if (uiResult == PrintWorkflowUICompletionStatus.Completed)
+        {
+            return true;
+        }
+
+        args.Configuration.AbortPrintFlow(uiResult == PrintWorkflowUICompletionStatus.UserCanceled
+            ? PrintWorkflowJobAbortReason.UserCanceled
+            : PrintWorkflowJobAbortReason.JobFailed);
+        return false;
     }
 
     private static PrinterDocumentFormatPlan GetDocumentFormatPlan(
@@ -107,7 +141,8 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 
     private static PrintWorkflowPdlTargetStream CreateJobOnPrinter(
         PrintWorkflowPdlModificationRequestedEventArgs args,
-        string documentFormat)
+        string documentFormat,
+        JobProcessingOptions? jobProcessingOptions)
     {
         IDictionary<string, WinRtIppAttributeValue> jobAttributes = args.PrinterJob.ConvertPrintTicketToJobAttributes(
             args.PrinterJob.GetJobPrintTicket(),
@@ -115,7 +150,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         IDictionary<string, WinRtIppAttributeValue> filteredAttributes = ApplyMergePolicy(
             jobAttributes,
             AttributeMergePolicyOptions.RemovePdlEmbeddedMediaSize);
-        Dictionary<string, WinRtIppAttributeValue> operationAttributes = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, WinRtIppAttributeValue> operationAttributes = BuildOperationAttributes(jobProcessingOptions);
 
         return args.CreateJobOnPrinterWithAttributes(
             filteredAttributes,
@@ -125,13 +160,25 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             PrintWorkflowAttributesMergePolicy.MergePreferPrintTicketOnConflict);
     }
 
-    private static void ClearPendingJobOptions()
+    private static Dictionary<string, WinRtIppAttributeValue> BuildOperationAttributes(
+        JobProcessingOptions? jobProcessingOptions)
     {
-        PackagedSettingsStoreFactory
-            .Create()
-            .ConsumeJobProcessingOptionsAsync()
-            .GetAwaiter()
-            .GetResult();
+        Dictionary<string, WinRtIppAttributeValue> operationAttributes = new(StringComparer.OrdinalIgnoreCase);
+        JobPasswordOptions? passwordOptions = jobProcessingOptions?.JobPasswordOptions;
+        if (passwordOptions is null)
+        {
+            return operationAttributes;
+        }
+
+        Dictionary<string, WinRtIppAttributeValue> passwordCollection = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["job-password"] = WinRtIppAttributeValue.CreateOctetString(
+                CryptographicBuffer.CreateFromByteArray(passwordOptions.GetEncryptedPassword())),
+            ["job-password-encryption"] = WinRtIppAttributeValue.CreateKeyword(passwordOptions.EncryptionMethod),
+        };
+
+        operationAttributes["msft-operation-attribute-col"] = WinRtIppAttributeValue.CreateCollection(passwordCollection);
+        return operationAttributes;
     }
 
     private static void SubmitPdl(

@@ -203,6 +203,38 @@ public sealed class LocalSettingsStoreTests
         }
     }
 
+    /// <summary>
+    /// Verifies pending job password options round-trip through local JSON storage.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveJobProcessingOptionsAsync_round_trips_job_password_options()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+        JobPasswordOptions passwordOptions = JobPasswordOptions.FromPassword("secret", "sha2-256");
+        JobProcessingOptions expected = new(WatermarkOptions.Disabled, passwordOptions);
+
+        try
+        {
+            await store
+                .SaveJobProcessingOptionsAsync(expected, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            JobProcessingOptions? actual = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsNotNull(actual);
+            Assert.IsNotNull(actual.JobPasswordOptions);
+            Assert.AreEqual("sha2-256", actual.JobPasswordOptions.EncryptionMethod);
+            CollectionAssert.AreEqual(passwordOptions.GetEncryptedPassword(), actual.JobPasswordOptions.GetEncryptedPassword());
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
