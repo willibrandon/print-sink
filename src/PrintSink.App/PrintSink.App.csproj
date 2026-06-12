@@ -12,6 +12,7 @@
             with the WinUI 3 templates even though Reactor itself is only tested on x64 / ARM64.
         -->
         <Platforms>x64;ARM64;X86</Platforms>
+        <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
         <UseWinUI>true</UseWinUI>
         <WindowsPackageType>MSIX</WindowsPackageType>
         <!--
@@ -36,12 +37,10 @@
         <WinUISDKReferences>false</WinUISDKReferences>
         <EnableMsixTooling>true</EnableMsixTooling>
         <!--
-            Auto-resolve RuntimeIdentifier from the host SDK when the caller hasn't pinned
-            Platform / RuntimeIdentifier explicitly. Lets `dotnet build` / `dotnet run`
-            succeed without forcing -p:Platform=x64 on every invocation — WindowsAppSDK's
-            self-contained build path requires a concrete RID.
+            Default unqualified CLI runs to x64 through the Platform property above. Keeping all
+            generated WinUI sources under obj\<Platform>\... avoids Visual Studio design-time builds
+            picking up a second obj\Debug\<TargetFramework>\<RuntimeIdentifier> generated-source tree.
         -->
-        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' And ('$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU')">$(NETCoreSdkPortableRuntimeIdentifier)</RuntimeIdentifier>
     </PropertyGroup>
     <!-- </snippet:template-shape> -->
 

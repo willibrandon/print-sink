@@ -39,8 +39,8 @@ public sealed class VirtualEndpoint
         PrinterUri = printerUri;
         PreferredInputFormat = preferredInputFormat;
         TargetFormat = targetFormat;
-        this.passthroughFormats = new HashSet<PdlFormat>(passthroughFormats);
-        PassthroughFormats = this.passthroughFormats.ToArray();
+        this.passthroughFormats = [.. passthroughFormats];
+        PassthroughFormats = [.. this.passthroughFormats];
         RequiresTargetFile = requiresTargetFile;
         DefaultExtension = defaultExtension;
     }

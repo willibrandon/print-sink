@@ -33,7 +33,7 @@ public sealed class EndpointCatalogTests
     [TestMethod]
     public void All_has_unique_printer_uris()
     {
-        Uri[] printerUris = EndpointCatalog.All.Select(endpoint => endpoint.PrinterUri).ToArray();
+        Uri[] printerUris = [.. EndpointCatalog.All.Select(endpoint => endpoint.PrinterUri)];
         int distinctCount = printerUris.Select(uri => uri.AbsoluteUri).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
         Assert.AreEqual(printerUris.Length, distinctCount);

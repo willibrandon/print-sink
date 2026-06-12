@@ -1,33 +1,3 @@
 using Microsoft.UI.Reactor;
-using Microsoft.UI.Reactor.Core;
-using static Microsoft.UI.Reactor.Factories;
 
-ReactorApp.Run<App>("PrintSink.App", width: 900, height: 600);
-
-/// <summary>
-/// Hosts the PrintSink Reactor application.
-/// </summary>
-class App : Component
-{
-    /// <summary>
-    /// Renders the application shell.
-    /// </summary>
-    /// <returns>The root Reactor element.</returns>
-    public override Element Render()
-    {
-        var (name, setName) = UseState("World");
-
-        var titleBar = TitleBar("PrintSink.App").Flex(shrink: 0);
-
-        var body = Border(
-            FlexColumn(
-                Heading($"Hello, {name}!"),
-                TextBox(name, setName, placeholderText: "Your name")
-                    .AutomationName("NameInput")
-            ) with { RowGap = 16 }
-        ).Padding(24).Flex(grow: 1, basis: 0);
-
-        return FlexColumn(titleBar, body)
-            .Backdrop(BackdropKind.Mica);
-    }
-}
+ReactorApp.Run<PrintSink.App.AppRoot>("PrintSink", width: 1040, height: 720);

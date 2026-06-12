@@ -110,7 +110,7 @@ internal static class ManifestLinter
         XElement? element,
         string attributeName,
         string displayName,
-        ICollection<string> messages)
+        List<string> messages)
     {
         if (string.IsNullOrWhiteSpace((string?)element?.Attribute(attributeName)))
         {
