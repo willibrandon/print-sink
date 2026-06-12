@@ -14,6 +14,12 @@ internal static class VirtualPrinterInstaller
 
     internal static async Task InstallAllAsync(CancellationToken cancellationToken)
     {
+        string? blockerMessage = GetProvisioningBlockerMessage();
+        if (blockerMessage is not null)
+        {
+            throw new InvalidOperationException(blockerMessage);
+        }
+
         foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -31,6 +37,23 @@ internal static class VirtualPrinterInstaller
                     $"Failed to install virtual printer '{endpoint.QueueName}': {result.Status}. {error}");
             }
         }
+    }
+
+    internal static string? GetProvisioningBlockerMessage()
+    {
+        return GetProvisioningBlockerMessage(Package.Current.InstalledLocation.Path);
+    }
+
+    internal static string? GetProvisioningBlockerMessage(string packageRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageRoot);
+
+        if (IsLooseDevelopmentLayout(packageRoot))
+        {
+            return $"Virtual printer provisioning requires an installed MSIX package. The current PrintSink package is a loose development layout at '{packageRoot}'; install a signed MSIX, then run 'dotnet run --project src\\PrintSink.Cli -- queues install'.";
+        }
+
+        return null;
     }
 
     internal static async Task RemoveAllAsync(CancellationToken cancellationToken)
@@ -127,5 +150,21 @@ internal static class VirtualPrinterInstaller
             EndpointKind.Pclm => "PrinterPclm",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported endpoint kind."),
         };
+    }
+
+    private static bool IsLooseDevelopmentLayout(string packageRoot)
+    {
+        string normalized = packageRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (File.Exists(Path.Combine(normalized, "AppxSignature.p7x")))
+        {
+            return false;
+        }
+
+        return normalized.EndsWith(
+                string.Concat(Path.DirectorySeparatorChar, "AppX"),
+                StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains(
+                string.Concat(Path.DirectorySeparatorChar, "bin", Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
     }
 }

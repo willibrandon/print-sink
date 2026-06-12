@@ -12,6 +12,7 @@ internal sealed class FixtureVirtualPrinterJob : IVirtualPrinterJob
     private readonly byte[] defaultSource;
     private readonly string? inputPath;
     private readonly string? outputPath;
+    private Stream? targetStream;
     private string? temporaryOutputPath;
 
     /// <summary>
@@ -88,11 +89,13 @@ internal sealed class FixtureVirtualPrinterJob : IVirtualPrinterJob
         {
             string fullPath = Path.GetFullPath(outputPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            return ValueTask.FromResult<Stream?>(File.Create(fullPath));
+            targetStream = File.Create(fullPath);
+            return ValueTask.FromResult<Stream?>(targetStream);
         }
 
         temporaryOutputPath = Path.GetTempFileName();
-        return ValueTask.FromResult<Stream?>(File.Create(temporaryOutputPath));
+        targetStream = File.Create(temporaryOutputPath);
+        return ValueTask.FromResult<Stream?>(targetStream);
     }
 
     /// <inheritdoc />
@@ -109,6 +112,8 @@ internal sealed class FixtureVirtualPrinterJob : IVirtualPrinterJob
         cancellationToken.ThrowIfCancellationRequested();
 
         CompletedStatus = status;
+        targetStream?.Dispose();
+        targetStream = null;
         return Task.CompletedTask;
     }
 

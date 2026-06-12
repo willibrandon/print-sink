@@ -16,37 +16,93 @@ internal static class QueuesCommand
     /// <returns>The configured command.</returns>
     public static Command Create(CliContext context)
     {
-        return Create(context, InstalledPrinterReader.Read);
+        return Create(
+            context,
+            InstalledPrinterReader.Read,
+            (argument, cancellationToken) => AppPackageCommandRunner.RunAsync(
+                argument,
+                context.Output,
+                context.Error,
+                cancellationToken));
     }
 
     internal static Command Create(CliContext context, Func<PrinterQueueSnapshot> readInstalledQueues)
     {
+        return Create(context, readInstalledQueues, (_, _) => Task.FromResult(CliExitCodes.Success));
+    }
+
+    internal static Command Create(
+        CliContext context,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        Func<string, CancellationToken, Task<int>> runPackageCommand)
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(readInstalledQueues);
+        ArgumentNullException.ThrowIfNull(runPackageCommand);
 
         Command command = new("queues", "List the PrintSink virtual queues.");
-        command.SetAction(_ =>
-        {
-            PrinterQueueSnapshot installedQueues = readInstalledQueues();
-            string[][] rows = [.. EndpointCatalog.All.Select(endpoint => new[]
-            {
-                endpoint.QueueName,
-                endpoint.TargetFormat.ToString(),
-                endpoint.PreferredInputFormat.ToString(),
-                GetSinkDisplay(endpoint),
-                GetInstalledStatus(installedQueues, endpoint),
-            })];
-            WriteTable(context.Output, ["Queue", "Target", "Preferred", "Sink", "Installed"], rows);
+        command.SetAction(_ => WriteQueues(context, readInstalledQueues()));
+        command.Subcommands.Add(CreateProvisionCommand(
+            "install",
+            "Install the PrintSink virtual printer queues through the packaged app.",
+            "--install-virtual-printers",
+            context,
+            readInstalledQueues,
+            runPackageCommand));
+        command.Subcommands.Add(CreateProvisionCommand(
+            "remove",
+            "Remove the PrintSink virtual printer queues through the packaged app.",
+            "--remove-virtual-printers",
+            context,
+            readInstalledQueues,
+            runPackageCommand));
 
-            if (!installedQueues.IsAvailable)
+        return command;
+    }
+
+    private static Command CreateProvisionCommand(
+        string name,
+        string description,
+        string packageArgument,
+        CliContext context,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        Func<string, CancellationToken, Task<int>> runPackageCommand)
+    {
+        Command command = new(name, description);
+        command.SetAction(async (_, cancellationToken) =>
+        {
+            int exitCode = await runPackageCommand(packageArgument, cancellationToken).ConfigureAwait(false);
+            if (exitCode != CliExitCodes.Success)
             {
-                context.Error.WriteLine($"warning: installed queue status unavailable: {installedQueues.UnavailableReason}");
+                context.Error.WriteLine($"Package command failed with exit code {exitCode}.");
+                return exitCode;
             }
 
-            return CliExitCodes.Success;
+            context.Output.WriteLine($"{name} completed.");
+            return WriteQueues(context, readInstalledQueues());
         });
 
         return command;
+    }
+
+    private static int WriteQueues(CliContext context, PrinterQueueSnapshot installedQueues)
+    {
+        string[][] rows = [.. EndpointCatalog.All.Select(endpoint => new[]
+        {
+            endpoint.QueueName,
+            endpoint.TargetFormat.ToString(),
+            endpoint.PreferredInputFormat.ToString(),
+            GetSinkDisplay(endpoint),
+            GetInstalledStatus(installedQueues, endpoint),
+        })];
+        WriteTable(context.Output, ["Queue", "Target", "Preferred", "Sink", "Installed"], rows);
+
+        if (!installedQueues.IsAvailable)
+        {
+            context.Error.WriteLine($"warning: installed queue status unavailable: {installedQueues.UnavailableReason}");
+        }
+
+        return CliExitCodes.Success;
     }
 
     private static void WriteTable(TextWriter output, string[] headings, string[][] rows)

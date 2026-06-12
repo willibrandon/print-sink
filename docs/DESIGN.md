@@ -455,6 +455,10 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
 - `PdcFile` mandatory and must be valid PDC XML — install fails otherwise; covered by manifest/PDC
   linting and signed-package E2E.
 - `PdrFile` optional; present only where we ship localized custom features.
+- Initial package PDC files stay inside the Windows-provisioned static subset: custom media size
+  options use the observed `PortraitImageableSize`, `MediaSizeHeight`, `MediaSizeWidth` order, and
+  package-root PrintSink custom features are job-scoped (`JobWatermarkMode`). Wider ticket features
+  remain in the Core mapper and extension path instead of being forced into the initial PDC shape.
 
 ---
 
@@ -604,6 +608,8 @@ support calls, and in CI checks that should not start a WinUI process.
 
 - `System.CommandLine` commands:
   - `queues` — list expected and installed PrintSink queues when the local print stack is available.
+  - `queues install` / `queues remove` — provision or remove the virtual-printer queues through the
+    packaged app execution alias so the Windows API runs under package identity.
   - `manifest lint` — validate package manifest entries, preferred input formats, passthrough formats,
     PDC/PDR paths, and endpoint consistency.
   - `pdc validate` — validate PDC/PDR XML and custom feature wiring.
@@ -678,22 +684,19 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    asserted with a corrupt fixture.
 4. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app, MTP): run with package
    identity to validate activation routing logic, `OwnerWindowId` modality wiring, settings persistence
-   visible across the UI/background boundary, and Reactor screen behavior. UI automation (optional) via
-   **Appium + WinAppDriver** for the Settings/Job pages.
+   visible across the UI/background boundary, and Reactor screen behavior.
 5. **End-to-end print-stack automation — `docs/TESTING.md` + `tests/e2e`.** The live PSA activation
    (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E runs
-   as scripted Windows automation on a GitHub `windows-2025` runner when possible and on a clean
-   Windows 11 26100+ VM for package-signing or desktop-interaction cases the hosted runner cannot expose:
-   - Install the signed package, run `printsink-app.exe --install-virtual-printers`, and assert all
-     six queues appear (`Get-Printer`).
-   - Print from scripted Win32 and WinRT fixtures, plus PDF passthrough fixtures, to each endpoint.
-   - Assert: PDF endpoint yields a valid PDF (verify header `%PDF-1.7`, page count); XPS endpoint yields
-     openable XPS; PS endpoint yields PostScript; cloud endpoint invokes the sink with no Save-As;
-     PWG-Raster endpoint yields valid PWG; PCLm endpoint yields valid PCLm.
+   as scripted Windows automation in CI and on clean Windows 11 26100+ VMs:
+   - Build and install the signed MSIX, run `printsink-app.exe --install-virtual-printers`, and assert
+     all six queues appear (`Get-Printer`).
+   - Print from a real Win32 print harness to every endpoint.
+   - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
+     package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
+     raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
    - Watermark: assert overlay present in rendered output.
-   - Settings UI: launch from printer preferences through UI automation; assert modality to owner; change
-     a custom feature; assert `RefreshPrintDeviceCapabilities` reflects it.
-   - Cancel path: cancel in Job UI → `Canceled`, no output file written.
+   - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough, cancel,
+     or a new sink behavior changes, add the corresponding real E2E assertion in the same commit.
 
 ### 9.2 Test tooling
 
@@ -703,9 +706,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
   `Microsoft.UI.Reactor`, `System.CommandLine`, and `Hex1b`.
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
-- CI runs unit + Xps + packaged-app tests on `windows-2025` runners (MSBuild, x64 and ARM64).
-  Print-stack E2E starts on hosted Windows runners and uses a clean VM only for the pieces that need
-  package signing, desktop interaction, or spooler behavior unavailable in hosted CI.
+- CI runs unit + Xps + packaged-app tests on Windows runners (MSBuild, x64 and ARM64), then builds a
+  signed MSIX and runs the scripted real print-stack E2E suite against the installed package.
 
 ---
 

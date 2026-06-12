@@ -1,4 +1,5 @@
 using PrintSink.Core.Watermark;
+using Windows.Graphics.Printing.Workflow;
 using Windows.Storage.Streams;
 
 namespace PrintSink.Xps.Projections;
@@ -9,6 +10,7 @@ namespace PrintSink.Xps.Projections;
 public sealed class NativeXpsPageWatermarker
 {
     private const int BufferSize = 81920;
+    private const ulong ErrorNotImplemented = 0xFFFFFFFF80004001;
 
     private readonly PrintSink.Xps.XpsPageWatermarker watermarker;
 
@@ -72,9 +74,47 @@ public sealed class NativeXpsPageWatermarker
         }
 
         input.Seek(0);
+        MemoryStream? objectModelResult = await TryApplyWithObjectModelAsync(input, cancellationToken).ConfigureAwait(false);
+        if (objectModelResult is not null)
+        {
+            return objectModelResult;
+        }
+
+        input.Seek(0);
         using IRandomAccessStream watermarked = watermarker.ApplyToPackage(input);
         using IInputStream watermarkedInput = watermarked.GetInputStreamAt(0);
         return await ReadToMemoryAsync(watermarkedInput, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<MemoryStream?> TryApplyWithObjectModelAsync(
+        IRandomAccessStream input,
+        CancellationToken cancellationToken)
+    {
+        PrintWorkflowObjectModelSourceFileContent sourceContent = new(input.GetInputStreamAt(0));
+        PrintSink.Xps.XpsSequentialDocument document = new(sourceContent);
+        ulong? generationFailure = null;
+        document.XpsGenerationFailed += (_, error) => generationFailure = error;
+
+        using IInputStream watermarkedInput = document.GetWatermarkedStream(watermarker);
+        MemoryStream result = await ReadToMemoryAsync(watermarkedInput, cancellationToken).ConfigureAwait(false);
+        if (generationFailure is not null)
+        {
+            if (generationFailure.Value == ErrorNotImplemented)
+            {
+                result.Dispose();
+                return null;
+            }
+
+            throw new InvalidOperationException(
+                $"XPS object model generation failed with HRESULT 0x{generationFailure.Value:X8}.");
+        }
+
+        if (result.Length == 0)
+        {
+            throw new InvalidOperationException("XPS object model generation produced no output.");
+        }
+
+        return result;
     }
 
     private static async Task<MemoryStream> ReadToMemoryAsync(

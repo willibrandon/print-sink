@@ -26,9 +26,17 @@ internal static class VirtualPrinterCommandLine
         bool remove = Contains(commandArgs, "--remove-virtual-printers");
         bool enableJobUi = Contains(commandArgs, "--enable-job-ui");
         bool disableJobUi = Contains(commandArgs, "--disable-job-ui");
-        if (!install && !remove && !enableJobUi && !disableJobUi)
+        bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
+        if (!install && !remove && !enableJobUi && !disableJobUi && !help)
         {
             return null;
+        }
+
+        if (help && !install && !remove && !enableJobUi && !disableJobUi)
+        {
+            WriteHelp();
+            SetCommandLineExitCode(activationArguments, Success);
+            return Success;
         }
 
         if ((install && remove) || (enableJobUi && disableJobUi))
@@ -188,6 +196,21 @@ internal static class VirtualPrinterCommandLine
         {
             WriteDiagnostic(message);
         }
+    }
+
+    internal static void WriteHelp()
+    {
+        string help = string.Join(
+            Environment.NewLine,
+            "PrintSink packaged app commands:",
+            "  --install-virtual-printers  Install PrintSink virtual printer queues.",
+            "  --remove-virtual-printers   Remove PrintSink virtual printer queues.",
+            "  --disable-job-ui            Process jobs without launching the foreground Job UI.",
+            "  --enable-job-ui             Restore foreground Job UI launch behavior.",
+            "",
+            "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
+        Console.Out.WriteLine(help);
+        WriteDiagnostic(help);
     }
 
     internal static string Describe(AppActivationArguments activationArguments)

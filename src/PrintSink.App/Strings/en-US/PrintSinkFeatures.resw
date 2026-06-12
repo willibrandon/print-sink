@@ -30,6 +30,9 @@
   <data name="WatermarkMode" xml:space="preserve">
     <value>Watermark</value>
   </data>
+  <data name="JobWatermarkMode" xml:space="preserve">
+    <value>Watermark</value>
+  </data>
   <data name="WatermarkOff" xml:space="preserve">
     <value>Off</value>
   </data>

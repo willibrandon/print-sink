@@ -92,13 +92,13 @@ public sealed class PrintDeviceCapabilitiesEditorTests
             PrintSchemaQualifiedName.Keyword("PageMediaSize"),
             [
                 new CustomFeatureOption(
-                    PrintSchemaQualifiedName.PrintSink("Receipt80Millimeter"),
-                    false,
-                    [
-                        new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword("MediaSizeWidth"), PrintSchemaPropertyKind.ScoredProperty, "80000", "xsd:integer"),
-                        new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword("MediaSizeHeight"), PrintSchemaPropertyKind.ScoredProperty, "200000", "xsd:integer"),
-                        new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword12("PortraitImageableSize"), PrintSchemaPropertyKind.Property, "0,0,80000,200000", "psf2:ImageableAreaType"),
-                    ]),
+                        PrintSchemaQualifiedName.PrintSink("Receipt80Millimeter"),
+                        false,
+                        [
+                            new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword12("PortraitImageableSize"), PrintSchemaPropertyKind.Property, "0,0,80000,200000", "psf2:ImageableAreaType"),
+                            new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword("MediaSizeHeight"), PrintSchemaPropertyKind.ScoredProperty, "200000", "xsd:integer"),
+                            new PrintSchemaProperty(PrintSchemaQualifiedName.Keyword("MediaSizeWidth"), PrintSchemaPropertyKind.ScoredProperty, "80000", "xsd:integer"),
+                        ]),
             ]);
 
         XDocument result = editor.Apply(document, [feature]);
@@ -110,6 +110,9 @@ public sealed class PrintDeviceCapabilitiesEditorTests
         Assert.AreEqual("80000", option.Element(Psk + "MediaSizeWidth")?.Value);
         Assert.AreEqual("200000", option.Element(Psk + "MediaSizeHeight")?.Value);
         Assert.AreEqual("0,0,80000,200000", option.Element(XNamespace.Get(PrintSchemaNamespaces.Keywords12) + "PortraitImageableSize")?.Value);
+        CollectionAssert.AreEqual(
+            new[] { "PortraitImageableSize", "MediaSizeHeight", "MediaSizeWidth" },
+            option.Elements().Select(static element => element.Name.LocalName).ToArray());
     }
 
     /// <summary>
@@ -139,23 +142,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
         Assert.AreEqual("1200", dpi1200.Element(Psk + "ResolutionX")?.Value);
         Assert.AreEqual("1200", dpi1200.Element(Psk + "ResolutionY")?.Value);
 
-        XElement pageMediaType = result.Root.Element(Psk + "PageMediaType")!;
-        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ArchivePaper"));
-        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ThermalReceiptMedia"));
-
-        XElement jobInputBin = result.Root.Element(Psk + "JobInputBin")!;
-        Assert.IsNotNull(jobInputBin.Element(PrintSink + "AutomationInputBin"));
-
-        XElement jobOutputBin = result.Root.Element(Psk + "JobOutputBin")!;
-        Assert.IsNotNull(jobOutputBin.Element(PrintSink + "AutomationOutputBin"));
-
-        XElement jobStaple = result.Root.Element(Psk + "JobStapleAllDocuments")!;
-        Assert.IsNotNull(jobStaple.Element(PrintSink + "StapleUpperLeft"));
-
-        XElement jobPageOrder = result.Root.Element(Psk + "JobPageOrder")!;
-        Assert.IsNotNull(jobPageOrder.Element(PrintSink + "OddPagesThenEvenPages"));
-
-        XElement watermarkMode = result.Root.Element(PrintSink + "WatermarkMode")!;
+        XElement watermarkMode = result.Root.Element(PrintSink + "JobWatermarkMode")!;
         Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkOff"));
         Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkText"));
         Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkImage"));

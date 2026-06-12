@@ -65,6 +65,28 @@ public sealed class VirtualPrinterJobProcessorTests
     }
 
     /// <summary>
+    /// Verifies empty converted output fails the job instead of producing an empty target file.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_fails_file_job_when_converted_output_is_empty()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("xps"),
+            true);
+        VirtualPrinterJobProcessor processor = CreateProcessor(new TargetStreamSink(), new TestPdlConverter([]));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
+        Assert.IsInstanceOfType<InvalidOperationException>(result.Exception);
+        CollectionAssert.AreEqual(Array.Empty<byte>(), job.TargetBytes);
+    }
+
+    /// <summary>
     /// Verifies transformed XPS bytes are passed to the converter before sink writes.
     /// </summary>
     [TestMethod]

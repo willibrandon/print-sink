@@ -247,7 +247,7 @@ public sealed class VirtualPrinterJobProcessor
         CancellationToken cancellationToken)
     {
         await using Stream source = await job.OpenSourceAsync(cancellationToken).ConfigureAwait(false);
-        await using Stream? target = await job.OpenTargetAsync(cancellationToken).ConfigureAwait(false);
+        Stream? target = await job.OpenTargetAsync(cancellationToken).ConfigureAwait(false);
 
         WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
             .ConfigureAwait(false);
@@ -285,7 +285,12 @@ public sealed class VirtualPrinterJobProcessor
                 target,
                 watermarkOptions);
 
+            EnsureNonEmptyOutput(output, job.Endpoint);
             await sink.WriteAsync(output, context, cancellationToken).ConfigureAwait(false);
+            if (target is not null)
+            {
+                await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -298,6 +303,15 @@ public sealed class VirtualPrinterJobProcessor
             {
                 await converted.DisposeAsync().ConfigureAwait(false);
             }
+        }
+    }
+
+    private static void EnsureNonEmptyOutput(Stream output, VirtualEndpoint endpoint)
+    {
+        if (endpoint.RequiresTargetFile && output.CanSeek && output.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Endpoint '{endpoint.QueueName}' produced empty {endpoint.TargetFormat} output.");
         }
     }
 

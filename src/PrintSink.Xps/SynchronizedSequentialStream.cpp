@@ -14,12 +14,54 @@ namespace winrt::PrintSink::Xps::implementation
         outputStream = storage.GetOutputStreamAt(0);
     }
 
-    STDMETHODIMP SynchronizedSequentialStream::Read(
-        [[maybe_unused]] void* buffer,
-        [[maybe_unused]] ULONG count,
-        [[maybe_unused]] ULONG* bytesRead)
+    STDMETHODIMP SynchronizedSequentialStream::Read(void* buffer, ULONG count, ULONG* bytesRead) noexcept try
     {
-        return E_NOTIMPL;
+        if (bytesRead != nullptr)
+        {
+            *bytesRead = 0;
+        }
+
+        if (buffer == nullptr)
+        {
+            return STG_E_INVALIDPOINTER;
+        }
+
+        uint64_t bytesAvailable = WaitForBytes(count);
+        ULONG bytesToRead = count < bytesAvailable
+            ? count
+            : static_cast<ULONG>(bytesAvailable);
+
+        if (bytesToRead == 0)
+        {
+            return count == 0 ? S_OK : S_FALSE;
+        }
+
+        IBuffer resultBuffer{ nullptr };
+        {
+            auto lock = streamAccess.LockExclusive();
+            IInputStream inputStream = storage.GetInputStreamAt(readIndex);
+            Buffer readBuffer{ bytesToRead };
+            resultBuffer = inputStream.ReadAsync(readBuffer, bytesToRead, InputStreamOptions::Partial).get();
+        }
+
+        winrt::com_array<uint8_t> bytes;
+        CryptographicBuffer::CopyToByteArray(resultBuffer, bytes);
+        if (!bytes.empty())
+        {
+            std::memcpy(buffer, bytes.data(), bytes.size());
+        }
+
+        readIndex += bytes.size();
+        if (bytesRead != nullptr)
+        {
+            *bytesRead = static_cast<ULONG>(bytes.size());
+        }
+
+        return bytes.size() == count ? S_OK : S_FALSE;
+    }
+    catch (...)
+    {
+        return winrt::to_hresult();
     }
 
     STDMETHODIMP SynchronizedSequentialStream::Write(void const* buffer, ULONG count, ULONG* bytesWritten) noexcept try

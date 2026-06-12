@@ -74,19 +74,26 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob
             return;
         }
 
-        if (status == VirtualPrinterJobStatus.Succeeded && targetFile is not null && targetBuffer is not null)
+        try
         {
-            targetBuffer.Position = 0;
-            using IRandomAccessStream targetStream = await targetFile.OpenAsync(FileAccessMode.ReadWrite)
-                .AsTask(cancellationToken)
-                .ConfigureAwait(false);
-            targetStream.Size = 0;
-            using IOutputStream output = targetStream.GetOutputStreamAt(0);
-            await WinRtStreamBridge.WriteFromStreamAsync(targetBuffer, output, cancellationToken).ConfigureAwait(false);
-        }
+            if (status == VirtualPrinterJobStatus.Succeeded && targetFile is not null && targetBuffer is not null)
+            {
+                targetBuffer.Position = 0;
+                using IRandomAccessStream targetStream = await targetFile.OpenAsync(FileAccessMode.ReadWrite)
+                    .AsTask(cancellationToken)
+                    .ConfigureAwait(false);
+                targetStream.Size = 0;
+                using IOutputStream output = targetStream.GetOutputStreamAt(0);
+                await WinRtStreamBridge.WriteFromStreamAsync(targetBuffer, output, cancellationToken).ConfigureAwait(false);
+            }
 
-        args.CompleteJob(ToWinRtStatus(status));
-        completed = true;
+            args.CompleteJob(ToWinRtStatus(status));
+            completed = true;
+        }
+        finally
+        {
+            targetBuffer?.Dispose();
+        }
     }
 
     private static PrintWorkflowSubmittedStatus ToWinRtStatus(VirtualPrinterJobStatus status)

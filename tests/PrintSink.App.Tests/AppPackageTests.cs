@@ -80,6 +80,29 @@ public sealed class AppPackageTests
     }
 
     /// <summary>
+    /// Verifies loose development packages report why virtual-printer provisioning is blocked.
+    /// </summary>
+    [TestMethod]
+    public void Virtual_printer_provisioning_reports_development_mode_package()
+    {
+        string packageRoot = Path.Combine(
+            Path.GetTempPath(),
+            "PrintSink",
+            "src",
+            "PrintSink.App",
+            "bin",
+            "x64",
+            "Debug",
+            "net10.0-windows10.0.26100.0",
+            "AppX");
+        string? blockerMessage = PrintSinkApp::PrintSink.App.VirtualPrinterInstaller.GetProvisioningBlockerMessage(packageRoot);
+
+        Assert.IsNotNull(blockerMessage);
+        Assert.Contains("loose development layout", blockerMessage);
+        Assert.Contains("signed MSIX", blockerMessage);
+    }
+
+    /// <summary>
     /// Verifies headless activation argument parsing ignores missing or whitespace-only payloads.
     /// </summary>
     [TestMethod]

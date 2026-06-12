@@ -62,6 +62,11 @@ internal sealed class InMemoryVirtualPrinterJob : IVirtualPrinterJob
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (status == VirtualPrinterJobStatus.Succeeded && target is not null)
+        {
+            target.Position = 0;
+        }
+
         CompletedStatus = status;
         return Task.CompletedTask;
     }

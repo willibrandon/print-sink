@@ -56,7 +56,21 @@ When automation launches the app for verification, close the app process after t
 
 ## Headless Package Commands
 
-These commands run through the packaged app execution alias and do not show the WinUI shell:
+Virtual-printer provisioning requires an installed MSIX package. A loose package registered by
+`dotnet run --project src\PrintSink.App` or Visual Studio F5 can launch the app, but it is not the
+right fixture for installing the queues.
+
+For a local debug package, remove any loose registration, trust the test certificate, and install the
+MSIX:
+
+```powershell
+Get-AppxPackage PrintSink | Remove-AppxPackage
+$pkg = "artifacts\appxpackages\x64\PrintSink.App_1.0.0.0_x64_Debug_Test"
+Import-Certificate -FilePath "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+```
+
+These low-level commands run through the packaged app execution alias and do not show the WinUI shell:
 
 ```powershell
 printsink-app.exe --install-virtual-printers
@@ -65,6 +79,16 @@ printsink-app.exe --disable-job-ui
 printsink-app.exe --enable-job-ui
 ```
 
+Prefer the CLI wrapper for queue provisioning:
+
+```powershell
+dotnet run --project src\PrintSink.Cli -- queues install
+dotnet run --project src\PrintSink.Cli -- queues
+dotnet run --project src\PrintSink.Cli -- queues remove
+```
+
+`dotnet run --project src\PrintSink.App` launches the management UI. It is not the recommended queue provisioning entry point.
+
 `--disable-job-ui` makes background print activations process jobs without launching the foreground Job UI. Use it for unattended E2E runs, then restore the default with `--enable-job-ui`.
 
 ## CLI
@@ -72,6 +96,7 @@ printsink-app.exe --enable-job-ui
 ```powershell
 dotnet run --project src\PrintSink.Cli -- --help
 dotnet run --project src\PrintSink.Cli -- queues
+dotnet run --project src\PrintSink.Cli -- queues install
 dotnet run --project src\PrintSink.Cli -- manifest lint --manifest src\PrintSink.App\Package.appxmanifest
 ```
 

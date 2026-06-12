@@ -27,6 +27,10 @@ public interface IVirtualPrinterJob
     /// <summary>
     /// Opens the target stream when the endpoint uses a file target.
     /// </summary>
+    /// <remarks>
+    /// The job owns the returned stream lifetime because some adapters commit the stream during
+    /// <see cref="CompleteAsync(VirtualPrinterJobStatus, CancellationToken)"/>.
+    /// </remarks>
     /// <param name="cancellationToken">A token that cancels the operation.</param>
     /// <returns>The target stream, or <see langword="null"/> for non-file sinks.</returns>
     ValueTask<Stream?> OpenTargetAsync(CancellationToken cancellationToken = default);

@@ -8,6 +8,9 @@ namespace PrintSink.Core.Capabilities;
 public static class PrintDeviceCapabilitiesValidator
 {
     private static readonly XName PsfTypeName = XNamespace.Get(PrintSchemaNamespaces.Framework2) + "psftype";
+    private static readonly XNamespace PrintSinkNamespace = "https://schemas.printsink.dev/printing/keywords";
+    private static readonly XNamespace PskNamespace = PrintSchemaNamespaces.Keywords;
+    private static readonly XNamespace Psk12Namespace = PrintSchemaNamespaces.Keywords12;
 
     /// <summary>
     /// Validates a Print Device Capabilities document.
@@ -62,9 +65,60 @@ public static class PrintDeviceCapabilitiesValidator
             {
                 messages.Add($"Feature '{feature.Name.LocalName}' must not contain more than one default option.");
             }
+
+            ValidateRootCustomFeature(feature, messages);
+            ValidateMediaSizeOptions(feature, messages);
         }
 
         return messages;
+    }
+
+    private static void ValidateRootCustomFeature(XElement feature, List<string> messages)
+    {
+        if (feature.Name.Namespace != PrintSinkNamespace)
+        {
+            return;
+        }
+
+        if (!feature.Name.LocalName.StartsWith("Job", StringComparison.Ordinal))
+        {
+            messages.Add($"Custom root feature '{feature.Name.LocalName}' must be job-scoped.");
+        }
+    }
+
+    private static void ValidateMediaSizeOptions(XElement feature, List<string> messages)
+    {
+        if (feature.Name != PskNamespace + "PageMediaSize")
+        {
+            return;
+        }
+
+        foreach (XElement option in feature
+            .Elements()
+            .Where(element => string.Equals((string?)element.Attribute(PsfTypeName), "Option", StringComparison.Ordinal)))
+        {
+            string[] propertyNames = [.. option
+                .Elements()
+                .Where(IsMediaSizeProperty)
+                .Select(static element => element.Name.LocalName)];
+            if (propertyNames.Length == 0)
+            {
+                continue;
+            }
+
+            string[] expectedOrder = ["PortraitImageableSize", "MediaSizeHeight", "MediaSizeWidth"];
+            if (!propertyNames.SequenceEqual(expectedOrder, StringComparer.Ordinal))
+            {
+                messages.Add($"PageMediaSize option '{option.Name.LocalName}' must declare PortraitImageableSize, MediaSizeHeight, and MediaSizeWidth in that order.");
+            }
+        }
+    }
+
+    private static bool IsMediaSizeProperty(XElement element)
+    {
+        return element.Name == Psk12Namespace + "PortraitImageableSize"
+            || element.Name == PskNamespace + "MediaSizeHeight"
+            || element.Name == PskNamespace + "MediaSizeWidth";
     }
 
     private static bool IsDefaultOption(XElement option)

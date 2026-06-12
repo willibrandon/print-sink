@@ -62,6 +62,68 @@ public sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies that the queue install command delegates provisioning to the packaged app.
+    /// </summary>
+    [TestMethod]
+    public async Task Queues_install_invokes_packaged_app_provisioning()
+    {
+        string? packageArgument = null;
+        (int exitCode, string output, string error) = await InvokeQueuesAsync(
+            "install",
+            PrinterQueueSnapshot.Available(["PrintSink - PDF"]),
+            (argument, _) =>
+            {
+                packageArgument = argument;
+                return Task.FromResult(CliExitCodes.Success);
+            }).ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.AreEqual("--install-virtual-printers", packageArgument);
+        Assert.AreEqual(string.Empty, error);
+        Assert.Contains("install completed.", output);
+        Assert.Contains("PrintSink - PDF         Pdf         Oxps        .pdf        yes", output);
+    }
+
+    /// <summary>
+    /// Verifies that the queue remove command delegates cleanup to the packaged app.
+    /// </summary>
+    [TestMethod]
+    public async Task Queues_remove_invokes_packaged_app_cleanup()
+    {
+        string? packageArgument = null;
+        (int exitCode, string output, string error) = await InvokeQueuesAsync(
+            "remove",
+            PrinterQueueSnapshot.Available([]),
+            (argument, _) =>
+            {
+                packageArgument = argument;
+                return Task.FromResult(CliExitCodes.Success);
+            }).ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.AreEqual("--remove-virtual-printers", packageArgument);
+        Assert.AreEqual(string.Empty, error);
+        Assert.Contains("remove completed.", output);
+        Assert.Contains("PrintSink - PDF         Pdf         Oxps        .pdf        no", output);
+    }
+
+    /// <summary>
+    /// Verifies that package command failures are surfaced by queue provisioning commands.
+    /// </summary>
+    [TestMethod]
+    public async Task Queues_install_reports_packaged_app_failure()
+    {
+        (int exitCode, string output, string error) = await InvokeQueuesAsync(
+            "install",
+            PrinterQueueSnapshot.Available([]),
+            (_, _) => Task.FromResult(CliExitCodes.ValidationFailed)).ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+        Assert.AreEqual(string.Empty, output);
+        Assert.Contains("Package command failed with exit code 1.", error);
+    }
+
+    /// <summary>
     /// Verifies that sink testing uses the core PDL router.
     /// </summary>
     [TestMethod]
@@ -372,7 +434,7 @@ public sealed class CliApplicationTests
                 pdrPath).ConfigureAwait(false);
 
             Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
-            Assert.Contains("PDR is missing resource 'schemas.printsink.dev/printing/keywords/WatermarkMode'", output);
+            Assert.Contains("PDR is missing resource 'schemas.printsink.dev/printing/keywords/JobWatermarkMode'", output);
         }
         finally
         {
@@ -421,19 +483,32 @@ public sealed class CliApplicationTests
 
     private async Task<(int ExitCode, string Output, string Error)> InvokeQueuesAsync(PrinterQueueSnapshot snapshot)
     {
+        return await InvokeQueuesAsync(
+                null,
+                snapshot,
+                (_, _) => Task.FromResult(CliExitCodes.Success))
+            .ConfigureAwait(false);
+    }
+
+    private async Task<(int ExitCode, string Output, string Error)> InvokeQueuesAsync(
+        string? subcommand,
+        PrinterQueueSnapshot snapshot,
+        Func<string, CancellationToken, Task<int>> runPackageCommand)
+    {
         using StringWriter output = new();
         using StringWriter error = new();
         CliContext context = new(output, error, Environment.CurrentDirectory);
         RootCommand rootCommand = new("test root");
-        rootCommand.Subcommands.Add(QueuesCommand.Create(context, () => snapshot));
+        rootCommand.Subcommands.Add(QueuesCommand.Create(context, () => snapshot, runPackageCommand));
         InvocationConfiguration configuration = new()
         {
             Output = output,
             Error = error,
         };
+        string[] args = subcommand is null ? ["queues"] : ["queues", subcommand];
 
         int exitCode = await rootCommand
-            .Parse(["queues"])
+            .Parse(args)
             .InvokeAsync(configuration, TestContext.CancellationToken)
             .ConfigureAwait(false);
 
@@ -620,7 +695,7 @@ public sealed class CliApplicationTests
     private const string ValidPdr = """
         <?xml version="1.0" encoding="utf-8"?>
         <root>
-          <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+          <data name="schemas.printsink.dev/printing/keywords/JobWatermarkMode"><value>Watermark</value></data>
         </root>
         """;
 
@@ -629,16 +704,16 @@ public sealed class CliApplicationTests
         <psf2:PrintDeviceCapabilities
           xmlns:psf2="http://schemas.microsoft.com/windows/2013/12/printing/printschemaframework2"
           xmlns:printsink="https://schemas.printsink.dev/printing/keywords">
-          <printsink:WatermarkMode psf2:psftype="Feature">
+          <printsink:JobWatermarkMode psf2:psftype="Feature">
             <printsink:WatermarkOff psf2:psftype="Option" psf2:default="true" />
-          </printsink:WatermarkMode>
+          </printsink:JobWatermarkMode>
         </psf2:PrintDeviceCapabilities>
         """;
 
     private const string ValidCustomPdr = """
         <?xml version="1.0" encoding="utf-8"?>
         <root>
-          <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+          <data name="schemas.printsink.dev/printing/keywords/JobWatermarkMode"><value>Watermark</value></data>
           <data name="schemas.printsink.dev/printing/keywords/WatermarkOff"><value>Off</value></data>
         </root>
         """;

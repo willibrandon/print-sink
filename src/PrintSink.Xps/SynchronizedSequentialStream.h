@@ -11,7 +11,7 @@ namespace winrt::PrintSink::Xps::implementation
     {
         SynchronizedSequentialStream();
 
-        STDMETHODIMP Read(void* buffer, ULONG count, ULONG* bytesRead) override;
+        STDMETHODIMP Read(void* buffer, ULONG count, ULONG* bytesRead) noexcept override;
         STDMETHODIMP Write(void const* buffer, ULONG count, ULONG* bytesWritten) noexcept override;
 
         winrt::Windows::Foundation::IAsyncOperationWithProgress<winrt::Windows::Storage::Streams::IBuffer, uint32_t>

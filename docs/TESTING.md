@@ -23,7 +23,7 @@ not call `dotnet test` on the solution file because the solution also contains t
 
 ## Continuous Integration
 
-`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners:
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then builds a signed MSIX and runs the real print-stack E2E suite:
 
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`
@@ -45,6 +45,12 @@ dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\C
 Useful fixture checks:
 
 ```powershell
+Get-AppxPackage PrintSink | Remove-AppxPackage
+$pkg = "artifacts\appxpackages\x64\PrintSink.App_1.0.0.0_x64_Debug_Test"
+Import-Certificate -FilePath "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+dotnet run --project src\PrintSink.Cli -- queues install
+dotnet run --project src\PrintSink.Cli -- queues
 dotnet run --project src\PrintSink.Cli -- ticket map --ticket <print-ticket.xml>
 dotnet run --project src\PrintSink.Cli -- sink test --endpoint pdf --content-type application/oxps
 dotnet run --project src\PrintSink.Cli -- tui
@@ -60,10 +66,10 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 
 ## Print-Stack E2E Automation
 
-Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Build a signed MSIX, install it, provision the queues through the app execution alias, and assert the queues through the scriptable print stack.
+Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Build a signed MSIX, install it, provision the queues through `dotnet run --project src\PrintSink.Cli -- queues install` or the packaged app execution alias, and assert the queues through the scriptable print stack.
 
 ```powershell
-tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix>
+tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -OutputDirectory artifacts\e2e\x64
 ```
 
 When the package is already installed:
@@ -73,6 +79,7 @@ tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
 ```
 
 `-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
+The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue.
 
 To remove the queues after assertion:
 
@@ -100,24 +107,24 @@ The harness must assert these queues:
 - `PrintSink - PWG Raster`
 - `PrintSink - PCLm`
 
-The automated E2E suite is extended as features land:
+The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
-2. Print from a WinRT or packaged source through the modern print path.
-3. Print a PDF fixture to the PDF queue and confirm PDF passthrough.
-4. Print to the cloud queue and confirm no Save As target is requested.
-5. Open printer preferences through automation and confirm the settings UI is modal to the owner window.
-6. Change a setting that affects capabilities and assert the PDC refresh path.
-7. Launch job UI, change watermark options, complete the job, and assert the output reflects the choice.
-8. Cancel from job UI and assert no output file is written.
+2. Print to the cloud queue and confirm no Save As target is requested.
+3. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+4. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+5. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
-Output assertions:
+Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the same change. The next known gaps are WinRT source printing, explicit PDF passthrough, Settings UI owner-window automation, PDC refresh from a Settings change, and Job UI cancel behavior.
 
-- PDF starts with `%PDF-`.
-- XPS/OXPS opens in the Windows viewer or another XPS reader.
-- PostScript starts with `%!PS`.
-- PWG Raster output is non-empty and recognized by the chosen PWG inspection tool.
-- PCLm output is non-empty and recognized by the chosen PCLm inspection tool.
+Real output assertions:
+
+- PDF opens with PDFPig, has at least one page, and extracted text contains `foo`.
+- XPS/OXPS is an OPC package, supports interleaved OXPS pieces, has at least one fixed page, and contains `foo`.
+- PostScript starts with `%!PS` and declares pages.
+- PWG Raster has a valid raster magic value and non-blank page body.
+- PCLm opens with PDFPig and has at least one page.
+- Cloud produces no Save-As output and must still report `Job completed` from the real background task.
 - Watermark text or image appears on rendered pages when enabled.
 
 The CI job records the package version, Windows build, architecture, source application, target queue, and output result for each run.

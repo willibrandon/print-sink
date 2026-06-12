@@ -38,13 +38,16 @@ internal sealed class WinRtPdlConverter : IPdlConverter
         input.Seek(0);
 
         using InMemoryRandomAccessStream output = new();
-        using IInputStream converterInput = input.GetInputStreamAt(0);
-        using IOutputStream converterOutput = output.GetOutputStreamAt(0);
-        PrintWorkflowPdlConverter converter = args.GetPdlConverter(ToWinRtConversionType(conversionKind));
-        await converter.ConvertPdlAsync(
-            printTicket,
-            converterInput,
-            converterOutput).AsTask(cancellationToken).ConfigureAwait(false);
+        using (IInputStream converterInput = input.GetInputStreamAt(0))
+        using (IOutputStream converterOutput = output.GetOutputStreamAt(0))
+        {
+            PrintWorkflowPdlConverter converter = args.GetPdlConverter(ToWinRtConversionType(conversionKind));
+            await converter.ConvertPdlAsync(
+                printTicket,
+                converterInput,
+                converterOutput).AsTask(cancellationToken).ConfigureAwait(false);
+            await converterOutput.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+        }
 
         output.Seek(0);
         using IInputStream convertedInput = output.GetInputStreamAt(0);
