@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using PrintSink.Core.Capabilities;
 using Windows.ApplicationModel.Background;
+using Windows.ApplicationModel.Resources.Core;
 using Windows.Data.Xml.Dom;
 using Windows.Foundation.Metadata;
 using Windows.Graphics.Printing.PrintSupport;
@@ -14,8 +15,12 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
 {
     private const string PrintSupportExtensionSessionType =
         "Windows.Graphics.Printing.PrintSupport.PrintSupportExtensionSession";
+    private const string PrintSupportCapabilitiesChangedEventArgsType =
+        "Windows.Graphics.Printing.PrintSupport.PrintSupportPrintDeviceCapabilitiesChangedEventArgs";
+    private const string PrintSinkFeatureResourceSubtree = "PrintSinkFeatures";
 
     private static readonly PrintDeviceCapabilitiesEditor CapabilitiesEditor = new();
+    private static readonly IReadOnlyList<PrintSchemaQualifiedName> CustomResourceNames = BuildCustomResourceNames();
 
     private readonly BackgroundTaskHandlerState state = new();
 
@@ -71,6 +76,17 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
                 XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
                 args.UpdatePrintDeviceCapabilities(updatedCapabilities);
+
+                if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
+                {
+                    XmlDocument resources = args.GetCurrentPrintDeviceResources();
+                    IReadOnlyDictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
+                    if (localizedResources.Count > 0)
+                    {
+                        XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
+                        args.UpdatePrintDeviceResources(updatedResources);
+                    }
+                }
             });
         }
         finally
@@ -88,6 +104,91 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         XmlDocument result = new();
         result.LoadXml(updatedDocument.ToString(SaveOptions.DisableFormatting));
         return result;
+    }
+
+    private static XmlDocument ApplyPrintSinkResources(
+        XmlDocument resources,
+        IReadOnlyDictionary<string, string> localizedResources)
+    {
+        ArgumentNullException.ThrowIfNull(resources);
+        ArgumentNullException.ThrowIfNull(localizedResources);
+
+        XDocument sourceDocument = string.IsNullOrWhiteSpace(resources.GetXml())
+            ? new XDocument()
+            : XDocument.Parse(resources.GetXml(), LoadOptions.PreserveWhitespace);
+        XDocument updatedDocument = PrintDeviceResourcesEditor.Apply(sourceDocument, localizedResources);
+        XmlDocument result = new();
+        result.LoadXml(updatedDocument.ToString(SaveOptions.DisableFormatting));
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, string> LoadLocalizedResources(string resourceLanguage)
+    {
+        ResourceContext resourceContext = ResourceContext.GetForViewIndependentUse();
+        if (!string.IsNullOrWhiteSpace(resourceLanguage))
+        {
+            resourceContext.QualifierValues["language"] = resourceLanguage;
+        }
+
+        ResourceMap resourceMap = ResourceManager.Current.MainResourceMap.GetSubtree(PrintSinkFeatureResourceSubtree);
+        Dictionary<string, string> resources = new(StringComparer.Ordinal);
+        foreach (PrintSchemaQualifiedName name in CustomResourceNames)
+        {
+            if (!resourceMap.Keys.Contains(name.LocalName, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            string localizedValue = resourceMap.GetValue(name.LocalName, resourceContext).ValueAsString;
+            if (!string.IsNullOrWhiteSpace(localizedValue))
+            {
+                resources[ToPdrResourceName(name)] = localizedValue;
+            }
+        }
+
+        return resources;
+    }
+
+    private static IReadOnlyList<PrintSchemaQualifiedName> BuildCustomResourceNames()
+    {
+        Dictionary<string, PrintSchemaQualifiedName> names = new(StringComparer.Ordinal);
+        foreach (CustomFeature feature in PrintSinkCapabilityFeatures.BuiltIn)
+        {
+            AddCustomResourceName(names, feature.Name);
+            foreach (CustomFeatureOption option in feature.Options)
+            {
+                AddCustomResourceName(names, option.Name);
+            }
+        }
+
+        return [.. names.Values];
+    }
+
+    private static void AddCustomResourceName(
+        IDictionary<string, PrintSchemaQualifiedName> names,
+        PrintSchemaQualifiedName name)
+    {
+        if (!string.Equals(name.NamespaceUri, "https://schemas.printsink.dev/printing/keywords", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        names.TryAdd(ToPdrResourceName(name), name);
+    }
+
+    private static string ToPdrResourceName(PrintSchemaQualifiedName name)
+    {
+        string namespaceName = name.NamespaceUri;
+        if (namespaceName.StartsWith("https://", StringComparison.Ordinal))
+        {
+            namespaceName = namespaceName["https://".Length..];
+        }
+        else if (namespaceName.StartsWith("http://", StringComparison.Ordinal))
+        {
+            namespaceName = namespaceName["http://".Length..];
+        }
+
+        return string.Concat(namespaceName.TrimEnd('/'), "/", name.LocalName);
     }
 
     private void OnPrinterSelected(PrintSupportExtensionSession sender, PrintSupportPrinterSelectedEventArgs args)
