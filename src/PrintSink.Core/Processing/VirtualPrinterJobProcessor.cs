@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using PrintSink.Core.Abstractions;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 
@@ -42,10 +44,24 @@ public sealed class VirtualPrinterJobProcessor
     {
         ArgumentNullException.ThrowIfNull(job);
 
+        long started = Stopwatch.GetTimestamp();
         PdlPlan plan = router.Resolve(job.ContentType, job.Endpoint);
+        PrintSinkDiagnostics.Log.JobRouteResolved(
+            job.Endpoint.QueueName,
+            job.ContentType,
+            plan.ActionKind.ToString(),
+            plan.SourceFormat?.ToString() ?? "Unknown",
+            plan.TargetFormat.ToString(),
+            plan.ConversionKind?.ToString() ?? "None",
+            plan.Reason);
+
         if (plan.ActionKind == PdlActionKind.Reject)
         {
             await job.CompleteAsync(VirtualPrinterJobStatus.Failed, cancellationToken).ConfigureAwait(false);
+            PrintSinkDiagnostics.Log.JobRejected(
+                job.Endpoint.QueueName,
+                plan.Reason,
+                GetElapsedMilliseconds(started));
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, null);
         }
 
@@ -53,17 +69,31 @@ public sealed class VirtualPrinterJobProcessor
         {
             await ProcessAcceptedJobAsync(job, plan, cancellationToken).ConfigureAwait(false);
             await job.CompleteAsync(VirtualPrinterJobStatus.Succeeded, cancellationToken).ConfigureAwait(false);
+            PrintSinkDiagnostics.Log.JobCompleted(
+                job.Endpoint.QueueName,
+                VirtualPrinterJobStatus.Succeeded.ToString(),
+                GetElapsedMilliseconds(started));
 
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Succeeded, null);
         }
         catch (OperationCanceledException ex)
         {
             await job.CompleteAsync(VirtualPrinterJobStatus.Canceled, CancellationToken.None).ConfigureAwait(false);
+            PrintSinkDiagnostics.Log.JobFailed(
+                job.Endpoint.QueueName,
+                ex.GetType().FullName ?? ex.GetType().Name,
+                ex.Message,
+                GetElapsedMilliseconds(started));
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Canceled, ex);
         }
         catch (Exception ex)
         {
             await job.CompleteAsync(VirtualPrinterJobStatus.Failed, CancellationToken.None).ConfigureAwait(false);
+            PrintSinkDiagnostics.Log.JobFailed(
+                job.Endpoint.QueueName,
+                ex.GetType().FullName ?? ex.GetType().Name,
+                ex.Message,
+                GetElapsedMilliseconds(started));
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, ex);
         }
     }
@@ -86,7 +116,13 @@ public sealed class VirtualPrinterJobProcessor
                 PdlConversionKind conversionKind = plan.ConversionKind
                     ?? throw new InvalidOperationException("A conversion plan must include a conversion kind.");
 
+                long conversionStarted = Stopwatch.GetTimestamp();
+                PrintSinkDiagnostics.Log.PdlConversionStarted(job.Endpoint.QueueName, conversionKind.ToString());
                 converted = await converter.ConvertAsync(source, conversionKind, cancellationToken).ConfigureAwait(false);
+                PrintSinkDiagnostics.Log.PdlConversionCompleted(
+                    job.Endpoint.QueueName,
+                    conversionKind.ToString(),
+                    GetElapsedMilliseconds(conversionStarted));
                 output = converted;
             }
 
@@ -106,5 +142,10 @@ public sealed class VirtualPrinterJobProcessor
                 await converted.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    private static long GetElapsedMilliseconds(long started)
+    {
+        return (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 }
