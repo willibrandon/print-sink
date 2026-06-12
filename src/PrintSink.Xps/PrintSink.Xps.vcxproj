@@ -114,14 +114,18 @@
 
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="SynchronizedSequentialStream.h" />
     <ClInclude Include="XpsPageWatermarker.h" />
+    <ClInclude Include="XpsSequentialDocument.h" />
   </ItemGroup>
 
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="SynchronizedSequentialStream.cpp" />
     <ClCompile Include="XpsPageWatermarker.cpp" />
+    <ClCompile Include="XpsSequentialDocument.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
 

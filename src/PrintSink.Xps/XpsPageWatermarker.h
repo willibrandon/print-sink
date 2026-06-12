@@ -6,7 +6,7 @@ namespace winrt::PrintSink::Xps::implementation
 {
     struct XpsPageWatermarker : XpsPageWatermarkerT<XpsPageWatermarker>
     {
-        XpsPageWatermarker() = default;
+        XpsPageWatermarker();
 
         winrt::hstring Text() const;
         void Text(winrt::hstring const& value);
@@ -22,8 +22,10 @@ namespace winrt::PrintSink::Xps::implementation
         void OffsetX(double value);
         double OffsetY() const;
         void OffsetY(double value);
+        void ApplyWatermarksToXpsPage(winrt::com_ptr<IXpsOMPage> const& xpsPage);
 
     private:
+        winrt::com_ptr<IXpsOMObjectFactory1> xpsFactory;
         winrt::hstring text;
         winrt::hstring fontFamily{ L"Segoe UI" };
         double fontSize{ 48.0 };
@@ -31,6 +33,12 @@ namespace winrt::PrintSink::Xps::implementation
         double rotationDegrees{ -30.0 };
         double offsetX{ 0.0 };
         double offsetY{ 0.0 };
+
+        void AddWatermarkText(winrt::com_ptr<IXpsOMPage> const& xpsPage);
+        winrt::com_ptr<IXpsOMFontResource> CreateFontResource(std::wstring const& fontFilePath);
+        winrt::com_ptr<IXpsOMSolidColorBrush> CreateTextBrush();
+        static std::wstring ResolveFontPath(winrt::hstring const& requestedFontFamily);
+        static uint8_t ToAlpha(double opacityValue);
     };
 }
 

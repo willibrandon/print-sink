@@ -20,10 +20,14 @@ internal sealed class ProjectedXpsWatermarker : IXpsWatermarker
         ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
 
-        _ = CreateNativeWatermarker(options);
+        if (sourceFormat is not (PdlFormat.Oxps or PdlFormat.Xps))
+        {
+            throw new NotSupportedException(
+                $"Projected XPS watermarking requires XPS-family source content, but the job supplied {sourceFormat}.");
+        }
 
-        throw new NotSupportedException(
-            "XPS watermark stream generation requires the native XpsSequentialDocument API, which is not implemented yet.");
+        NativeXpsPageWatermarker watermarker = CreateNativeWatermarker(options);
+        return watermarker.ApplyAsync(source, cancellationToken);
     }
 
     private static NativeXpsPageWatermarker CreateNativeWatermarker(WatermarkOptions options)

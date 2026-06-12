@@ -12,4 +12,17 @@ namespace PrintSink.Xps
         Double OffsetX;
         Double OffsetY;
     }
+
+    runtimeclass XpsSequentialDocument
+    {
+        XpsSequentialDocument(Windows.Graphics.Printing.Workflow.PrintWorkflowObjectModelSourceFileContent sourceFileContent);
+
+        void StartXpsOMGeneration();
+        Windows.Storage.Streams.IInputStream GetWatermarkedStream(XpsPageWatermarker watermarker);
+        UInt32 PageCount();
+
+        event Windows.Foundation.TypedEventHandler<XpsSequentialDocument, UInt32> PageAdded;
+        event Windows.Foundation.TypedEventHandler<XpsSequentialDocument, UInt32> DocumentClosed;
+        event Windows.Foundation.TypedEventHandler<XpsSequentialDocument, UInt64> XpsGenerationFailed;
+    }
 }

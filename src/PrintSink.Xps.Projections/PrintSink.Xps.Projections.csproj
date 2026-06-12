@@ -10,7 +10,10 @@
     <CsWinRTPrivateProjection>true</CsWinRTPrivateProjection>
     <CsWinRTIncludesPrivate>
       PrintSink.Xps.IXpsPageWatermarker;
-      PrintSink.Xps.XpsPageWatermarker
+      PrintSink.Xps.IXpsSequentialDocument;
+      PrintSink.Xps.IXpsSequentialDocumentFactory;
+      PrintSink.Xps.XpsPageWatermarker;
+      PrintSink.Xps.XpsSequentialDocument
     </CsWinRTIncludesPrivate>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

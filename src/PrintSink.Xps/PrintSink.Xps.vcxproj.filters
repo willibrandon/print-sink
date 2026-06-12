@@ -14,7 +14,13 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SynchronizedSequentialStream.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="XpsPageWatermarker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="XpsSequentialDocument.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -22,7 +28,13 @@
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SynchronizedSequentialStream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="XpsPageWatermarker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="XpsSequentialDocument.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp">
