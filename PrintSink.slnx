@@ -17,6 +17,7 @@
     <Project Path="src/PrintSink.Core/PrintSink.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PrintSink.Cli.Tests/PrintSink.Cli.Tests.csproj" />
     <Project Path="tests/PrintSink.Core.Tests/PrintSink.Core.Tests.csproj" />
   </Folder>
 </Solution>
