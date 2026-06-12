@@ -71,7 +71,15 @@ To remove the queues after assertion:
 tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -Cleanup
 ```
 
-The script runs `printsink-app.exe --install-virtual-printers` and fails with `%TEMP%\PrintSink.App.headless.log` if provisioning fails. App execution aliases are verified against the signed MSIX package, not loose development registration.
+The script validates the installed package before provisioning:
+
+- `printsink-app.exe` app execution alias.
+- all print-support foreground/background extensions.
+- all five virtual-printer manifest entries.
+- packaged PDC/PDR files for each queue.
+- `WinRT.Host.dll`, `PrintSink.Tasks.winmd`, `PrintSink.Xps.dll`, and the registered activatable classes.
+
+It then runs `printsink-app.exe --install-virtual-printers` and fails with `%TEMP%\PrintSink.App.headless.log` if provisioning fails. App execution aliases are verified against the signed MSIX package, not loose development registration.
 
 The harness must assert these queues:
 
