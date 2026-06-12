@@ -29,7 +29,9 @@ $expectedVirtualPrinters = @(
         outputFileTypes = 'pdf'
         pdcFile = 'Config\PrinterPdf.pdc.xml'
         pdrFile = 'Config\PrinterPdf.pdr.xml'
-        supportedFormats = @('application/pdf')
+        supportedFormats = @(
+            [ordered]@{ type = 'application/pdf'; maxVersion = '1.7' }
+        )
     },
     [ordered]@{
         printerUri = 'printsink:print-to-xps'
@@ -37,7 +39,10 @@ $expectedVirtualPrinters = @(
         outputFileTypes = 'xps;oxps'
         pdcFile = 'Config\PrinterXps.pdc.xml'
         pdrFile = 'Config\PrinterXps.pdr.xml'
-        supportedFormats = @('application/oxps', 'application/vnd.ms-xpsdocument')
+        supportedFormats = @(
+            [ordered]@{ type = 'application/oxps'; maxVersion = '1.0' },
+            [ordered]@{ type = 'application/vnd.ms-xpsdocument'; maxVersion = '1.0' }
+        )
     },
     [ordered]@{
         printerUri = 'printsink:print-to-ps'
@@ -45,7 +50,9 @@ $expectedVirtualPrinters = @(
         outputFileTypes = 'ps'
         pdcFile = 'Config\PrinterPostScript.pdc.xml'
         pdrFile = 'Config\PrinterPostScript.pdr.xml'
-        supportedFormats = @('application/postscript')
+        supportedFormats = @(
+            [ordered]@{ type = 'application/postscript'; maxVersion = '3.0' }
+        )
     },
     [ordered]@{
         printerUri = 'printsink:print-to-cloud'
@@ -53,7 +60,9 @@ $expectedVirtualPrinters = @(
         outputFileTypes = ''
         pdcFile = 'Config\PrinterCloud.pdc.xml'
         pdrFile = 'Config\PrinterCloud.pdr.xml'
-        supportedFormats = @('application/pdf')
+        supportedFormats = @(
+            [ordered]@{ type = 'application/pdf'; maxVersion = '1.7' }
+        )
     },
     [ordered]@{
         printerUri = 'printsink:print-to-pwgr'
@@ -224,10 +233,34 @@ function Assert-InstalledPackageShape {
         Assert-PackageFile -PackageRoot $installLocation -RelativePath $expectedPrinter.pdrFile
 
         $supportedFormatNodes = @($printerNode.SelectNodes('printsupport2:SupportedFormats/printsupport2:SupportedFormat', $namespaceManager))
-        $actualSupportedFormats = @($supportedFormatNodes | ForEach-Object { $_.GetAttribute('Type') } | Sort-Object)
-        $expectedSupportedFormats = @($expectedPrinter.supportedFormats | Sort-Object)
-        if (Compare-Object -ReferenceObject $expectedSupportedFormats -DifferenceObject $actualSupportedFormats) {
-            throw "Virtual printer '$($expectedPrinter.printerUri)' supported formats differ. Actual: $($actualSupportedFormats -join ', '); expected: $($expectedSupportedFormats -join ', ')."
+        $actualSupportedFormats = @($supportedFormatNodes | ForEach-Object {
+            [pscustomobject]@{
+                type = $_.GetAttribute('Type')
+                maxVersion = $_.GetAttribute('MaxVersion')
+            }
+        } | Sort-Object -Property type)
+        $expectedSupportedFormats = @($expectedPrinter.supportedFormats | ForEach-Object {
+            [pscustomobject]@{
+                type = $_['type']
+                maxVersion = $_['maxVersion']
+            }
+        } | Sort-Object -Property type)
+
+        if ($actualSupportedFormats.Count -ne $expectedSupportedFormats.Count) {
+            throw "Virtual printer '$($expectedPrinter.printerUri)' supported format count differs. Actual: $($actualSupportedFormats.Count); expected: $($expectedSupportedFormats.Count)."
+        }
+
+        foreach ($expectedFormat in $expectedSupportedFormats) {
+            $actualFormat = $actualSupportedFormats |
+                Where-Object { $_.type -eq $expectedFormat.type } |
+                Select-Object -First 1
+            if ($null -eq $actualFormat) {
+                throw "Virtual printer '$($expectedPrinter.printerUri)' is missing supported format '$($expectedFormat.type)'."
+            }
+
+            if ($actualFormat.maxVersion -ne $expectedFormat.maxVersion) {
+                throw "Virtual printer '$($expectedPrinter.printerUri)' supported format '$($expectedFormat.type)' has MaxVersion '$($actualFormat.maxVersion)'; expected '$($expectedFormat.maxVersion)'."
+            }
         }
 
         $reportedPrinters += [ordered]@{

@@ -80,8 +80,8 @@
             PdcFile="Config\PrinterXps.pdc.xml"
             PdrFile="Config\PrinterXps.pdr.xml">
             <printsupport2:SupportedFormats>
-              <printsupport2:SupportedFormat Type="application/oxps" />
-              <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />
+              <printsupport2:SupportedFormat Type="application/oxps" MaxVersion="1.0" />
+              <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" MaxVersion="1.0" />
             </printsupport2:SupportedFormats>
           </printsupport2:PrintSupportVirtualPrinter>
         </printsupport2:Extension>
@@ -94,7 +94,7 @@
             PdcFile="Config\PrinterPostScript.pdc.xml"
             PdrFile="Config\PrinterPostScript.pdr.xml">
             <printsupport2:SupportedFormats>
-              <printsupport2:SupportedFormat Type="application/postscript" />
+              <printsupport2:SupportedFormat Type="application/postscript" MaxVersion="3.0" />
             </printsupport2:SupportedFormats>
           </printsupport2:PrintSupportVirtualPrinter>
         </printsupport2:Extension>

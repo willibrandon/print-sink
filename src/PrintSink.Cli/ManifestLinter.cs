@@ -259,15 +259,29 @@ internal static class ManifestLinter
         foreach (XElement supportedFormat in printerElement.Descendants().Where(element => element.Name.LocalName == "SupportedFormat"))
         {
             string? type = (string?)supportedFormat.Attribute("Type");
-            if (string.IsNullOrWhiteSpace(type) || !PdlFormatInfo.TryParseContentType(type, out _))
+            if (string.IsNullOrWhiteSpace(type) || !PdlFormatInfo.TryParseContentType(type, out PdlFormat format))
             {
                 messages.Add($"error: '{endpoint.QueueName}' has an unsupported SupportedFormat Type '{type}'.");
+                continue;
             }
 
             string? maxVersion = (string?)supportedFormat.Attribute("MaxVersion");
-            if (!string.IsNullOrWhiteSpace(maxVersion) && !IsMajorMinorVersion(maxVersion))
+            if (string.IsNullOrWhiteSpace(maxVersion))
+            {
+                messages.Add($"error: '{endpoint.QueueName}' SupportedFormat {type} must declare MaxVersion.");
+                continue;
+            }
+
+            if (!IsMajorMinorVersion(maxVersion))
             {
                 messages.Add($"error: '{endpoint.QueueName}' SupportedFormat MaxVersion '{maxVersion}' must use Major.Minor digits.");
+                continue;
+            }
+
+            string expectedMaxVersion = PdlFormatInfo.GetMaxSupportedVersion(format);
+            if (!string.Equals(maxVersion, expectedMaxVersion, StringComparison.Ordinal))
+            {
+                messages.Add($"error: '{endpoint.QueueName}' SupportedFormat {type} MaxVersion must be {expectedMaxVersion}.");
             }
         }
 

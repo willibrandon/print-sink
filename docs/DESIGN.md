@@ -368,7 +368,12 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
                                  EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterXpsName"
               PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps"
-              OutputFileTypes="xps;oxps" PdcFile="Config\PrinterXps.pdc.xml"/>
+              OutputFileTypes="xps;oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/oxps" MaxVersion="1.0"/>
+              <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" MaxVersion="1.0"/>
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
         </printsupport2:Extension>
 
         <!-- (c) PostScript file output -->
@@ -376,9 +381,9 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
                                  EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPsName"
               PrinterUri="printsink:print-to-ps" PreferredInputFormat="application/postscript"
-              OutputFileTypes="ps" PdcFile="Config\PrinterPs.pdc.xml">
+              OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterPostScript.pdr.xml">
             <printsupport2:SupportedFormats>
-              <printsupport2:SupportedFormat Type="application/postscript"/>
+              <printsupport2:SupportedFormat Type="application/postscript" MaxVersion="3.0"/>
             </printsupport2:SupportedFormats>
           </printsupport2:PrintSupportVirtualPrinter>
         </printsupport2:Extension>
@@ -388,7 +393,7 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
                                  EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterCloudName"
               PrinterUri="printsink:print-to-cloud" PreferredInputFormat="application/oxps"
-              PdcFile="Config\PrinterCloud.pdc.xml">
+              PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterCloud.pdr.xml">
             <printsupport2:SupportedFormats>
               <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7"/>
             </printsupport2:SupportedFormats>
@@ -400,7 +405,7 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
                                  EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPwgrName"
               PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps"
-              OutputFileTypes="pwg" PdcFile="Config\PrinterPwgr.pdc.xml"/>
+              OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml"/>
         </printsupport2:Extension>
       </Extensions>
     </Application>

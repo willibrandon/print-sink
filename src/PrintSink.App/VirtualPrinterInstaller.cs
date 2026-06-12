@@ -90,7 +90,9 @@ internal static class VirtualPrinterInstaller
 
     private static VirtualPrinterSupportedFormat CreateSupportedInputFormat(PdlFormat format)
     {
-        return new VirtualPrinterSupportedFormat(PdlFormatInfo.GetContentType(format), GetMaxSupportedVersion(format));
+        return new VirtualPrinterSupportedFormat(
+            PdlFormatInfo.GetContentType(format),
+            PdlFormatInfo.GetMaxSupportedVersion(format));
     }
 
     private static VirtualPrinterPreferredInputFormat GetPreferredInputFormat(PdlFormat format)
@@ -100,18 +102,6 @@ internal static class VirtualPrinterInstaller
             PdlFormat.Oxps => VirtualPrinterPreferredInputFormat.OpenXps,
             PdlFormat.PostScript => VirtualPrinterPreferredInputFormat.PostScript,
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported preferred input format."),
-        };
-    }
-
-    private static string GetMaxSupportedVersion(PdlFormat format)
-    {
-        return format switch
-        {
-            PdlFormat.Pdf => "1.7",
-            PdlFormat.PostScript => "3.0",
-            PdlFormat.Oxps or PdlFormat.Xps => "1.0",
-            PdlFormat.PwgRaster or PdlFormat.Pclm => "1.0",
-            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported passthrough format."),
         };
     }
 

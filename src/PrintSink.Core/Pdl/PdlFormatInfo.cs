@@ -90,6 +90,24 @@ public static class PdlFormatInfo
         };
     }
 
+    /// <summary>
+    /// Gets the maximum supported version advertised for a pass-through PDL format.
+    /// </summary>
+    /// <param name="format">The PDL format.</param>
+    /// <returns>The maximum supported major/minor version string.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="format"/> is not recognized.</exception>
+    public static string GetMaxSupportedVersion(PdlFormat format)
+    {
+        return format switch
+        {
+            PdlFormat.Pdf => "1.7",
+            PdlFormat.PostScript => "3.0",
+            PdlFormat.Oxps or PdlFormat.Xps => "1.0",
+            PdlFormat.PwgRaster or PdlFormat.Pclm => "1.0",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported PDL format."),
+        };
+    }
+
     private static string Normalize(string contentType)
     {
         int parameterStart = contentType.IndexOf(';', StringComparison.Ordinal);

@@ -46,4 +46,19 @@ public sealed class PdlFormatInfoTests
     {
         Assert.AreEqual("application/pdf", PdlFormatInfo.GetContentType(PdlFormat.Pdf));
     }
+
+    /// <summary>
+    /// Verifies maximum supported version formatting.
+    /// </summary>
+    [TestMethod]
+    [DataRow(PdlFormat.Pdf, "1.7")]
+    [DataRow(PdlFormat.PostScript, "3.0")]
+    [DataRow(PdlFormat.Oxps, "1.0")]
+    [DataRow(PdlFormat.Xps, "1.0")]
+    [DataRow(PdlFormat.PwgRaster, "1.0")]
+    [DataRow(PdlFormat.Pclm, "1.0")]
+    public void GetMaxSupportedVersion_returns_manifest_version(PdlFormat format, string expected)
+    {
+        Assert.AreEqual(expected, PdlFormatInfo.GetMaxSupportedVersion(format));
+    }
 }
