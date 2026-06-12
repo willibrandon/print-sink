@@ -146,6 +146,41 @@ public sealed class VirtualPrinterJobProcessorTests
         Assert.AreSame(expected, sink.Context?.WatermarkOptions);
     }
 
+    /// <summary>
+    /// Verifies job UI options override endpoint defaults.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_uses_job_options_before_persisted_endpoint_watermark()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemorySettingsStore settingsStore = new();
+        await settingsStore
+            .SaveWatermarkOptionsAsync(
+                endpoint.PrinterUri,
+                new WatermarkOptions(true, new TextWatermark("Endpoint", "Segoe UI", 48, 0.35, -30, 0, 0), null))
+            .ConfigureAwait(false);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.PdfContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("%PDF-1.7"),
+            false);
+        CapturingSink sink = new();
+        VirtualPrinterJobProcessor processor = new(
+            new PdlRouter(),
+            new TestPdlConverter([]),
+            new EndpointSinkResolver(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = sink,
+            }),
+            settingsStore,
+            new JobProcessingOptions(WatermarkOptions.Disabled));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
+        Assert.AreSame(WatermarkOptions.Disabled, sink.Context?.WatermarkOptions);
+    }
+
     private static VirtualPrinterJobProcessor CreateProcessor(ISink sink, IPdlConverter converter)
     {
         return new VirtualPrinterJobProcessor(
@@ -182,6 +217,23 @@ public sealed class VirtualPrinterJobProcessorTests
 
             watermarkOptions[printerUri] = options;
             return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task SaveJobProcessingOptionsAsync(
+            JobProcessingOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task<JobProcessingOptions?> ConsumeJobProcessingOptionsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<JobProcessingOptions?>(null);
         }
     }
 }

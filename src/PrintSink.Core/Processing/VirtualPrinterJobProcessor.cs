@@ -17,6 +17,7 @@ public sealed class VirtualPrinterJobProcessor
     private readonly IPdlConverter converter;
     private readonly IEndpointSinkResolver sinkResolver;
     private readonly ISettingsStore? settingsStore;
+    private readonly JobProcessingOptions? jobProcessingOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
@@ -41,6 +42,24 @@ public sealed class VirtualPrinterJobProcessor
         IPdlConverter converter,
         IEndpointSinkResolver sinkResolver,
         ISettingsStore? settingsStore)
+        : this(router, converter, sinkResolver, settingsStore, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
+    /// </summary>
+    /// <param name="router">The PDL router.</param>
+    /// <param name="converter">The PDL converter.</param>
+    /// <param name="sinkResolver">The endpoint sink resolver.</param>
+    /// <param name="settingsStore">The settings store used to load endpoint options.</param>
+    /// <param name="jobProcessingOptions">The foreground job options, when job UI collected any.</param>
+    public VirtualPrinterJobProcessor(
+        IPdlRouter router,
+        IPdlConverter converter,
+        IEndpointSinkResolver sinkResolver,
+        ISettingsStore? settingsStore,
+        JobProcessingOptions? jobProcessingOptions)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(converter);
@@ -50,6 +69,7 @@ public sealed class VirtualPrinterJobProcessor
         this.converter = converter;
         this.sinkResolver = sinkResolver;
         this.settingsStore = settingsStore;
+        this.jobProcessingOptions = jobProcessingOptions;
     }
 
     /// <summary>
@@ -176,6 +196,11 @@ public sealed class VirtualPrinterJobProcessor
         VirtualEndpoint endpoint,
         CancellationToken cancellationToken)
     {
+        if (jobProcessingOptions is not null)
+        {
+            return jobProcessingOptions.WatermarkOptions;
+        }
+
         if (settingsStore is null)
         {
             return WatermarkOptions.Disabled;

@@ -23,4 +23,19 @@ public interface ISettingsStore
     /// <param name="cancellationToken">A token that cancels the write.</param>
     /// <returns>A task that completes when the settings are saved.</returns>
     Task SaveWatermarkOptionsAsync(Uri printerUri, WatermarkOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves pending per-job processing options captured by foreground job UI.
+    /// </summary>
+    /// <param name="options">The per-job processing options.</param>
+    /// <param name="cancellationToken">A token that cancels the write.</param>
+    /// <returns>A task that completes when the settings are saved.</returns>
+    Task SaveJobProcessingOptionsAsync(JobProcessingOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads and removes pending per-job processing options.
+    /// </summary>
+    /// <param name="cancellationToken">A token that cancels the read.</param>
+    /// <returns>The pending per-job processing options, or <see langword="null" /> when none exist.</returns>
+    Task<JobProcessingOptions?> ConsumeJobProcessingOptionsAsync(CancellationToken cancellationToken = default);
 }

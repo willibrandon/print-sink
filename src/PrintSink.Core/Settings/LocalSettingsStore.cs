@@ -10,6 +10,8 @@ namespace PrintSink.Core.Settings;
 /// </summary>
 public sealed class LocalSettingsStore : ISettingsStore
 {
+    private const string PendingJobOptionsFileName = "pending-job-options.json";
+
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -65,10 +67,60 @@ public sealed class LocalSettingsStore : ISettingsStore
             .ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task SaveJobProcessingOptionsAsync(
+        JobProcessingOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        Directory.CreateDirectory(rootDirectory);
+
+        string path = GetJobProcessingOptionsPath(rootDirectory);
+        await using FileStream output = File.Create(path);
+        await JsonSerializer
+            .SerializeAsync(output, options, SerializerOptions, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<JobProcessingOptions?> ConsumeJobProcessingOptionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string path = GetJobProcessingOptionsPath(rootDirectory);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            JobProcessingOptions? options;
+            await using (FileStream input = File.OpenRead(path))
+            {
+                options = await JsonSerializer
+                    .DeserializeAsync<JobProcessingOptions>(input, SerializerOptions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            File.Delete(path);
+            return options;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+    }
+
     private static string GetWatermarkPath(string rootDirectory, Uri printerUri)
     {
         string normalizedUri = printerUri.AbsoluteUri.ToUpperInvariant();
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUri));
         return Path.Combine(rootDirectory, $"{Convert.ToHexString(hash)}.watermark.json");
+    }
+
+    private static string GetJobProcessingOptionsPath(string rootDirectory)
+    {
+        return Path.Combine(rootDirectory, PendingJobOptionsFileName);
     }
 }

@@ -59,6 +59,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                 PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
                 PrinterDocumentFormatPlan plan = GetDocumentFormatPlan(args, sourceContent.ContentType);
                 PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, plan.TargetContentType);
+                ClearPendingJobOptions();
                 SubmitPdl(args, sourceContent, targetStream, plan);
 
                 targetStream.CompleteStreamSubmission(PrintWorkflowSubmittedStatus.Succeeded);
@@ -122,6 +123,15 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             operationAttributes,
             PrintWorkflowAttributesMergePolicy.DoNotMergeWithPrintTicket,
             PrintWorkflowAttributesMergePolicy.MergePreferPrintTicketOnConflict);
+    }
+
+    private static void ClearPendingJobOptions()
+    {
+        PackagedSettingsStoreFactory
+            .Create()
+            .ConsumeJobProcessingOptionsAsync()
+            .GetAwaiter()
+            .GetResult();
     }
 
     private static void SubmitPdl(

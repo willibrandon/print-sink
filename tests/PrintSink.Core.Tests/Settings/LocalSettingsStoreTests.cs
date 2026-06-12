@@ -104,6 +104,67 @@ public sealed class LocalSettingsStoreTests
         }
     }
 
+    /// <summary>
+    /// Verifies missing pending job options return null.
+    /// </summary>
+    [TestMethod]
+    public async Task ConsumeJobProcessingOptionsAsync_returns_null_when_missing()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+
+        try
+        {
+            JobProcessingOptions? options = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsNull(options);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies pending job options are removed after they are consumed.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveJobProcessingOptionsAsync_consumes_pending_options_once()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+        JobProcessingOptions expected = new(
+            new WatermarkOptions(
+                true,
+                new TextWatermark("Job only", "Segoe UI", 32, 0.5, -20, 0, 0),
+                null));
+
+        try
+        {
+            await store
+                .SaveJobProcessingOptionsAsync(expected, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            JobProcessingOptions? actual = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            JobProcessingOptions? missing = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsNotNull(actual);
+            Assert.IsTrue(actual.WatermarkOptions.Enabled);
+            Assert.AreEqual("Job only", actual.WatermarkOptions.Text?.Text);
+            Assert.IsNull(missing);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());

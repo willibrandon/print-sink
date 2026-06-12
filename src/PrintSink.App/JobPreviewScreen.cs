@@ -1,6 +1,9 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
+using PrintSink.Core.Settings;
+using PrintSink.Core.Watermark;
+using Windows.Foundation;
 using Windows.Graphics.Printing.Workflow;
 using static Microsoft.UI.Reactor.Factories;
 
@@ -23,6 +26,13 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         var (jobTitle, setJobTitle) = UseState("Pending job");
         var (source, setSource) = UseState("Unknown source");
         var (contentType, setContentType) = UseState("No PDL received yet.");
+        var (canContinue, setCanContinue) = UseState(false);
+        var (enabled, setEnabled) = UseState(false);
+        var (text, setText) = UseState("Confidential");
+        var (fontSize, setFontSize) = UseState(48d);
+        var (opacity, setOpacity) = UseState(0.28d);
+        var (rotation, setRotation) = UseState(-30d);
+        Ref<JobUiDeferralState> jobState = UseRef(new JobUiDeferralState());
 
         UseEffect(() =>
         {
@@ -42,17 +52,20 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 var deferral = args.GetDeferral();
                 try
                 {
+                    jobState.Current.SetPdl(args.Configuration, deferral);
                     UiDispatch.Post(() =>
                     {
                         setStatus("Virtual printer PDL received.");
                         setJobTitle(args.Configuration.JobTitle);
                         setSource(args.Configuration.SourceAppDisplayName);
                         setContentType(args.SourceContent.ContentType);
+                        setCanContinue(true);
                     });
                 }
-                finally
+                catch
                 {
-                    deferral.Complete();
+                    jobState.Current.CompleteAll();
+                    throw;
                 }
             }
 
@@ -63,17 +76,20 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 var deferral = args.GetDeferral();
                 try
                 {
+                    jobState.Current.SetPdl(args.Configuration, deferral);
                     UiDispatch.Post(() =>
                     {
                         setStatus("Printer workflow PDL received.");
                         setJobTitle(args.Configuration.JobTitle);
                         setSource(args.Configuration.SourceAppDisplayName);
                         setContentType(args.SourceContent.ContentType);
+                        setCanContinue(true);
                     });
                 }
-                finally
+                catch
                 {
-                    deferral.Complete();
+                    jobState.Current.CompleteAll();
+                    throw;
                 }
             }
 
@@ -84,11 +100,13 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 var deferral = args.GetDeferral();
                 try
                 {
+                    jobState.Current.SetNotification(deferral);
                     UiDispatch.Post(() => setStatus("Job notification received."));
                 }
-                finally
+                catch
                 {
-                    deferral.Complete();
+                    jobState.Current.CompleteAll();
+                    throw;
                 }
             }
 
@@ -102,6 +120,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 session.VirtualPrinterUIDataAvailable -= OnVirtualPrinterDataAvailable;
                 session.PdlDataAvailable -= OnPdlDataAvailable;
                 session.JobNotification -= OnJobNotification;
+                jobState.Current.CompleteAll();
             };
         }, EmptyDependencies);
 
@@ -123,10 +142,44 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                         TextBlock("Preview")
                             .ApplyStyle("SubtitleTextBlockStyle")
                             .Bold(),
-                        TextBlock("The UI session captures print workflow metadata before the background task resumes the job.")
+                        TextBlock("Configure the watermark for this job before the background task resumes the stream.")
                             .Foreground(Theme.SecondaryText)
                             .Set(text => text.TextWrapping = TextWrapping.Wrap),
-                        Button("Close", Microsoft.UI.Xaml.Application.Current.Exit))))
+                        ToggleSwitch(enabled, setEnabled, "On", "Off", "Text watermark"),
+                        TextBox(text, setText, "Text", "Watermark text")
+                            .AutomationName("Watermark text")
+                            .IsEnabled(enabled),
+                        Grid(
+                            columns: [GridSize.Star(), GridSize.Star(), GridSize.Star()],
+                            rows: [GridSize.Auto],
+                            NumberBox(fontSize, value => setFontSize(Clamp(value, 8, 200)), "Font size")
+                                .AutomationName("Font size")
+                                .IsEnabled(enabled)
+                                .Grid(row: 0, column: 0),
+                            NumberBox(opacity, value => setOpacity(Clamp(value, 0.05, 1)), "Opacity")
+                                .AutomationName("Opacity")
+                                .IsEnabled(enabled)
+                                .Grid(row: 0, column: 1),
+                            NumberBox(rotation, value => setRotation(Clamp(value, -180, 180)), "Rotation")
+                                .AutomationName("Rotation")
+                                .IsEnabled(enabled)
+                                .Grid(row: 0, column: 2)),
+                        HStack(12,
+                            Button(
+                                "Continue",
+                                () => _ = ContinueJobAsync(
+                                    jobState.Current,
+                                    enabled,
+                                    text,
+                                    fontSize,
+                                    opacity,
+                                    rotation,
+                                    setStatus))
+                                .IsEnabled(canContinue),
+                            Button(
+                                "Cancel",
+                                () => CancelJob(jobState.Current))
+                                .IsEnabled(canContinue)))))
             .Padding(32)
             .MaxWidth(920)
             .HAlign(HorizontalAlignment.Center));
@@ -166,5 +219,120 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
             .Background(Theme.CardBackground)
             .WithBorder(Theme.CardStroke)
             .CornerRadius(8);
+    }
+
+    private static async Task ContinueJobAsync(
+        JobUiDeferralState jobState,
+        bool enabled,
+        string text,
+        double fontSize,
+        double opacity,
+        double rotation,
+        Action<string> setStatus)
+    {
+        if (enabled && string.IsNullOrWhiteSpace(text))
+        {
+            setStatus("Watermark text is required when watermarking is on.");
+            return;
+        }
+
+        WatermarkOptions watermarkOptions = enabled
+            ? new WatermarkOptions(
+                true,
+                new TextWatermark(
+                    text.Trim(),
+                    "Segoe UI",
+                    Clamp(fontSize, 8, 200),
+                    Clamp(opacity, 0.05, 1),
+                    Clamp(rotation, -180, 180),
+                    0,
+                    0),
+                null)
+            : WatermarkOptions.Disabled;
+
+        try
+        {
+            JobProcessingOptions options = new(watermarkOptions);
+            await AppSettingsStoreFactory
+                .Create()
+                .SaveJobProcessingOptionsAsync(options)
+                .ConfigureAwait(false);
+
+            UiDispatch.Post(() =>
+            {
+                setStatus("Continuing print job.");
+                jobState.CompleteAll();
+                Microsoft.UI.Xaml.Application.Current.Exit();
+            });
+        }
+        catch (Exception ex)
+        {
+            UiDispatch.Post(() => setStatus($"Continue failed: {ex.Message}"));
+        }
+    }
+
+    private static void CancelJob(JobUiDeferralState jobState)
+    {
+        jobState.AbortAndComplete();
+        Microsoft.UI.Xaml.Application.Current.Exit();
+    }
+
+    private static double Clamp(double value, double min, double max)
+    {
+        if (double.IsNaN(value))
+        {
+            return min;
+        }
+
+        return Math.Min(Math.Max(value, min), max);
+    }
+
+    private sealed class JobUiDeferralState
+    {
+        private PrintWorkflowConfiguration? configuration;
+        private Deferral? pdlDeferral;
+        private Deferral? notificationDeferral;
+
+        public void SetPdl(PrintWorkflowConfiguration nextConfiguration, Deferral nextDeferral)
+        {
+            ArgumentNullException.ThrowIfNull(nextConfiguration);
+            ArgumentNullException.ThrowIfNull(nextDeferral);
+
+            configuration = nextConfiguration;
+            CompletePdl();
+            pdlDeferral = nextDeferral;
+        }
+
+        public void SetNotification(Deferral nextDeferral)
+        {
+            ArgumentNullException.ThrowIfNull(nextDeferral);
+
+            CompleteNotification();
+            notificationDeferral = nextDeferral;
+        }
+
+        public void AbortAndComplete()
+        {
+            configuration?.AbortPrintFlow(PrintWorkflowJobAbortReason.UserCanceled);
+            CompleteAll();
+        }
+
+        public void CompleteAll()
+        {
+            CompletePdl();
+            CompleteNotification();
+        }
+
+        private void CompletePdl()
+        {
+            pdlDeferral?.Complete();
+            pdlDeferral = null;
+        }
+
+        private void CompleteNotification()
+        {
+            notificationDeferral?.Complete();
+            notificationDeferral = null;
+        }
     }
 }

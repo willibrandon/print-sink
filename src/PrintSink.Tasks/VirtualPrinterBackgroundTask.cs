@@ -2,6 +2,7 @@ using Windows.ApplicationModel.Background;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Processing;
+using PrintSink.Core.Settings;
 using Windows.Graphics.Printing.Workflow;
 
 namespace PrintSink.Tasks;
@@ -63,22 +64,29 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             return;
         }
 
-        if (!await CompleteJobUiAsync(args).ConfigureAwait(false))
+        LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
+        JobUiCompletionResult uiCompletion = await CompleteJobUiAsync(args, settingsStore).ConfigureAwait(false);
+        if (!uiCompletion.ShouldProcess)
         {
             return;
         }
 
+        JobProcessingOptions? jobProcessingOptions = uiCompletion.UsedForegroundUi
+            ? await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false)
+            : null;
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
-        VirtualPrinterJobProcessor processor = CreateProcessor(args, printTicket);
+        VirtualPrinterJobProcessor processor = CreateProcessor(args, printTicket, settingsStore, jobProcessingOptions);
         WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
         await processor.ProcessAsync(job).ConfigureAwait(false);
     }
 
-    private static async Task<bool> CompleteJobUiAsync(PrintWorkflowVirtualPrinterDataAvailableEventArgs args)
+    private static async Task<JobUiCompletionResult> CompleteJobUiAsync(
+        PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
+        LocalSettingsStore settingsStore)
     {
         if (!args.UILauncher.IsUILaunchEnabled())
         {
-            return true;
+            return new JobUiCompletionResult(true, false);
         }
 
         PrintWorkflowUICompletionStatus uiStatus = await args.UILauncher.LaunchAndCompleteUIAsync()
@@ -86,18 +94,21 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             .ConfigureAwait(false);
         if (uiStatus == PrintWorkflowUICompletionStatus.Completed)
         {
-            return true;
+            return new JobUiCompletionResult(true, true);
         }
 
+        await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false);
         args.CompleteJob(uiStatus == PrintWorkflowUICompletionStatus.UserCanceled
             ? PrintWorkflowSubmittedStatus.Canceled
             : PrintWorkflowSubmittedStatus.Failed);
-        return false;
+        return new JobUiCompletionResult(false, true);
     }
 
     private static VirtualPrinterJobProcessor CreateProcessor(
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
-        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket)
+        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket,
+        LocalSettingsStore settingsStore,
+        JobProcessingOptions? jobProcessingOptions)
     {
         EndpointSinkResolver sinkResolver = new(new Dictionary<EndpointKind, ISink>
         {
@@ -112,7 +123,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             new PdlRouter(),
             new WinRtPdlConverter(args, printTicket),
             sinkResolver,
-            PackagedSettingsStoreFactory.Create());
+            settingsStore,
+            jobProcessingOptions);
     }
 
     private static async Task DrainCloudSinkAsync(
@@ -122,4 +134,6 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
     {
         await pdl.CopyToAsync(Stream.Null, cancellationToken).ConfigureAwait(false);
     }
+
+    private readonly record struct JobUiCompletionResult(bool ShouldProcess, bool UsedForegroundUi);
 }
