@@ -89,6 +89,30 @@ public sealed class CliApplicationTests
         }
     }
 
+    /// <summary>
+    /// Verifies ticket mapping reports IPP attributes produced by Core.
+    /// </summary>
+    [TestMethod]
+    public async Task Ticket_map_reports_ipp_attributes()
+    {
+        string ticketPath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.xml");
+        await File.WriteAllTextAsync(ticketPath, ValidPrintTicket, TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync("ticket", "map", "--ticket", ticketPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.Success, exitCode);
+            Assert.Contains("IPP attributes: 2", output);
+            Assert.Contains("copies: 2", output);
+            Assert.Contains("sides: two-sided-short-edge", output);
+        }
+        finally
+        {
+            File.Delete(ticketPath);
+        }
+    }
+
     private async Task<(int ExitCode, string Output, string Error)> InvokeAsync(params string[] args)
     {
         using StringWriter output = new();
@@ -130,5 +154,19 @@ public sealed class CliApplicationTests
             <rescap:Capability Name="runFullTrust" />
           </Capabilities>
         </Package>
+        """;
+
+    private const string ValidPrintTicket = """
+        <psf:PrintTicket xmlns:psf="http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework"
+                         xmlns:psk="http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords"
+                         xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <psf:Feature name="psk:JobDuplexAllDocumentsContiguously">
+            <psf:Option name="psk:TwoSidedShortEdge" />
+          </psf:Feature>
+          <psf:ParameterInit name="psk:JobCopiesAllDocuments">
+            <psf:Value xsi:type="xsd:integer">2</psf:Value>
+          </psf:ParameterInit>
+        </psf:PrintTicket>
         """;
 }

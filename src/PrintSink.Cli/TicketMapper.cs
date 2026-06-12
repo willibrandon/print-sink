@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Xml;
 using System.Xml.Linq;
+using PrintSink.Core.Tickets;
 
 namespace PrintSink.Cli;
 
@@ -40,11 +41,18 @@ internal static class TicketMapper
         int featureCount = document.Descendants().Count(element => element.Name.LocalName == "Feature");
         int optionCount = document.Descendants().Count(element => element.Name.LocalName == "Option");
         int parameterCount = document.Descendants().Count(element => element.Name.LocalName == "ParameterInit");
+        IReadOnlyDictionary<string, IppAttributeValue> attributes = new IppAttributeMapper().FromPrintTicket(document);
 
         messages.Add("ok: print ticket XML parsed.");
         messages.Add(string.Create(CultureInfo.InvariantCulture, $"Features: {featureCount}"));
         messages.Add(string.Create(CultureInfo.InvariantCulture, $"Options: {optionCount}"));
         messages.Add(string.Create(CultureInfo.InvariantCulture, $"Parameters: {parameterCount}"));
+        messages.Add(string.Create(CultureInfo.InvariantCulture, $"IPP attributes: {attributes.Count}"));
+
+        foreach (IppAttributeValue attribute in attributes.Values.OrderBy(attribute => attribute.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            messages.Add($"{attribute.Name}: {string.Join(", ", attribute.Values)}");
+        }
 
         return new TicketMapResult(true, messages);
     }
