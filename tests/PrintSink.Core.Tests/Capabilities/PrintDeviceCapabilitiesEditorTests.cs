@@ -112,6 +112,32 @@ public sealed class PrintDeviceCapabilitiesEditorTests
         Assert.AreEqual("0,0,80000,200000", option.Element(XNamespace.Get(PrintSchemaNamespaces.Keywords12) + "PortraitImageableSize")?.Value);
     }
 
+    /// <summary>
+    /// Verifies that the shared PrintSink feature set injects the custom capabilities used by the package.
+    /// </summary>
+    [TestMethod]
+    public void Apply_adds_built_in_printsink_features()
+    {
+        XDocument document = CreateMinimalPdc();
+
+        XDocument result = editor.Apply(document, PrintSinkCapabilityFeatures.BuiltIn);
+
+        XElement pageResolution = result.Root!.Element(Psk + "PageResolution")!;
+        XElement dpi600 = pageResolution.Element(PrintSink + "Dpi600")!;
+        Assert.IsNotNull(dpi600);
+        Assert.AreEqual("true", dpi600.Attribute(Psf2 + "default")?.Value);
+        Assert.AreEqual("600", dpi600.Element(Psk + "ResolutionX")?.Value);
+        Assert.AreEqual("600", dpi600.Element(Psk + "ResolutionY")?.Value);
+
+        XElement pageMediaType = result.Root.Element(Psk + "PageMediaType")!;
+        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ArchivePaper"));
+
+        XElement watermarkMode = result.Root.Element(PrintSink + "WatermarkMode")!;
+        Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkOff"));
+        Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkText"));
+        Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkImage"));
+    }
+
     private static XDocument CreateMinimalPdc()
     {
         return XDocument.Parse(

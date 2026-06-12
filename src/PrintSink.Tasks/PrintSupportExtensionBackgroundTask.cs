@@ -1,4 +1,7 @@
+using System.Xml.Linq;
+using PrintSink.Core.Capabilities;
 using Windows.ApplicationModel.Background;
+using Windows.Data.Xml.Dom;
 using Windows.Foundation.Metadata;
 using Windows.Graphics.Printing.PrintSupport;
 
@@ -11,6 +14,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
 {
     private const string PrintSupportExtensionSessionType =
         "Windows.Graphics.Printing.PrintSupport.PrintSupportExtensionSession";
+
+    private static readonly PrintDeviceCapabilitiesEditor CapabilitiesEditor = new();
 
     private readonly BackgroundTaskHandlerState state = new();
 
@@ -63,14 +68,26 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         {
             state.Run(() =>
             {
-                Windows.Data.Xml.Dom.XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
-                args.UpdatePrintDeviceCapabilities(capabilities);
+                XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
+                XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
+                args.UpdatePrintDeviceCapabilities(updatedCapabilities);
             });
         }
         finally
         {
             deferral.Complete();
         }
+    }
+
+    private static XmlDocument ApplyPrintSinkCapabilities(XmlDocument capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        XDocument sourceDocument = XDocument.Parse(capabilities.GetXml(), LoadOptions.PreserveWhitespace);
+        XDocument updatedDocument = CapabilitiesEditor.Apply(sourceDocument, PrintSinkCapabilityFeatures.BuiltIn);
+        XmlDocument result = new();
+        result.LoadXml(updatedDocument.ToString(SaveOptions.DisableFormatting));
+        return result;
     }
 
     private void OnPrinterSelected(PrintSupportExtensionSession sender, PrintSupportPrinterSelectedEventArgs args)
