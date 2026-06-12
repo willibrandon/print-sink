@@ -39,6 +39,7 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
         var (imageOpacity, setImageOpacity) = UseState(0.28d);
         var (imageRotation, setImageRotation) = UseState(0d);
         var (status, setStatus) = UseState("Ready.");
+        var (windowMode, setWindowMode) = UseState("Pending.");
         ReactorWindow? window = UseWindow();
         VirtualEndpoint selectedEndpoint = endpoints[selectedIndex];
 
@@ -62,6 +63,7 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
 
         UseEffect(() =>
         {
+            setWindowMode(SettingsWindowOwner.Apply(window, settingsArgs));
             _ = LoadWatermarkAsync(
                 selectedEndpoint,
                 setTextEnabled,
@@ -90,6 +92,7 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
                         DetailGrid(
                             ("Launch kind", launchKind),
                             ("Owner window", ownerWindowId),
+                            ("Window mode", windowMode),
                             ("Session", settingsArgs is null ? "Not available" : "Connected")))),
                 CardSurface(
                     VStack(14,

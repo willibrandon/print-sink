@@ -50,6 +50,21 @@ public sealed class AppPackageTests
     }
 
     /// <summary>
+    /// Verifies settings activation owner IDs are copied across the Windows and Microsoft UI projections.
+    /// </summary>
+    [TestMethod]
+    public void Settings_window_owner_converts_owner_window_id_projection()
+    {
+        Windows.UI.WindowId source;
+        source.Value = 123;
+
+        Microsoft.UI.WindowId actual =
+            PrintSinkApp::PrintSink.App.SettingsWindowOwner.ToMicrosoftWindowId(source);
+
+        Assert.AreEqual(source.Value, actual.Value);
+    }
+
+    /// <summary>
     /// Verifies app settings resolve under the package-local storage root.
     /// </summary>
     [TestMethod]
