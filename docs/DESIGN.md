@@ -1,30 +1,701 @@
-# PrintSink Design
+# PrintSink — Design Document
 
-PrintSink starts with a small packaged WinUI app and a pure core library. The app uses Microsoft.UI.Reactor for code-first WinUI screens. The core owns endpoint definitions, PDL format routing, and sink contracts.
+**Project:** print-sink
+**Solution / assembly / root namespace:** `PrintSink`
+**Author:** Brandon Williams
+**Status:** Design — approved for implementation
+**Last updated:** 2026-06-11
+**Target platform:** Windows 11 24H2 (build 26100) and later; Windows Server 2025+
 
-## Current Baseline
+---
 
-- `PrintSink.App` is a packaged WinUI 3 executable.
-- `PrintSink.Core` contains testable logic with no live print-stack dependency.
-- `PrintSink.Core.Tests` runs on MSTest and guards namespace-to-folder layout.
-- `PrintSink.Tasks` is not part of this baseline.
+## 1. Purpose and scope
 
-## Namespace Policy
+PrintSink is a **Print Support Virtual Printer (Software Printer)** built on the Microsoft-endorsed
+**Print Support App (PSA) v4 Virtual Printer Architecture**. It installs one or more virtual print
+queues from a packaged (MSIX) application and receives, transforms, and sinks spooled print jobs —
+to PDF, to XPS/OXPS, to PostScript, to a file of the user's choosing, or to a custom pipeline (cloud,
+another app, etc.) — **without any third-party V3/V4 print driver and without a custom port monitor
+(RedMon-style)**.
 
-The root namespace is `PrintSink`.
+This is the only forward-looking architecture as of 2026:
 
-Folders under `src/PrintSink.Core` map directly beneath that root:
+- **2026-01-15** — No new printer drivers are published to Windows Update for Windows 11+ / Server 2025+.
+- **2026-07-01** — Driver ranking changes to always prefer the Windows IPP inbox class driver.
+- Third-party V3/V4 drivers and port monitors are on the End-of-Servicing plan.
 
-- `Abstractions` -> `PrintSink.Abstractions`
-- `Endpoints` -> `PrintSink.Endpoints`
-- `Pdl` -> `PrintSink.Pdl`
+The Virtual Printer Architecture lets an ISV implement a software printer **as an application** that
+implements the features formerly carried by a V3/V4 driver. PrintSink implements **every feature the
+PSA v4 surface exposes** — no feature is descoped.
 
-Do not introduce `PrintSink.Core.*` namespaces in the core project.
+### 1.1 Goals
 
-## UI
+1. Install multiple virtual print queues from one MSIX package via the
+   `windows.printSupportVirtualPrinterWorkflow` contract.
+2. Implement the full PSA v4 feature set (see the **Feature Completeness Matrix**, §4).
+3. Be the most modern possible C#/.NET implementation: **.NET 10**, **WinUI 3 / Windows App SDK**,
+   **CsWinRT 2.2+** projections, **single-project MSIX** packaging.
+4. Strict engineering standards: **one type per file**, **triple-slash XML docs on every public member**,
+   nullable reference types, analyzers as errors.
+5. Fully tested following Microsoft's current guidance, using the current test stack
+   (**MSTest 3.x on Microsoft.Testing.Platform**, .NET 10), plus a deterministic manual
+   end-to-end print-stack validation plan.
 
-The foreground app uses Microsoft.UI.Reactor `Component` classes instead of XAML pages or code-behind. Startup uses a top-level `Program.cs` that calls `ReactorApp.Run<PrintSinkShell>()`.
+### 1.2 Non-goals
 
-## Deferred Work
+- No legacy V3/V4 driver, INF, GPD/PPD, or port monitor.
+- No UWP-only host (UWP appears only as a reference; PrintSink ships on Windows App SDK).
+- Not a physical-device IPP customization app (that is classic PSA, a sibling scenario); PrintSink is
+  the **Virtual Printer** (Software Endpoint) variant, while reusing the shared PSA contracts.
 
-The WinRT print-support activation project, manifest print-support extensions, PDC/PDR files, and live spooler integration are deferred until the core contracts are stable.
+---
+
+## 2. Background and key concepts
+
+| Term | Meaning |
+| --- | --- |
+| **PSA** | Print Support App — packaged app using the `Windows.Graphics.Printing.PrintSupport` / `Windows.Graphics.Printing.Workflow` APIs. |
+| **Virtual Printer / Software Endpoint** | A print queue backed by a PSA app instead of a driver. Added to the system as an `IppPrintDevice` whose `IsIppPrinter` returns true so PDL passthrough reuses the PSA surface. |
+| **DEH** | Windows deployment extension handler — installs the virtual printer queue(s) from the MSIX manifest declaration. |
+| **PDL** | Page Description Language — the spooled document format (OXPS, PostScript, PDF, PWG Raster, PCLm). |
+| **PDC** | Print Device Capabilities XML — declares printer features/options (media sizes, duplex, color, custom features). Mandatory per virtual printer. |
+| **PDR** | Print Device Resources XML — localized display strings for custom PDC features. Optional. |
+| **MPD / CPD** | Modern Print Dialog (WinRT printing) / Common Print Dialog (Win32 printing). |
+| **Print Ticket** | Per-job settings (`WorkflowPrintTicket`) expressed in Print Schema. |
+| **MXDC** | Microsoft XPS Document Converter — rasterization quality is configurable per page-output-quality. |
+| **SoftwareAppMon** | Inbox port monitor for the virtual printer queue (Windows-provided; we do not author it). |
+| **Broker** | The print system talks to PrintSink through a PSA broker process; our background tasks run as in-process WinRT activatable classes. |
+
+### 2.1 The print flow for a virtual printer
+
+```
+User prints to "PrintSink — PDF"  (any Win32/WinRT app, Edge passthrough, etc.)
+        │
+        ▼
+Windows Print System  ── renders to PreferredInputFormat (OXPS or PostScript)
+        │                or passes through a SupportedFormat (e.g. PDF) unchanged
+        ▼
+[If OutputFileTypes set]  Save-As dialog → user picks target file → StorageFile
+        │
+        ▼
+windows.printSupportVirtualPrinterWorkflow  background task is activated
+        │   PrintWorkflowVirtualPrinterTriggerDetails → PrintWorkflowVirtualPrinterSession
+        ▼
+VirtualPrinterDataAvailable event
+        │   args: SourceContent (PDL stream + content type), GetTargetFileAsync(),
+        │         GetJobPrintTicket(), GetPdlConverter(...), UILauncher
+        ├─ (optional) LaunchAndCompleteUIAsync → windows.printSupportJobUI activation
+        │              → VirtualPrinterUIDataAvailable → preview / collect input
+        ├─ transform: watermark (XPS-OM), convert (XpsToPdf / XpsToPwgr / XpsToPclm), or passthrough
+        ├─ write to target file / custom sink (cloud, app)
+        ▼
+CompleteJob(PrintWorkflowSubmittedStatus.Succeeded | Canceled | Failed)
+```
+
+Alongside the job path, three **shared PSA contracts** are reused by the virtual printer:
+
+- `windows.printSupportExtension` — background: print-ticket validation, **PDC regeneration**,
+  **MXDC image-quality** configuration, printer-selected adaptive cards.
+- `windows.printSupportSettingsUI` — foreground: custom print-preferences UI (reused unchanged for the
+  virtual printer), with `OwnerWindowId` modality on Windows App SDK.
+- `windows.printSupportJobUI` — foreground: per-job UI / preview, including the v4
+  `VirtualPrinterUIDataAvailable` event.
+
+---
+
+## 3. High-level architecture
+
+PrintSink is a **single MSIX package** containing one WinUI 3 executable plus a CsWinRT-hosted
+background-task component and a native XPS component. The print system activates the background-task
+classes in-process via `WinRT.Host.dll`.
+
+```
+┌───────────────────────────── PrintSink.msix (single-project MSIX) ─────────────────────────────┐
+│                                                                                                 │
+│  PrintSink.App  (WinUI 3, .NET 10, WinExe, packaged)        ← foreground / UI activations       │
+│    • App activation router (Launch / SettingsUI / JobUI)                                        │
+│    • Settings preferences UI  (printSupportSettingsUI)                                           │
+│    • Job UI / preview         (printSupportJobUI, incl. VirtualPrinterUIDataAvailable)           │
+│    • Management / diagnostics UI (user launch)                                                   │
+│                                                                                                 │
+│  PrintSink.Tasks  (.NET 10 CsWinRT component → WinRT.Host.dll)  ← background activations         │
+│    • VirtualPrinterBackgroundTask   (printSupportVirtualPrinterWorkflow)                         │
+│    • PrintSupportWorkflowBackgroundTask (printSupportWorkflow — physical-printer parity path)    │
+│    • PrintSupportExtensionBackgroundTask (printSupportExtension — PDC / validation / image qual) │
+│                                                                                                 │
+│  PrintSink.Core   (.NET 10 class library, pure, fully unit-testable)                            │
+│    • PDL routing, format negotiation, print-ticket↔IPP attribute logic                          │
+│    • PDC/PDR mutation engine, watermark options model, settings persistence                     │
+│    • Zero dependency on the live print stack (interfaces + adapters)                             │
+│                                                                                                 │
+│  PrintSink.Xps    (C++/WinRT component)  +  PrintSink.Xps.Projections (C# projection assembly)   │
+│    • XPS Object Model watermarking (text + image), page wrapping, sequential streaming          │
+│                                                                                                 │
+│  Config\*.xml (PDC/PDR per printer)   Strings\<lang>\*.resw (localization)   Assets\*            │
+└─────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.1 Why these components
+
+- **WinUI 3 / Windows App SDK on .NET 10** is the most modern packaged-app stack and the one
+  Microsoft's current PSA sample targets. It supersedes UWP for new work.
+- **Separate `PrintSink.Tasks` CsWinRT component** is required: the OS activates the background tasks
+  as WinRT activatable classes hosted by `WinRT.Host.dll`. Setting `CsWinRTComponent=true` produces the
+  host + a `.winmd` whose activatable class IDs are referenced from the package manifest.
+- **`PrintSink.Core`** isolates all transformation/negotiation logic behind interfaces so it is unit
+  testable without the print spooler — the single most important design decision for testability
+  (the live PSA event objects cannot be instantiated outside an activation).
+- **`PrintSink.Xps` (C++/WinRT)** is required because the **XPS Object Model is native** and there is no
+  managed XPS-OM in modern .NET (the old `System.Printing`/`System.Windows.Xps` is WPF/.NET-Framework
+  only). Watermarking and page-level XPS manipulation must go through C++/WinRT, consumed from C# via a
+  CsWinRT projection assembly. This is exactly how Microsoft's sample is structured.
+
+> **Build consequence:** because of the C++/WinRT component, the solution **must build with MSBuild /
+> Visual Studio 2026**, not `dotnet build` (the CLI cannot compile `.vcxproj`). This is accepted as the
+> ideal trade-off — native XPS-OM is non-negotiable for full-fidelity watermarking.
+
+---
+
+## 4. Feature Completeness Matrix
+
+Every capability exposed by the PSA v4 Virtual Printer surface is implemented. None deferred.
+
+| # | Feature | Contract / API | Component | Notes |
+| --- | --- | --- | --- | --- |
+| 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries | Manifest + DEH | PDF, XPS, PostScript, Cloud, Custom-file endpoints |
+| 2 | Receive spooled PDL + content type | `PrintWorkflowVirtualPrinterSession.VirtualPrinterDataAvailable`, `args.SourceContent` | `VirtualPrinterBackgroundTask` | |
+| 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest | Per-queue |
+| 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router | e.g. Edge → PDF passthrough |
+| 5 | File-printer "Save As" target | `OutputFileTypes`, `args.GetTargetFileAsync()` → `StorageFile` | `VirtualPrinterBackgroundTask` | Omit attribute for cloud/app sinks |
+| 6 | Non-file sinks (cloud / OneNote-style) | (no `OutputFileTypes`); custom write in handler | `VirtualPrinterBackgroundTask` + `PrintSink.Core` sinks | |
+| 7 | OXPS → PDF / PWG-Raster / PCLm conversion | `args.GetPdlConverter(PrintWorkflowPdlConversionType.*)`, `ConvertPdlAsync` | `VirtualPrinterBackgroundTask` | |
+| 8 | XPS/OXPS passthrough (copy) | `RandomAccessStream.CopyAndCloseAsync` | `VirtualPrinterBackgroundTask` | |
+| 9 | Watermark (text + image) on XPS pages | XPS Object Model | `PrintSink.Xps` | Pre-conversion |
+| 10 | Per-job UI / preview launched from background | `args.UILauncher.LaunchAndCompleteUIAsync`, `PrintWorkflowJobUISession.VirtualPrinterUIDataAvailable` | `PrintSink.App` Job UI | Preview source PDL |
+| 11 | Custom print-preferences UI | `windows.printSupportSettingsUI`, `PrintSupportSettingsActivatedEventArgs`, `OwnerWindowId` modality | `PrintSink.App` Settings UI | Reused unchanged for virtual printer |
+| 12 | Print-ticket validation / resolve | `PrintSupportExtensionSession.PrintTicketValidationRequested` | `PrintSupportExtensionBackgroundTask` | |
+| 13 | PDC regeneration / custom features | `PrintDeviceCapabilitiesChanged`, `UpdatePrintDeviceCapabilities` | `PrintSupportExtensionBackgroundTask` + `PrintSink.Core` PDC engine | Custom media size/type/resolution, bins, etc. |
+| 14 | PDR localization of custom features | `GetCurrentPrintDeviceResources` / `UpdatePrintDeviceResources`, `ResourceLanguage` | Extension task + `.resw` | |
+| 15 | Refresh PDC on settings change | `IppPrintDevice.RefreshPrintDeviceCapabilities()` | `PrintSink.App` → Extension task | |
+| 16 | Get/set user default print ticket | `IppPrintDevice.UserDefaultPrintTicket`, `CanModifyUserDefaultPrintTicket` | `PrintSink.App` | |
+| 17 | Print-ticket → IPP job attributes | `PrintWorkflowPrintJob.ConvertPrintTicketToJobAttributes`, merge policies | `PrintSupportWorkflowBackgroundTask` + Core | Add/remove attributes (e.g. drop `media-size`) |
+| 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
+| 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
+| 20 | IPP attribute get (virtual = "not supported") | `IppPrintDevice.GetPrinterAttributes(AsBuffer)` | Core adapter | Documented virtual-printer semantics |
+| 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` | Manifest | |
+| 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | |
+| 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | |
+| 24 | Encrypted job password (operation attrs) | `msft-operation-attribute-col`, `job-password` / `job-password-encryption` | Workflow task + Core | Parity path |
+| 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
+
+---
+
+## 5. Solution and project layout
+
+```
+print-sink/
+├─ PrintSink.slnx                       # XML-based solution (modern format)
+├─ Directory.Build.props                # shared: net10.0-windows10.0.26100.0, Nullable, analyzers-as-errors, LangVersion
+├─ Directory.Packages.props             # Central Package Management (pinned versions)
+├─ .editorconfig                        # one-type-per-file & doc-comment rules enforced
+├─ global.json                          # pin .NET 10 SDK
+├─ docs/
+│  ├─ DESIGN.md                         # this document
+│  ├─ TESTING.md                        # test plan + manual E2E runbook
+│  └─ BUILD.md                          # MSBuild/VS build & deploy steps
+├─ src/
+│  ├─ PrintSink.App/                    # WinUI 3 packaged app (Single-project MSIX)
+│  │  ├─ Package.appxmanifest
+│  │  ├─ app.manifest
+│  │  ├─ App.xaml(.cs)                   # one type: App (activation router)
+│  │  ├─ Activation/                     # one handler type per file
+│  │  │  ├─ SettingsActivationHandler.cs
+│  │  │  ├─ JobActivationHandler.cs
+│  │  │  └─ LaunchActivationHandler.cs
+│  │  ├─ Views/  (one Page per file)     # SettingsPage, JobPreviewPage, ManagementPage, …
+│  │  ├─ ViewModels/ (one VM per file)
+│  │  ├─ Controls/ (PreviewPaginationControl, WatermarkPreviewControl, …)
+│  │  ├─ Config/  PrinterPdf.pdc.xml, PrinterPdf.pdr.xml, … (one per endpoint)
+│  │  ├─ Strings/<lang>/Resources.resw, IppMediaTypes.resw, CustomMediaTypes.resw
+│  │  └─ Assets/
+│  ├─ PrintSink.Tasks/                   # CsWinRT component (WinRT.Host.dll producer)
+│  │  ├─ VirtualPrinterBackgroundTask.cs
+│  │  ├─ PrintSupportWorkflowBackgroundTask.cs
+│  │  └─ PrintSupportExtensionBackgroundTask.cs
+│  ├─ PrintSink.Core/                    # pure .NET, no print-stack dependency
+│  │  ├─ Pdl/        (PdlFormat.cs, PdlRouter.cs, IPdlConverter.cs, …)
+│  │  ├─ Endpoints/  (VirtualEndpoint.cs, EndpointKind.cs, ISink.cs, FileSink.cs, CloudSink.cs)
+│  │  ├─ Capabilities/ (PrintDeviceCapabilitiesEditor.cs, CustomFeature.cs, MediaSize.cs, …)
+│  │  ├─ Tickets/    (IppAttributeMapper.cs, AttributeMergePolicyOptions.cs, …)
+│  │  ├─ Watermark/  (WatermarkOptions.cs, TextWatermark.cs, ImageWatermark.cs)
+│  │  ├─ Settings/   (ISettingsStore.cs, LocalSettingsStore.cs)
+│  │  └─ Abstractions/ (IVirtualPrinterJob.cs, IPrintTicket.cs, … adapters over WinRT)
+│  ├─ PrintSink.Xps/                     # C++/WinRT XPS-OM component (.vcxproj)
+│  │  ├─ XpsPageWatermarker.{h,cpp,idl}
+│  │  ├─ XpsSequentialDocument.{h,cpp,idl}
+│  │  ├─ XpsPageWrapper.{h,cpp,idl}
+│  │  └─ SynchronizedSequentialStream.{h,cpp,idl}
+│  └─ PrintSink.Xps.Projections/         # C# projection of PrintSink.Xps (.csproj)
+└─ tests/
+   ├─ PrintSink.Core.Tests/              # MSTest 3.x on Microsoft.Testing.Platform (.NET 10)
+   ├─ PrintSink.Xps.Tests/               # exercises XPS-OM via the C# projection
+   └─ PrintSink.App.Tests/               # packaged WinUI test app (in-package, MTP)
+```
+
+**Naming:** root namespace `PrintSink`, with logical sub-namespaces (`PrintSink.Core.Pdl`,
+`PrintSink.Tasks`, `PrintSink.App.Views`, `PrintSink.Xps`). The activatable-class IDs in the manifest
+therefore read `PrintSink.Tasks.VirtualPrinterBackgroundTask`, etc. Assembly name = project name; the
+root namespace token is always `PrintSink`.
+
+### 5.1 Project settings (key properties)
+
+`PrintSink.Tasks.csproj`
+```xml
+<PropertyGroup>
+  <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+  <Nullable>enable</Nullable>
+  <UseWinUI>true</UseWinUI>
+  <CsWinRTComponent>true</CsWinRTComponent>
+  <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+</PropertyGroup>
+```
+
+`PrintSink.App.csproj` (single-project MSIX, self-contained Windows App SDK)
+```xml
+<PropertyGroup>
+  <OutputType>WinExe</OutputType>
+  <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+  <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
+  <RootNamespace>PrintSink</RootNamespace>
+  <Platforms>x64;ARM64;x86</Platforms>
+  <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+  <UseWinUI>true</UseWinUI>
+  <EnableMsixTooling>true</EnableMsixTooling>
+  <WindowsPackageType>MSIX</WindowsPackageType>
+  <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  <Nullable>enable</Nullable>
+</PropertyGroup>
+```
+
+---
+
+## 6. MSIX manifest design
+
+The manifest is the single source of truth for which queues exist and which contracts route to which
+entry points. PrintSink declares **five virtual printers** to exercise every code path, plus the three
+shared PSA contracts, plus the in-process WinRT activation hosts.
+
+```xml
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:printsupport="http://schemas.microsoft.com/appx/manifest/printsupport/windows10"
+  xmlns:printsupport2="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
+  IgnorableNamespaces="uap uap10 rescap printsupport printsupport2">
+
+  <Applications>
+    <Application Id="App" Executable="PrintSink.exe" EntryPoint="$targetentrypoint$"
+                 uap10:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="PrintSink" .../>
+      <Extensions>
+
+        <!-- Shared PSA contracts (foreground UI + background extension) -->
+        <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="PrintSink.App"/>
+        <printsupport:Extension Category="windows.printSupportJobUI"      EntryPoint="PrintSink.App"/>
+        <printsupport:Extension Category="windows.printSupportExtension"
+                                EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask"/>
+        <printsupport:Extension Category="windows.printSupportWorkflow"
+                                EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask"/>
+
+        <!-- Virtual printer queues (Software Endpoints) -->
+
+        <!-- (a) OXPS → PDF, file output -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPdfName"
+              PrinterUri="printsink:print-to-pdf" PreferredInputFormat="application/oxps"
+              OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterPdf.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7"/>
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+
+        <!-- (b) OXPS passthrough → XPS file -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterXpsName"
+              PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps"
+              OutputFileTypes="xps;oxps" PdcFile="Config\PrinterXps.pdc.xml"/>
+        </printsupport2:Extension>
+
+        <!-- (c) PostScript file output -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPsName"
+              PrinterUri="printsink:print-to-ps" PreferredInputFormat="application/postscript"
+              OutputFileTypes="ps" PdcFile="Config\PrinterPs.pdc.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/postscript"/>
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+
+        <!-- (d) Cloud sink (NO OutputFileTypes → no Save-As dialog) -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterCloudName"
+              PrinterUri="printsink:print-to-cloud" PreferredInputFormat="application/oxps"
+              PdcFile="Config\PrinterCloud.pdc.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7"/>
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+
+        <!-- (e) PWG-Raster file output (raster pipeline) -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPwgrName"
+              PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps"
+              OutputFileTypes="pwg" PdcFile="Config\PrinterPwgr.pdc.xml"/>
+        </printsupport2:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+    <!-- privateNetworkClientServer only if a sink performs IPP/network I/O -->
+  </Capabilities>
+
+  <!-- In-process WinRT activation of background tasks (hosted by CsWinRT WinRT.Host.dll) -->
+  <Extensions>
+    <Extension Category="windows.activatableClass.inProcessServer">
+      <InProcessServer>
+        <Path>WinRT.Host.dll</Path>
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.VirtualPrinterBackgroundTask"      ThreadingModel="both"/>
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" ThreadingModel="both"/>
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportExtensionBackgroundTask" ThreadingModel="both"/>
+      </InProcessServer>
+    </Extension>
+    <Extension Category="windows.activatableClass.inProcessServer">
+      <InProcessServer>
+        <Path>PrintSink.Xps.dll</Path>
+        <ActivatableClass ActivatableClassId="PrintSink.Xps.XpsPageWatermarker"   ThreadingModel="both"/>
+        <ActivatableClass ActivatableClassId="PrintSink.Xps.XpsSequentialDocument" ThreadingModel="both"/>
+      </InProcessServer>
+    </Extension>
+  </Extensions>
+</Package>
+```
+
+**Manifest attribute rules enforced by design** (from the MSIX Print Support Virtual Printer spec):
+
+- `PreferredInputFormat` ∈ {`application/oxps`, `application/postscript`}; default OXPS. Anything else
+  fails installation — PrintSink only emits these two.
+- `OutputFileTypes` present ⇒ file printer + Save-As dialog ⇒ `GetTargetFileAsync()` returns a real
+  `StorageFile`. Absent ⇒ custom sink, no Save-As (cloud endpoint (d)).
+- `SupportedFormat MaxVersion` must be `Major.Minor` numeric — validated in the PDC/manifest lint step.
+- `PdcFile` mandatory and must be valid PDC XML — install fails otherwise; covered by a build-time
+  schema-validation MSBuild target.
+- `PdrFile` optional; present only where we ship localized custom features.
+
+---
+
+## 7. Detailed component design
+
+### 7.1 `PrintSink.Tasks.VirtualPrinterBackgroundTask` (the core sink)
+
+Implements `IBackgroundTask`. On `Run`:
+
+1. Cast `taskInstance.TriggerDetails` to `PrintWorkflowVirtualPrinterTriggerDetails`; take a
+   `BackgroundTaskDeferral`.
+2. Get `PrintWorkflowVirtualPrinterSession`; capture `session.Printer` (`IppPrintDevice`).
+3. **Subscribe `VirtualPrinterDataAvailable` before `session.Start()`** (strict ordering — late
+   subscription loses the event).
+
+On `VirtualPrinterDataAvailable(args)`:
+
+1. Resolve the endpoint from `printDevice.PrinterUri.AbsolutePath` → `EndpointKind` (PrintSink.Core).
+2. Read `args.SourceContent` (`ContentType`, `GetInputStream()`).
+3. Decide whether UI is needed (`IVirtualPrinterPolicy.IsUiRequired(printTicket, endpoint)`); if so and
+   `args.UILauncher.IsUILaunchEnabled()`, call `LaunchAndCompleteUIAsync()` and honor
+   `UserCanceled` → `Canceled`.
+4. Acquire the sink:
+   - file endpoints: `await args.GetTargetFileAsync()` → open R/W random-access stream;
+   - cloud endpoint: construct `CloudSink` (no target file).
+5. Transform per (source content type, endpoint):
+   - **OXPS → PDF/PWGR/PCLm**: optionally watermark via `PrintSink.Xps`, then
+     `args.GetPdlConverter(conversionType).ConvertPdlAsync(args.GetJobPrintTicket(), input, output)`.
+   - **PDF/PS passthrough** (declared `SupportedFormat`): `RandomAccessStream.CopyAndCloseAsync`.
+   - **OXPS → XPS file**: copy.
+6. `finally` → `args.CompleteJob(status)`; complete the deferral.
+
+The handler is a thin adapter; all branching/decision logic lives in `PrintSink.Core` behind
+`IVirtualPrinterJob` / `IPdlRouter` so it is unit-testable. The task class itself only marshals WinRT
+objects into and out of the core.
+
+**Conversion type mapping** (`PrintSink.Core.Pdl.PdlRouter`):
+
+| Source | Endpoint target | Action |
+| --- | --- | --- |
+| `application/oxps` | pdf | `XpsToPdf` (+ optional watermark) |
+| `application/oxps` | pwg | `XpsToPwgr` |
+| `application/oxps` | pclm | `XpsToPclm` |
+| `application/oxps` | xps/oxps | copy |
+| `application/pdf` | pdf | copy (passthrough) |
+| `application/postscript` | ps | copy (passthrough) |
+
+### 7.2 `PrintSink.Tasks.PrintSupportExtensionBackgroundTask`
+
+Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapabilitiesChanged`, and
+(API-gated) `PrinterSelected`. Implements:
+
+- **Print-ticket validation** → `SetPrintTicketValidationStatus(WorkflowPrintTicketValidationStatus.Resolved)`
+  after running `PrintSink.Core.Tickets` constraint checks.
+- **PDC regeneration** — delegates to `PrintSink.Core.Capabilities.PrintDeviceCapabilitiesEditor`, which
+  adds a custom namespace and injects custom features (media size/type, resolution, input/output bins,
+  staple, page order, etc.) into the live `XmlDocument`, then `UpdatePrintDeviceCapabilities`. The editor
+  is a pure function `(XmlDocument, IReadOnlyList<CustomFeature>) → XmlDocument`, fully unit tested.
+- **PDR localization** — when `GetCurrentPrintDeviceResources` is present, walks `.resw` subtrees under
+  the `ResourceLanguage` context and inserts any missing localized strings, then
+  `UpdatePrintDeviceResources`.
+- **MXDC image quality** — sets `args.MxdcImageQualityConfiguration` text/draft/normal/high/photo/auto/fax
+  to chosen `XpsImageQuality` values driven by current print quality.
+- **Printer-selected adaptive card** — builds an Adaptive Card and requests additional features/parameters
+  within `AllowedAdditionalFeaturesAndParametersCount`.
+
+**Concurrency hardening** (carried from the reference sample, mandatory in-process): a
+`RunHandlerSafely` wrapper with a `volatile bool _isCancelled`, an `Interlocked` active-handler counter,
+and `Canceled` handling, so a torn-down session (`0x3E3`) never propagates into the app process and the
+deferral is completed exactly once.
+
+### 7.3 `PrintSink.Tasks.PrintSupportWorkflowBackgroundTask`
+
+The physical-printer parity path (shared PSA `windows.printSupportWorkflow`). Implements `JobStarting`
+and `PdlModificationRequested`:
+
+- Negotiates the printer's document format (`document-format-default`/`-supported` via
+  `IppPrintDevice.GetPrinterAttributes`).
+- Optional watermark of OXPS.
+- `ConvertPrintTicketToJobAttributes` → mutate IPP attributes (e.g. drop `media-col/media-size` when the
+  size travels in the PDL header), with explicit `PrintWorkflowAttributesMergePolicy` choices.
+- Optional encrypted `job-password` via `msft-operation-attribute-col`.
+- `CreateJobOnPrinter[WithAttributes]` → convert/copy to target stream →
+  `CompleteStreamSubmission(Succeeded)`; abort via `AbortPrintFlow(reason)` on failure/cancel.
+
+### 7.4 `PrintSink.App` — activation router + UIs
+
+`App` (WinUI 3) routes activation via
+`AppInstance.GetCurrent().GetActivatedEventArgs().Kind`:
+
+- `Launch` → **ManagementPage** (diagnostics: list installed PrintSink queues, get/set
+  `UserDefaultPrintTicket`, trigger `RefreshPrintDeviceCapabilities`, IPP URL info).
+- `PrintSupportSettingsUI` → **SettingsPage**, created **modal to `OwnerWindowId`** via
+  `Win32Interop.GetWindowFromWindowId` (the v4 WinAppSDK requirement).
+- `PrintSupportJobUI` → **JobPreviewPage**; subscribes
+  `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
+  `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
+  persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
+
+Because the background task cannot mutate XPS while the UI is up, the UI→background handshake is: UI
+collects options → writes to local settings → returns `Completed` → background task reads options and
+performs the XPS-OM transform. This mirrors the documented constraint that only the background task may
+change PDL data.
+
+### 7.5 `PrintSink.Xps` (C++/WinRT)
+
+- `XpsPageWatermarker` — `SetWatermarkText(text, fontSize, xOffset, yOffset)`,
+  `SetWatermarkImage(path, dpiX, dpiY, w, h)`, `SetWatermarkImageEnabled(bool)`.
+- `XpsSequentialDocument` — wraps `PrintWorkflowObjectModelSourceFileContent`, raises
+  `XpsGenerationFailed`, exposes `GetWatermarkedStream(watermarker) → IInputStream`.
+- `XpsPageWrapper`, `SynchronizedSequentialStream` — page iteration + thread-safe streaming between the
+  XPS-OM producer thread and the consumer.
+
+Consumed from C# through `PrintSink.Xps.Projections` (CsWinRT-projected). Registration-free activation
+via a side-by-side manifest in the package.
+
+### 7.6 `PrintSink.Core` (the testable heart)
+
+Pure .NET. No `Windows.Graphics.Printing.*` event types leak in; instead thin **abstractions**:
+
+```
+IVirtualPrinterJob   { ContentType, EndpointUri, GetInput(), GetTarget(), GetPrintTicket(), Complete(status) }
+IPdlRouter           { PdlPlan Resolve(string contentType, VirtualEndpoint endpoint) }
+IPrintDeviceCapabilitiesEditor { XmlDocument Apply(XmlDocument pdc, IReadOnlyList<CustomFeature> features) }
+IIppAttributeMapper  { IDictionary<string,IppAttributeValue> FromPrintTicket(...); ... Remove(...); }
+ISettingsStore       { read/write watermark + job options }
+ISink                { Task WriteAsync(Stream pdl, ...) }  → FileSink, CloudSink
+```
+
+The `Tasks` classes implement adapters that wrap the real WinRT args into these interfaces. This is what
+makes ~90% of the logic unit-testable off the print stack (see §9).
+
+---
+
+## 8. Cross-cutting concerns
+
+- **Lifecycle / deferrals:** every background entry takes the task deferral first and completes it
+  exactly once in `finally`; event deferrals (`args.GetDeferral()`) are always completed. In-process
+  cancellation races are handled with the `Interlocked`/`volatile` pattern (§7.2).
+- **Threading:** XPS-OM runs on its own thread; `SynchronizedSequentialStream` bridges to the converter.
+  UI marshals via the WinUI dispatcher.
+- **Error model:** transform failures → `CompleteJob(Failed)` / `AbortPrintFlow(JobFailed)`; user cancel
+  → `Canceled`/`UserCanceled`. No exception is allowed to escape an in-process handler.
+- **Security:** least-privilege capabilities (`runFullTrust` required for PSA;
+  `privateNetworkClientServer` only if a sink does network I/O). Job passwords encrypted before being
+  placed in IPP operation attributes and cleared from settings immediately after use. Target files are
+  only those the user selected via the OS Save-As broker (no arbitrary path access).
+- **Localization:** queue display names and custom PDC features via `.resw` (`ms-resource:`), resolved
+  against `ResourceLanguage`.
+- **Observability:** `EventSource`/ETW tracing in `PrintSink.Core` (provider `PrintSink-Diagnostics`) for
+  job lifecycle, format decisions, conversion timings — usable with WPR/PerfView for field diagnosis.
+- **Versioning:** package `Version` Major.Minor.Build.Revision; `AppxAutoIncrementPackageRevision` on
+  publish.
+
+---
+
+## 9. Testing strategy
+
+Microsoft's current guidance for WinUI 3 / Windows App SDK is **MSTest running on the
+Microsoft.Testing.Platform (MTP)**, including the **packaged WinUI MSTest app template** for tests that
+must run inside the app's package identity. PrintSink uses MTP/MSTest 3.x on **.NET 10** throughout.
+
+### 9.1 Test layers
+
+1. **Unit tests — `PrintSink.Core.Tests`** (MSTest 3.x / MTP, plain .NET, runs under `dotnet test` and in
+   CI). Covers the bulk of the logic because Core has no print-stack dependency:
+   - `PdlRouter`: every (content type × endpoint) → expected `PdlPlan` (conversion type / copy /
+     reject). Table-driven `[DataRow]`.
+   - `PrintDeviceCapabilitiesEditor`: golden-file tests — input PDC + custom features → expected PDC
+     XML (custom media size/type/resolution/bins/staple/page-order; namespace injection; idempotency).
+   - `IppAttributeMapper`: print-ticket → attributes; `media-size` removal; merge-policy behavior;
+     encrypted job-password collection shape.
+   - `WatermarkOptions` round-trip through `ISettingsStore` (in-memory + local).
+   - Manifest lint: validate `PreferredInputFormat` ∈ allowed set, `MaxVersion` numeric, `PdcFile`
+     present, `OutputFileTypes` ↔ endpoint kind consistency (a unit test over the shipped manifest +
+     PDC files).
+2. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64): drive the C++/WinRT component through
+   its C# projection with a small fixture OXPS document; assert the watermarked stream is non-empty,
+   parses as valid XPS, and contains the watermark glyph run / image part. `XpsGenerationFailed` path
+   asserted with a corrupt fixture.
+3. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app, MTP): run with package
+   identity to validate activation routing logic, `OwnerWindowId` modality wiring, settings persistence
+   visible across the UI/background boundary, and ViewModel behavior. UI automation (optional) via
+   **Appium + WinAppDriver** for the Settings/Job pages.
+4. **End-to-end / manual print-stack validation — `docs/TESTING.md` runbook.** The live PSA activation
+   (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E is a
+   **scripted, deterministic manual gate**, executed on a clean Windows 11 26100+ VM with test-signing:
+   - Install the signed package; assert all five queues appear (`Get-Printer`).
+   - Print from Notepad/WordPad (CPD/Win32), from a WinRT app (MPD), and from Edge (PDF passthrough) to
+     each endpoint.
+   - Assert: PDF endpoint yields a valid PDF (verify header `%PDF-1.7`, page count); XPS endpoint yields
+     openable XPS; PS endpoint yields PostScript; cloud endpoint invokes the sink with no Save-As;
+     PWG-Raster endpoint yields valid PWG.
+   - Watermark: confirm overlay present in output.
+   - Settings UI: launch from printer preferences; confirm modality to owner; change a custom feature;
+     confirm `RefreshPrintDeviceCapabilities` reflects it.
+   - Cancel path: cancel in Job UI → `Canceled`, no output file written.
+   - PowerShell harness automates install + print-to-file + output assertions where the endpoint writes
+     a file, so most E2E checks are scripted even though activation is real.
+
+### 9.2 Test tooling
+
+- `Directory.Packages.props` pins: `MSTest` (3.x), `Microsoft.Testing.Platform`,
+  `Microsoft.Testing.Extensions.CodeCoverage`, `Microsoft.Windows.CsWinRT`, `Microsoft.WindowsAppSDK`.
+- Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
+  matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
+- CI runs unit + Xps + packaged-app tests on `windows-2025` runners (MSBuild, x64 and ARM64);
+  the E2E runbook is gated to a pre-release manual stage on a VM.
+
+---
+
+## 10. Build, packaging, deployment
+
+- **Build:** Visual Studio 2026 or MSBuild (`msbuild PrintSink.slnx /p:Platform=x64 /p:Configuration=Release`).
+  `dotnet` CLI is **not** supported for the full solution (C++/WinRT). Unit-test projects that don't
+  reference the native component still run under `dotnet test`.
+- **Build order:** `PrintSink.Xps` (.winmd+.dll) → `PrintSink.Xps.Projections` → `PrintSink.Core` →
+  `PrintSink.Tasks` (.winmd + WinRT.Host.dll) → `PrintSink.App` (packages everything). MSBuild targets
+  copy `PrintSink.Tasks.winmd` and the XPS side-by-side manifest into the package output, as in the
+  reference sample.
+- **Packaging:** single-project MSIX (`EnableMsixTooling`, `WindowsPackageType=MSIX`,
+  `WindowsAppSDKSelfContained=true`). Requires the **Single-project MSIX Packaging Tools** VS extension.
+- **Signing:** package signed with a trusted cert (`AppxPackageSigningEnabled=true`,
+  `PackageCertificateThumbprint`). For lab installs, enable test-signing and trust the dev cert.
+- **Architectures:** x64, ARM64, x86.
+- **Install / test:** Add-AppxPackage the signed `.msix`; queues install via the DEH. For debugging an
+  activation, use VS "Debug Installed App Package" with "Do not launch, but debug my code when it starts".
+
+---
+
+## 11. Coding standards (enforced)
+
+- **One type per file** — exactly one `class`/`struct`/`interface`/`enum`/`record`/`delegate` per `.cs`
+  file; filename = type name. Enforced via an analyzer rule + an `.editorconfig`/CI lint check.
+- **Triple-slash XML on all public members** — `<summary>`, `<param>`, `<returns>`, `<exception>` where
+  applicable; `GenerateDocumentationFile=true` and **CS1591 as error** so any undocumented public member
+  fails the build.
+- **Nullable enabled**; warnings as errors; .NET analyzers + `Microsoft.CodeAnalysis.NetAnalyzers` at
+  `AnalysisLevel=latest-all`.
+- **Async**: no sync-over-async in new code paths; the background-task adapters that must block (WinRT
+  event handlers are `void`) isolate blocking to the task boundary only.
+- Central Package Management; `Directory.Build.props` for shared TFM/lang/analyzer settings.
+
+---
+
+## 12. Resolved design decisions (no open questions)
+
+1. **Host stack:** Windows App SDK / WinUI 3 on .NET 10 (not UWP). — Most modern, matches current MS
+   sample.
+2. **Native XPS via C++/WinRT** (`PrintSink.Xps`) — required for full watermarking; accept MSBuild-only
+   build.
+3. **Five virtual printers** (PDF, XPS, PostScript, Cloud, PWG-Raster) to exercise file output, cloud
+   sink, passthrough, and every PDL converter — full feature coverage, not a single demo queue.
+4. **`PrintSink.Core` abstraction layer** so logic is unit-testable off the print stack — chosen over
+   testing only via the live stack.
+5. **Virtual Printer WinRT projections:** target a Windows App SDK / `Microsoft.Windows.SDK.NET.Ref`
+   build that projects the `Windows.Devices.Printers` v4 / virtual-printer surface. The reference sample
+   temporarily `#if VIRTUAL_PRINTER_DISABLED`-gated these because an older ref package conflicted with
+   `IppPrintDevice`. **PrintSink resolves this by pinning to a ref package that includes the projections;
+   if a conflict remains, author a scoped CsWinRT projection (`CsWinRTIncludes`) for the virtual-printer
+   namespace only.** No functionality is left disabled.
+6. **Testing:** MSTest 3.x on Microsoft.Testing.Platform, .NET 10, plus scripted manual E2E — the current
+   Microsoft-recommended stack.
+7. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.
+
+---
+
+## 13. Milestones
+
+| M | Deliverable |
+| --- | --- |
+| M0 | Repo scaffolding: `PrintSink.slnx`, `Directory.Build/Packages.props`, `.editorconfig`, `global.json`, analyzer/doc gates. |
+| M1 | `PrintSink.Core` + full unit tests (router, PDC editor, IPP mapper, settings). |
+| M2 | `PrintSink.Xps` + `PrintSink.Xps.Projections` + component tests (watermark fidelity). |
+| M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
+| M4 | `PrintSink.App`: activation router, Settings UI (modal), Job UI/preview, Management UI. |
+| M5 | Manifest (5 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
+| M6 | Packaged-app tests + E2E runbook automation; CI on windows-2025 (x64/ARM64). |
+| M7 | Full E2E validation pass on clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
+
+**Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
+E2E runbook passes on a clean Windows 11 26100+ VM for all five queues including watermark, settings
+modality, PDC refresh, and cancel paths.
+
+---
+
+## 14. References
+
+- Print Support App v4 API design guide —
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/print-support-app-v4-design-guide
+- MSIX Manifest Specification for Print Support Virtual Printer —
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/msix-manifest-specification-print-support-virtual-printer
+- End of servicing plan for third-party printer drivers on Windows —
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/print/end-of-servicing-plan-for-third-party-printer-drivers-on-windows
+- Reference sample (local): `D:\SRC\print-oem-samples\PSASamples\WinAppSdk\CSharp`
+- `Windows.Graphics.Printing.PrintSupport`, `Windows.Graphics.Printing.Workflow`,
+  `Windows.Devices.Printers` WinRT namespaces; CsWinRT (`Microsoft.Windows.CsWinRT`).
