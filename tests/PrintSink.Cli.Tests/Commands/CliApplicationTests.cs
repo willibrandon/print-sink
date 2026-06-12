@@ -184,6 +184,32 @@ public sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies manifest linting rejects foreground print-support UI extensions without entry points.
+    /// </summary>
+    [TestMethod]
+    public async Task Manifest_lint_rejects_foreground_extension_without_entry_point()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            """<printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="PrintSink.App.App" />""",
+            """<printsupport:Extension Category="windows.printSupportJobUI" />""",
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("windows.printSupportJobUI extension must declare EntryPoint", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies PDC validation rejects files that are not Print Schema Framework v2 PDC documents.
     /// </summary>
     [TestMethod]

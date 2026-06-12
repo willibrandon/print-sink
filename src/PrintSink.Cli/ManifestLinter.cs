@@ -102,6 +102,7 @@ internal static class ManifestLinter
             }
         }
 
+        ValidateForegroundPrintSupportExtensions(package, messages);
         ValidateVirtualPrinters(package, Path.GetDirectoryName(Path.GetFullPath(manifestPath))!, messages);
 
         if (messages.Count == 0)
@@ -110,6 +111,23 @@ internal static class ManifestLinter
         }
 
         return new ManifestLintResult(messages.All(message => !message.StartsWith("error:", StringComparison.Ordinal)), messages);
+    }
+
+    private static void ValidateForegroundPrintSupportExtensions(XElement package, List<string> messages)
+    {
+        foreach (string category in new[] { "windows.printSupportSettingsUI", "windows.printSupportJobUI" })
+        {
+            XElement? extension = package
+                .Descendants()
+                .FirstOrDefault(element =>
+                    element.Name.LocalName == "Extension"
+                    && string.Equals((string?)element.Attribute("Category"), category, StringComparison.OrdinalIgnoreCase));
+
+            if (extension is not null && string.IsNullOrWhiteSpace((string?)extension.Attribute("EntryPoint")))
+            {
+                messages.Add($"error: {category} extension must declare EntryPoint.");
+            }
+        }
     }
 
     private static void ValidateVirtualPrinters(XElement package, string manifestDirectory, List<string> messages)
