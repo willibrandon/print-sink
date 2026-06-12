@@ -3,6 +3,10 @@ extern alias PrintSinkApp;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.VisualStudio.TestTools.UnitTesting.AppContainer;
+using PrintSink.Core.Endpoints;
+using PrintSink.Core.Settings;
+using PrintSink.Core.Watermark;
+using Windows.Storage;
 
 namespace PrintSink.App.Tests;
 
@@ -12,6 +16,11 @@ namespace PrintSink.App.Tests;
 [TestClass]
 public sealed class AppPackageTests
 {
+    /// <summary>
+    /// Gets or sets the MSTest context for cancellation-aware async work.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
     /// <summary>
     /// Verifies the management activation route exposes the shell metadata used at normal launch.
     /// </summary>
@@ -38,5 +47,79 @@ public sealed class AppPackageTests
         Grid grid = new();
 
         Assert.AreEqual(0, grid.MinWidth);
+    }
+
+    /// <summary>
+    /// Verifies app settings resolve under the package-local storage root.
+    /// </summary>
+    [TestMethod]
+    public void App_settings_store_uses_package_local_settings_directory()
+    {
+        string localFolderPath = ApplicationData.Current.LocalFolder.Path;
+        string expected = PackagedSettingsDirectory.GetRootDirectory(localFolderPath);
+        string actual = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.GetRootDirectory();
+
+        Assert.AreEqual(expected, actual);
+        Assert.IsTrue(actual.StartsWith(localFolderPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Verifies foreground job options are visible through package-backed local settings and consumed once.
+    /// </summary>
+    [TestMethod]
+    public async Task App_settings_store_round_trips_job_options_inside_package_identity()
+    {
+        string rootDirectory = ResetPackagedSettingsDirectory();
+        LocalSettingsStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.Create();
+        JobPasswordOptions passwordOptions = JobPasswordOptions.FromPassword("package-secret", "sha2-256");
+        JobProcessingOptions expected = new(
+            new WatermarkOptions(
+                true,
+                new TextWatermark("Package job", "Segoe UI", 36, 0.4, -25, 0, 0),
+                null),
+            passwordOptions);
+
+        try
+        {
+            await store
+                .SaveJobProcessingOptionsAsync(expected, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            JobProcessingOptions? actual = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            JobProcessingOptions? missing = await store
+                .ConsumeJobProcessingOptionsAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsNotNull(actual);
+            Assert.IsTrue(actual.WatermarkOptions.Enabled);
+            Assert.AreEqual("Package job", actual.WatermarkOptions.Text?.Text);
+            Assert.IsNotNull(actual.JobPasswordOptions);
+            Assert.AreEqual("sha2-256", actual.JobPasswordOptions.EncryptionMethod);
+            CollectionAssert.AreEqual(
+                passwordOptions.GetEncryptedPassword(),
+                actual.JobPasswordOptions.GetEncryptedPassword());
+            Assert.IsNull(missing);
+        }
+        finally
+        {
+            DeleteDirectory(rootDirectory);
+        }
+    }
+
+    private static string ResetPackagedSettingsDirectory()
+    {
+        string rootDirectory = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.GetRootDirectory();
+        DeleteDirectory(rootDirectory);
+        return rootDirectory;
+    }
+
+    private static void DeleteDirectory(string rootDirectory)
+    {
+        if (Directory.Exists(rootDirectory))
+        {
+            Directory.Delete(rootDirectory, true);
+        }
     }
 }

@@ -23,6 +23,6 @@ internal static class AppSettingsStoreFactory
     /// <returns>The root settings directory.</returns>
     internal static string GetRootDirectory()
     {
-        return Path.Combine(ApplicationData.Current.LocalFolder.Path, "Settings");
+        return PackagedSettingsDirectory.GetRootDirectory(ApplicationData.Current.LocalFolder.Path);
     }
 }

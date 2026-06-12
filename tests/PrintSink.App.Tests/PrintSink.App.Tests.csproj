@@ -62,6 +62,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\PrintSink.Core\PrintSink.Core.csproj" />
     <ProjectReference Include="..\..\src\PrintSink.App\PrintSink.App.csproj" Aliases="PrintSinkApp" />
   </ItemGroup>
 
