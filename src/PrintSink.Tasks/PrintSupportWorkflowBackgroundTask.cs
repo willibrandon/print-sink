@@ -2,6 +2,7 @@ using Windows.ApplicationModel.Background;
 using Windows.Devices.Printers;
 using Windows.Graphics.Printing.Workflow;
 using Windows.Storage.Streams;
+using PrintSink.Core.Pdl;
 using PrintSink.Core.Tickets;
 using WinRtIppAttributeValue = Windows.Devices.Printers.IppAttributeValue;
 
@@ -56,10 +57,9 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             bool succeeded = state.Run(() =>
             {
                 PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
-                PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, sourceContent.ContentType);
-                RandomAccessStream.CopyAndCloseAsync(
-                    sourceContent.GetInputStream(),
-                    targetStream.GetOutputStream()).AsTask().GetAwaiter().GetResult();
+                PrinterDocumentFormatPlan plan = GetDocumentFormatPlan(args, sourceContent.ContentType);
+                PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, plan.TargetContentType);
+                SubmitPdl(args, sourceContent, targetStream, plan);
 
                 targetStream.CompleteStreamSubmission(PrintWorkflowSubmittedStatus.Succeeded);
             });
@@ -77,6 +77,30 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             deferral.Complete();
             state.CompleteWhenIdle();
+        }
+    }
+
+    private static PrinterDocumentFormatPlan GetDocumentFormatPlan(
+        PrintWorkflowPdlModificationRequestedEventArgs args,
+        string sourceContentType)
+    {
+        try
+        {
+            Dictionary<string, WinRtIppAttributeValue> attributes = new(
+                args.PrinterJob.Printer.GetPrinterAttributes(
+                    ["document-format-default", "document-format-supported"]),
+                StringComparer.OrdinalIgnoreCase);
+
+            string? defaultDocumentFormat = GetFirstKeyword(attributes, "document-format-default");
+            IReadOnlyList<string> supportedDocumentFormats = GetKeywords(attributes, "document-format-supported");
+            return PrinterDocumentFormatSelector.Select(
+                sourceContentType,
+                defaultDocumentFormat,
+                supportedDocumentFormats);
+        }
+        catch (Exception)
+        {
+            return PrinterDocumentFormatSelector.Select(sourceContentType, null, []);
         }
     }
 
@@ -98,6 +122,27 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             operationAttributes,
             PrintWorkflowAttributesMergePolicy.DoNotMergeWithPrintTicket,
             PrintWorkflowAttributesMergePolicy.MergePreferPrintTicketOnConflict);
+    }
+
+    private static void SubmitPdl(
+        PrintWorkflowPdlModificationRequestedEventArgs args,
+        PrintWorkflowPdlSourceContent sourceContent,
+        PrintWorkflowPdlTargetStream targetStream,
+        PrinterDocumentFormatPlan plan)
+    {
+        if (plan.ConversionKind is null)
+        {
+            RandomAccessStream.CopyAndCloseAsync(
+                sourceContent.GetInputStream(),
+                targetStream.GetOutputStream()).AsTask().GetAwaiter().GetResult();
+            return;
+        }
+
+        PrintWorkflowPdlConverter converter = args.GetPdlConverter(ToWinRtConversionType(plan.ConversionKind.Value));
+        converter.ConvertPdlAsync(
+            args.PrinterJob.GetJobPrintTicket(),
+            sourceContent.GetInputStream(),
+            targetStream.GetOutputStream()).AsTask().GetAwaiter().GetResult();
     }
 
     private static IDictionary<string, WinRtIppAttributeValue> ApplyMergePolicy(
@@ -140,5 +185,33 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             attributes[removal.AttributeName] = WinRtIppAttributeValue.CreateCollection(updatedCollection);
         }
+    }
+
+    private static string? GetFirstKeyword(
+        IReadOnlyDictionary<string, WinRtIppAttributeValue> attributes,
+        string attributeName)
+    {
+        IReadOnlyList<string> values = GetKeywords(attributes, attributeName);
+        return values.Count == 0 ? null : values[0];
+    }
+
+    private static IReadOnlyList<string> GetKeywords(
+        IReadOnlyDictionary<string, WinRtIppAttributeValue> attributes,
+        string attributeName)
+    {
+        return attributes.TryGetValue(attributeName, out WinRtIppAttributeValue? value)
+            ? [.. value.GetKeywordArray()]
+            : [];
+    }
+
+    private static PrintWorkflowPdlConversionType ToWinRtConversionType(PdlConversionKind conversionKind)
+    {
+        return conversionKind switch
+        {
+            PdlConversionKind.XpsToPdf => PrintWorkflowPdlConversionType.XpsToPdf,
+            PdlConversionKind.XpsToPwgRaster => PrintWorkflowPdlConversionType.XpsToPwgr,
+            PdlConversionKind.XpsToPclm => PrintWorkflowPdlConversionType.XpsToPclm,
+            _ => throw new ArgumentOutOfRangeException(nameof(conversionKind), conversionKind, "Unknown PDL conversion kind."),
+        };
     }
 }
