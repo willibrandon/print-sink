@@ -73,10 +73,34 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" />
+        <PackageReference Include="Microsoft.Windows.CsWinRT" />
         <PackageReference Include="Microsoft.WindowsAppSDK" />
         <PackageReference Include="Microsoft.UI.Reactor" />
         <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
+        <ProjectReference Include="..\PrintSink.Tasks\PrintSink.Tasks.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
+
+    <Target Name="IncludePrintSinkTasksActivationAssets" AfterTargets="Build">
+        <ItemGroup>
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.dll" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.dll" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.dll.mui" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.runtimeconfig.json" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.Shim.dll" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Runtime.dll" />
+        </ItemGroup>
+        <Copy
+            SourceFiles="@(_PrintSinkTasksActivationAsset)"
+            DestinationFolder="$(OutputPath)"
+            SkipUnchangedFiles="true"
+            Condition="Exists('%(_PrintSinkTasksActivationAsset.Identity)')" />
+        <Copy
+            SourceFiles="@(_PrintSinkTasksActivationAsset)"
+            DestinationFolder="$(OutputPath)AppX"
+            SkipUnchangedFiles="true"
+            Condition="Exists('$(OutputPath)AppX') And Exists('%(_PrintSinkTasksActivationAsset.Identity)')" />
+    </Target>
 
     <!--
         Debug-only: enable the Reactor devtools surface so the *devtools* flag

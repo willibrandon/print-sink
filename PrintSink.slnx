@@ -23,6 +23,11 @@
     </Project>
     <Project Path="src/PrintSink.Cli/PrintSink.Cli.csproj" />
     <Project Path="src/PrintSink.Core/PrintSink.Core.csproj" />
+    <Project Path="src/PrintSink.Tasks/PrintSink.Tasks.csproj">
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|X86" Project="X86" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PrintSink.Cli.Tests/PrintSink.Cli.Tests.csproj" />

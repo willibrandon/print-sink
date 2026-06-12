@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkWindowsTargetFramework)</TargetFramework>
+    <RootNamespace>PrintSink.Tasks</RootNamespace>
+    <Platforms>x64;ARM64;X86</Platforms>
+    <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <CsWinRTComponent>true</CsWinRTComponent>
+    <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+    <!--
+      CsWinRT generates public ABI marshalling code for activatable classes during compilation.
+      That code is not project-authored API surface and cannot carry XML docs, so CS1591 is
+      excluded only for this WinRT component project.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" />
+    <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
+  </ItemGroup>
+</Project>
