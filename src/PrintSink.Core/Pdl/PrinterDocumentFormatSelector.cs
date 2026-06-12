@@ -1,3 +1,5 @@
+using PrintSink.Core.Tickets;
+
 namespace PrintSink.Core.Pdl;
 
 /// <summary>
@@ -37,6 +39,31 @@ public static class PrinterDocumentFormatSelector
         return new PrinterDocumentFormatPlan(sourceContentType, sourceContentType, sourceFormat, sourceFormat, null);
     }
 
+    /// <summary>
+    /// Selects the target document format from a printer-attribute read result.
+    /// </summary>
+    /// <param name="sourceContentType">The source PDL content type.</param>
+    /// <param name="attributes">The printer-attribute read result.</param>
+    /// <returns>The selected submission plan.</returns>
+    public static PrinterDocumentFormatPlan Select(
+        string sourceContentType,
+        IppAttributeReadResult attributes)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceContentType);
+        ArgumentNullException.ThrowIfNull(attributes);
+
+        if (attributes.Status != IppAttributeReadStatus.Succeeded)
+        {
+            return Select(sourceContentType, null, []);
+        }
+
+        string? defaultDocumentFormat = GetFirstValue(attributes.Attributes, "document-format-default");
+        IReadOnlyList<string> supportedDocumentFormats = GetValues(
+            attributes.Attributes,
+            "document-format-supported");
+        return Select(sourceContentType, defaultDocumentFormat, supportedDocumentFormats);
+    }
+
     private static IEnumerable<string> GetCandidates(
         string? defaultDocumentFormat,
         IEnumerable<string> supportedDocumentFormats)
@@ -54,6 +81,23 @@ public static class PrinterDocumentFormatSelector
                 yield return supportedFormat;
             }
         }
+    }
+
+    private static string? GetFirstValue(
+        IReadOnlyDictionary<string, IppAttributeValue> attributes,
+        string attributeName)
+    {
+        IReadOnlyList<string> values = GetValues(attributes, attributeName);
+        return values.Count == 0 ? null : values[0];
+    }
+
+    private static IReadOnlyList<string> GetValues(
+        IReadOnlyDictionary<string, IppAttributeValue> attributes,
+        string attributeName)
+    {
+        return attributes.TryGetValue(attributeName, out IppAttributeValue? value)
+            ? value.Values
+            : [];
     }
 
     private static bool TryCreatePlan(

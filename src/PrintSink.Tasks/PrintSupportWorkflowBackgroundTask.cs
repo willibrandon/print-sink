@@ -6,6 +6,7 @@ using PrintSink.Core.Pdl;
 using PrintSink.Core.Settings;
 using PrintSink.Core.Tickets;
 using Windows.Security.Cryptography;
+using CoreIppAttributeValue = PrintSink.Core.Tickets.IppAttributeValue;
 using WinRtIppAttributeValue = Windows.Devices.Printers.IppAttributeValue;
 
 namespace PrintSink.Tasks;
@@ -119,6 +120,12 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         PrintWorkflowPdlModificationRequestedEventArgs args,
         string sourceContentType)
     {
+        return PrinterDocumentFormatSelector.Select(sourceContentType, ReadDocumentFormatAttributes(args));
+    }
+
+    private static IppAttributeReadResult ReadDocumentFormatAttributes(
+        PrintWorkflowPdlModificationRequestedEventArgs args)
+    {
         try
         {
             Dictionary<string, WinRtIppAttributeValue> attributes = new(
@@ -126,16 +133,15 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                     ["document-format-default", "document-format-supported"]),
                 StringComparer.OrdinalIgnoreCase);
 
-            string? defaultDocumentFormat = GetFirstKeyword(attributes, "document-format-default");
-            IReadOnlyList<string> supportedDocumentFormats = GetKeywords(attributes, "document-format-supported");
-            return PrinterDocumentFormatSelector.Select(
-                sourceContentType,
-                defaultDocumentFormat,
-                supportedDocumentFormats);
+            return IppAttributeReadResult.Success(ToCoreAttributes(attributes));
         }
-        catch (Exception)
+        catch (Exception ex) when (IsUnsupportedAttributeRead(ex))
         {
-            return PrinterDocumentFormatSelector.Select(sourceContentType, null, []);
+            return IppAttributeReadResult.NotSupported(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return IppAttributeReadResult.Failed(ex.Message);
         }
     }
 
@@ -244,21 +250,27 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         }
     }
 
-    private static string? GetFirstKeyword(
-        IReadOnlyDictionary<string, WinRtIppAttributeValue> attributes,
-        string attributeName)
+    private static Dictionary<string, CoreIppAttributeValue> ToCoreAttributes(
+        IReadOnlyDictionary<string, WinRtIppAttributeValue> attributes)
     {
-        IReadOnlyList<string> values = GetKeywords(attributes, attributeName);
-        return values.Count == 0 ? null : values[0];
+        Dictionary<string, CoreIppAttributeValue> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, WinRtIppAttributeValue> attribute in attributes)
+        {
+            IReadOnlyList<string> values = [.. attribute.Value.GetKeywordArray()];
+            if (values.Count > 0)
+            {
+                result[attribute.Key] = new CoreIppAttributeValue(attribute.Key, values);
+            }
+        }
+
+        return result;
     }
 
-    private static IReadOnlyList<string> GetKeywords(
-        IReadOnlyDictionary<string, WinRtIppAttributeValue> attributes,
-        string attributeName)
+    private static bool IsUnsupportedAttributeRead(Exception ex)
     {
-        return attributes.TryGetValue(attributeName, out WinRtIppAttributeValue? value)
-            ? [.. value.GetKeywordArray()]
-            : [];
+        const int ErrorNotSupported = unchecked((int)0x80070032);
+
+        return ex is NotSupportedException || ex.HResult == ErrorNotSupported;
     }
 
     private static PrintWorkflowPdlConversionType ToWinRtConversionType(PdlConversionKind conversionKind)

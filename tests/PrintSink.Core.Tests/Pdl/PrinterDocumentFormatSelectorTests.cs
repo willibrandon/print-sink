@@ -1,4 +1,5 @@
 using PrintSink.Core.Pdl;
+using PrintSink.Core.Tickets;
 
 namespace PrintSink.Core.Tests.Pdl;
 
@@ -63,6 +64,58 @@ public sealed class PrinterDocumentFormatSelectorTests
             "application/pdf",
             "image/pwg-raster",
             ["application/octet-stream"]);
+
+        Assert.AreEqual("application/pdf", plan.TargetContentType);
+        Assert.IsNull(plan.ConversionKind);
+    }
+
+    /// <summary>
+    /// Verifies that a successful IPP attribute read drives document-format selection.
+    /// </summary>
+    [TestMethod]
+    public void Select_uses_successful_ipp_attribute_read()
+    {
+        IppAttributeReadResult attributes = IppAttributeReadResult.Success(
+            new Dictionary<string, IppAttributeValue>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["document-format-default"] = IppAttributeValue.Single(
+                    "document-format-default",
+                    "image/pwg-raster"),
+                ["document-format-supported"] = new IppAttributeValue(
+                    "document-format-supported",
+                    ["application/pdf", "image/pwg-raster"]),
+            });
+
+        PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select("application/oxps", attributes);
+
+        Assert.AreEqual("image/pwg-raster", plan.TargetContentType);
+        Assert.AreEqual(PdlConversionKind.XpsToPwgRaster, plan.ConversionKind);
+    }
+
+    /// <summary>
+    /// Verifies that unsupported IPP attribute reads fall back to source format submission.
+    /// </summary>
+    [TestMethod]
+    public void Select_falls_back_when_ipp_attribute_read_is_not_supported()
+    {
+        IppAttributeReadResult attributes = IppAttributeReadResult.NotSupported(
+            "Virtual printer attribute reads are not supported.");
+
+        PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select("application/oxps", attributes);
+
+        Assert.AreEqual("application/oxps", plan.TargetContentType);
+        Assert.IsNull(plan.ConversionKind);
+    }
+
+    /// <summary>
+    /// Verifies that failed IPP attribute reads fall back to source format submission.
+    /// </summary>
+    [TestMethod]
+    public void Select_falls_back_when_ipp_attribute_read_fails()
+    {
+        IppAttributeReadResult attributes = IppAttributeReadResult.Failed("Printer attribute query failed.");
+
+        PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select("application/pdf", attributes);
 
         Assert.AreEqual("application/pdf", plan.TargetContentType);
         Assert.IsNull(plan.ConversionKind);
