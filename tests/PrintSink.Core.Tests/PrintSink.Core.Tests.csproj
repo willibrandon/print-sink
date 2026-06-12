@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="MSTest" />
+    <ProjectReference Include="..\..\src\PrintSink.Core\PrintSink.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
