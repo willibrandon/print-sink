@@ -29,13 +29,19 @@ internal static class PdcCommand
             Description = "Path to a Print Device Capabilities XML file.",
             Required = true,
         };
+        Option<string?> pdrOption = new("--pdr")
+        {
+            Description = "Optional path to the matching Print Device Resources XML file.",
+        };
 
-        Command command = new("validate", "Validate basic PDC XML shape.");
+        Command command = new("validate", "Validate PDC XML shape and optional PDR resources.");
         command.Options.Add(pdcOption);
+        command.Options.Add(pdrOption);
         command.SetAction(parseResult =>
         {
             string pdcPath = parseResult.GetRequiredValue(pdcOption);
-            ValidationResult result = PdcValidator.Validate(pdcPath);
+            string? pdrPath = parseResult.GetValue(pdrOption);
+            ValidationResult result = PdcValidator.Validate(pdcPath, pdrPath);
 
             foreach (string message in result.Messages)
             {

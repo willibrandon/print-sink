@@ -291,6 +291,68 @@ public sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies PDC validation accepts matching PDR resources.
+    /// </summary>
+    [TestMethod]
+    public async Task Pdc_validate_accepts_matching_pdr_resources()
+    {
+        string directory = CreateTestDirectory();
+        string pdcPath = Path.Combine(directory, "Printer.pdc.xml");
+        string pdrPath = Path.Combine(directory, "Printer.pdr.xml");
+        await File.WriteAllTextAsync(pdcPath, ValidCustomPdc, TestContext.CancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(pdrPath, ValidCustomPdr, TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync(
+                "pdc",
+                "validate",
+                "--pdc",
+                pdcPath,
+                "--pdr",
+                pdrPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.Success, exitCode);
+            Assert.Contains("ok: PDC/PDR XML shape is valid.", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies PDC validation rejects PDR files missing custom feature resources.
+    /// </summary>
+    [TestMethod]
+    public async Task Pdc_validate_rejects_pdr_missing_custom_resources()
+    {
+        string directory = CreateTestDirectory();
+        string pdcPath = Path.Combine(directory, "Printer.pdc.xml");
+        string pdrPath = Path.Combine(directory, "Printer.pdr.xml");
+        await File.WriteAllTextAsync(pdcPath, ValidCustomPdc, TestContext.CancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(pdrPath, "<root />", TestContext.CancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            (int exitCode, string output, _) = await InvokeAsync(
+                "pdc",
+                "validate",
+                "--pdc",
+                pdcPath,
+                "--pdr",
+                pdrPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("PDR is missing resource 'schemas.printsink.dev/printing/keywords/WatermarkMode'", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies ticket mapping reports IPP attributes produced by Core.
     /// </summary>
     [TestMethod]
@@ -522,6 +584,25 @@ public sealed class CliApplicationTests
         <?xml version="1.0" encoding="utf-8"?>
         <root>
           <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+        </root>
+        """;
+
+    private const string ValidCustomPdc = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <psf2:PrintDeviceCapabilities
+          xmlns:psf2="http://schemas.microsoft.com/windows/2013/12/printing/printschemaframework2"
+          xmlns:printsink="https://schemas.printsink.dev/printing/keywords">
+          <printsink:WatermarkMode psf2:psftype="Feature">
+            <printsink:WatermarkOff psf2:psftype="Option" psf2:default="true" />
+          </printsink:WatermarkMode>
+        </psf2:PrintDeviceCapabilities>
+        """;
+
+    private const string ValidCustomPdr = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <root>
+          <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+          <data name="schemas.printsink.dev/printing/keywords/WatermarkOff"><value>Off</value></data>
         </root>
         """;
 
