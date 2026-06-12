@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root>
-    <data name="schemas.microsoft.com/windows/2015/02/printing/printschemakeywords/printsink/Dpi600"><value>600 dpi</value></data>
-    <data name="schemas.microsoft.com/windows/2015/02/printing/printschemakeywords/printsink/JobWatermarkMode"><value>Watermark</value></data>
-    <data name="schemas.microsoft.com/windows/2015/02/printing/printschemakeywords/printsink/WatermarkOff"><value>Off</value></data>
-    <data name="schemas.microsoft.com/windows/2015/02/printing/printschemakeywords/printsink/WatermarkText"><value>Text</value></data>
-    <data name="schemas.microsoft.com/windows/2015/02/printing/printschemakeywords/printsink/WatermarkImage"><value>Image</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/Dpi600"><value>600 dpi</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/ArchivePaper"><value>Archive paper</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/WatermarkOff"><value>Off</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/WatermarkText"><value>Text</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/WatermarkImage"><value>Image</value></data>
     <data name="schemas.microsoft.com/windows/2018/04/printing/printschemakeywords/Ipp/Alternate"><value>Alternate tray</value></data>
     <data name="schemas.microsoft.com/windows/2018/04/printing/printschemakeywords/Ipp/AlternateRoll"><value>Alternate roll</value></data>
     <data name="schemas.microsoft.com/windows/2018/04/printing/printschemakeywords/Ipp/Bottom"><value>Bottom tray</value></data>
