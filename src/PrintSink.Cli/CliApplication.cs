@@ -46,7 +46,7 @@ internal static class CliApplication
         rootCommand.Subcommands.Add(PdcCommand.Create(context));
         rootCommand.Subcommands.Add(TicketCommand.Create(context));
         rootCommand.Subcommands.Add(SinkCommand.Create(context));
-        rootCommand.Subcommands.Add(TuiCommand.Create());
+        rootCommand.Subcommands.Add(TuiCommand.Create(context));
 
         return rootCommand;
     }
