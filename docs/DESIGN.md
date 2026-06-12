@@ -571,6 +571,7 @@ Pure .NET. No `Windows.Graphics.Printing.*` event types leak in; instead thin **
 IVirtualPrinterJob   { ContentType, EndpointUri, GetInput(), GetTarget(), GetPrintTicket(), Complete(status) }
 IPdlRouter           { PdlPlan Resolve(string contentType, VirtualEndpoint endpoint) }
 IPdlTransformer      { TransformAsync(Stream pdl, VirtualEndpoint endpoint, PdlPlan plan, WatermarkOptions options) }
+IXpsWatermarker      { ApplyAsync(Stream xps, PdlFormat sourceFormat, WatermarkOptions options) }
 IPrintDeviceCapabilitiesEditor { XmlDocument Apply(XmlDocument pdc, IReadOnlyList<CustomFeature> features) }
 IIppAttributeMapper  { IDictionary<string,IppAttributeValue> FromPrintTicket(...); ... Remove(...); }
 ISettingsStore       { read/write watermark + job options }

@@ -124,7 +124,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             new WinRtPdlConverter(args, printTicket),
             sinkResolver,
             settingsStore,
-            jobProcessingOptions);
+            jobProcessingOptions,
+            new XpsWatermarkPdlTransformer(new UnsupportedXpsWatermarker()));
     }
 
     private static async Task DrainCloudSinkAsync(
