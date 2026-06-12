@@ -3,6 +3,8 @@ using PrintSink.Core.Abstractions;
 using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using PrintSink.Core.Settings;
+using PrintSink.Core.Watermark;
 
 namespace PrintSink.Core.Processing;
 
@@ -14,6 +16,7 @@ public sealed class VirtualPrinterJobProcessor
     private readonly IPdlRouter router;
     private readonly IPdlConverter converter;
     private readonly IEndpointSinkResolver sinkResolver;
+    private readonly ISettingsStore? settingsStore;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
@@ -22,6 +25,22 @@ public sealed class VirtualPrinterJobProcessor
     /// <param name="converter">The PDL converter.</param>
     /// <param name="sinkResolver">The endpoint sink resolver.</param>
     public VirtualPrinterJobProcessor(IPdlRouter router, IPdlConverter converter, IEndpointSinkResolver sinkResolver)
+        : this(router, converter, sinkResolver, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
+    /// </summary>
+    /// <param name="router">The PDL router.</param>
+    /// <param name="converter">The PDL converter.</param>
+    /// <param name="sinkResolver">The endpoint sink resolver.</param>
+    /// <param name="settingsStore">The settings store used to load job options.</param>
+    public VirtualPrinterJobProcessor(
+        IPdlRouter router,
+        IPdlConverter converter,
+        IEndpointSinkResolver sinkResolver,
+        ISettingsStore? settingsStore)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(converter);
@@ -30,6 +49,7 @@ public sealed class VirtualPrinterJobProcessor
         this.router = router;
         this.converter = converter;
         this.sinkResolver = sinkResolver;
+        this.settingsStore = settingsStore;
     }
 
     /// <summary>
@@ -127,11 +147,14 @@ public sealed class VirtualPrinterJobProcessor
             }
 
             ISink sink = sinkResolver.Resolve(job.Endpoint);
+            WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
+                .ConfigureAwait(false);
             SinkWriteContext context = new(
                 job.Endpoint,
                 PdlFormatInfo.GetContentType(plan.TargetFormat),
                 null,
-                target);
+                target,
+                watermarkOptions);
 
             await sink.WriteAsync(output, context, cancellationToken).ConfigureAwait(false);
         }
@@ -147,5 +170,19 @@ public sealed class VirtualPrinterJobProcessor
     private static long GetElapsedMilliseconds(long started)
     {
         return (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+    }
+
+    private async Task<WatermarkOptions> GetWatermarkOptionsAsync(
+        VirtualEndpoint endpoint,
+        CancellationToken cancellationToken)
+    {
+        if (settingsStore is null)
+        {
+            return WatermarkOptions.Disabled;
+        }
+
+        return await settingsStore
+            .GetWatermarkOptionsAsync(endpoint.PrinterUri, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

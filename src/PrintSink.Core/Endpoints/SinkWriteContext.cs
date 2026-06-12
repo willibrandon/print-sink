@@ -1,5 +1,7 @@
 namespace PrintSink.Core.Endpoints;
 
+using PrintSink.Core.Watermark;
+
 /// <summary>
 /// Describes a sink write operation.
 /// </summary>
@@ -12,7 +14,7 @@ public sealed class SinkWriteContext
     /// <param name="contentType">The content type being written.</param>
     /// <param name="targetPath">The target file path, when the endpoint writes to a file path.</param>
     public SinkWriteContext(VirtualEndpoint endpoint, string contentType, string? targetPath)
-        : this(endpoint, contentType, targetPath, null)
+        : this(endpoint, contentType, targetPath, null, WatermarkOptions.Disabled)
     {
     }
 
@@ -24,14 +26,34 @@ public sealed class SinkWriteContext
     /// <param name="targetPath">The target file path, when the endpoint writes to a file path.</param>
     /// <param name="targetStream">The target stream, when the endpoint writes to an OS-provided stream.</param>
     public SinkWriteContext(VirtualEndpoint endpoint, string contentType, string? targetPath, Stream? targetStream)
+        : this(endpoint, contentType, targetPath, targetStream, WatermarkOptions.Disabled)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SinkWriteContext"/> class.
+    /// </summary>
+    /// <param name="endpoint">The target endpoint.</param>
+    /// <param name="contentType">The content type being written.</param>
+    /// <param name="targetPath">The target file path, when the endpoint writes to a file path.</param>
+    /// <param name="targetStream">The target stream, when the endpoint writes to an OS-provided stream.</param>
+    /// <param name="watermarkOptions">The watermark options captured by the foreground UI.</param>
+    public SinkWriteContext(
+        VirtualEndpoint endpoint,
+        string contentType,
+        string? targetPath,
+        Stream? targetStream,
+        WatermarkOptions watermarkOptions)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
+        ArgumentNullException.ThrowIfNull(watermarkOptions);
 
         Endpoint = endpoint;
         ContentType = contentType;
         TargetPath = targetPath;
         TargetStream = targetStream;
+        WatermarkOptions = watermarkOptions;
     }
 
     /// <summary>
@@ -53,4 +75,9 @@ public sealed class SinkWriteContext
     /// Gets the target stream, when the endpoint writes to an OS-provided stream.
     /// </summary>
     public Stream? TargetStream { get; }
+
+    /// <summary>
+    /// Gets the watermark options captured by the foreground UI.
+    /// </summary>
+    public WatermarkOptions WatermarkOptions { get; }
 }

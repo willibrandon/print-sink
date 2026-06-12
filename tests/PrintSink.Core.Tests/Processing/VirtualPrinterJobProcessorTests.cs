@@ -3,6 +3,8 @@ using PrintSink.Core.Abstractions;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Processing;
+using PrintSink.Core.Settings;
+using PrintSink.Core.Watermark;
 
 namespace PrintSink.Core.Tests.Processing;
 
@@ -108,6 +110,42 @@ public sealed class VirtualPrinterJobProcessorTests
         Assert.AreSame(expected, result.Exception);
     }
 
+    /// <summary>
+    /// Verifies job processing loads persisted watermark options for the endpoint.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_adds_persisted_watermark_options_to_sink_context()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        WatermarkOptions expected = new(
+            true,
+            new TextWatermark("Draft", "Segoe UI", 48, 0.35, -30, 0, 0),
+            null);
+        InMemorySettingsStore settingsStore = new();
+        await settingsStore
+            .SaveWatermarkOptionsAsync(endpoint.PrinterUri, expected)
+            .ConfigureAwait(false);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.PdfContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("%PDF-1.7"),
+            false);
+        CapturingSink sink = new();
+        VirtualPrinterJobProcessor processor = new(
+            new PdlRouter(),
+            new TestPdlConverter([]),
+            new EndpointSinkResolver(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = sink,
+            }),
+            settingsStore);
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
+        Assert.AreSame(expected, sink.Context?.WatermarkOptions);
+    }
+
     private static VirtualPrinterJobProcessor CreateProcessor(ISink sink, IPdlConverter converter)
     {
         return new VirtualPrinterJobProcessor(
@@ -117,5 +155,33 @@ public sealed class VirtualPrinterJobProcessorTests
             {
                 [EndpointKind.Pdf] = sink,
             }));
+    }
+
+    private sealed class InMemorySettingsStore : ISettingsStore
+    {
+        private readonly Dictionary<Uri, WatermarkOptions> watermarkOptions = [];
+
+        /// <inheritdoc />
+        public Task<WatermarkOptions> GetWatermarkOptionsAsync(
+            Uri printerUri,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(printerUri);
+
+            return Task.FromResult(watermarkOptions.GetValueOrDefault(printerUri, WatermarkOptions.Disabled));
+        }
+
+        /// <inheritdoc />
+        public Task SaveWatermarkOptionsAsync(
+            Uri printerUri,
+            WatermarkOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(printerUri);
+            ArgumentNullException.ThrowIfNull(options);
+
+            watermarkOptions[printerUri] = options;
+            return Task.CompletedTask;
+        }
     }
 }

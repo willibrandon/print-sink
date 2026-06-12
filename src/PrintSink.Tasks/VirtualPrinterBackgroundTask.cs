@@ -111,7 +111,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         return new VirtualPrinterJobProcessor(
             new PdlRouter(),
             new WinRtPdlConverter(args, printTicket),
-            sinkResolver);
+            sinkResolver,
+            PackagedSettingsStoreFactory.Create());
     }
 
     private static async Task DrainCloudSinkAsync(
