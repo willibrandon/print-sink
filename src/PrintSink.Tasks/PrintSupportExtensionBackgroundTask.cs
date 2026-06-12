@@ -222,11 +222,43 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     """;
 
                 args.SetAdaptiveCard(Windows.UI.Shell.AdaptiveCardBuilder.CreateAdaptiveCardFromJson(json));
+                RequestAdditionalPrintDialogFields(args);
             });
         }
         finally
         {
             deferral.Complete();
         }
+    }
+
+    private static void RequestAdditionalPrintDialogFields(PrintSupportPrinterSelectedEventArgs args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        PrintSupportPrintTicketElement[] additionalFeatures =
+        [
+            CreatePrintTicketElement("PageMediaType"),
+            CreatePrintTicketElement("PageOutputQuality"),
+        ];
+        PrintSupportPrintTicketElement[] additionalParameters =
+        [
+            CreatePrintTicketElement("JobCopiesAllDocuments"),
+        ];
+
+        uint requestedCount = (uint)(additionalFeatures.Length + additionalParameters.Length);
+        if (requestedCount <= args.AllowedAdditionalFeaturesAndParametersCount)
+        {
+            args.SetAdditionalFeatures(additionalFeatures);
+            args.SetAdditionalParameters(additionalParameters);
+        }
+    }
+
+    private static PrintSupportPrintTicketElement CreatePrintTicketElement(string localName)
+    {
+        return new PrintSupportPrintTicketElement
+        {
+            LocalName = localName,
+            NamespaceUri = PrintSchemaNamespaces.Keywords,
+        };
     }
 }
