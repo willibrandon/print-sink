@@ -58,7 +58,7 @@
     package has not yet been restored.
   -->
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix"/>
+    <ProjectCapability Include="Msix" />
   </ItemGroup>
 
   <!--
@@ -77,19 +77,11 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\PrintSink.Tasks\PrintSink.Tasks.csproj" />
-  </ItemGroup>
-
   <Target Name="IncludePrintSinkTasksWinmd" AfterTargets="Build">
     <ItemGroup>
       <_PrintSinkTasksWinmdSource Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd" />
     </ItemGroup>
-    <Copy
-      SourceFiles="@(_PrintSinkTasksWinmdSource)"
-      DestinationFolder="$(OutputPath)"
-      SkipUnchangedFiles="true"
-      Condition="Exists('..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd')" />
+    <Copy SourceFiles="@(_PrintSinkTasksWinmdSource)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd')" />
   </Target>
 
   <!--
