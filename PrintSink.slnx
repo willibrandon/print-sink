@@ -31,7 +31,12 @@
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|X86" Project="X86" />
     </Project>
-    <Project Path="src/PrintSink.Xps/PrintSink.Xps.vcxproj">
+    <Project Path="src/PrintSink.Xps.Projections/PrintSink.Xps.Projections.csproj">
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|X86" Project="X86" />
+    </Project>
+    <Project Path="src/PrintSink.Xps/PrintSink.Xps.vcxproj" Id="d9b962fb-4096-47ec-8c97-ce41e9d68df7">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|X86" Project="Win32" />

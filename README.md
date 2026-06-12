@@ -13,11 +13,10 @@ The app installs PrintSink queues for PDF, XPS/OXPS, PostScript, cloud/custom ro
 
 ## Build
 
-Restore and build the current managed solution:
+Build the full solution:
 
 ```powershell
-dotnet restore PrintSink.slnx
-dotnet build PrintSink.slnx -p:Platform=x64
+.\build.ps1
 ```
 
 Run tests:
@@ -25,6 +24,8 @@ Run tests:
 ```powershell
 dotnet test PrintSink.slnx --no-build -p:Platform=x64
 ```
+
+`dotnet build` is useful for managed checks. The full solution uses MSBuild because `PrintSink.Xps` is a C++/WinRT project.
 
 Run the packaged app from the project profile:
 

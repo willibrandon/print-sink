@@ -125,7 +125,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             sinkResolver,
             settingsStore,
             jobProcessingOptions,
-            new XpsWatermarkPdlTransformer(new UnsupportedXpsWatermarker()));
+            new XpsWatermarkPdlTransformer(new ProjectedXpsWatermarker()));
     }
 
     private static async Task DrainCloudSinkAsync(

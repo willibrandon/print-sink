@@ -12,7 +12,7 @@ This project is MSIX-shaped. Keep the package manifest, launch profiles, assets,
 ## Restore
 
 ```powershell
-msbuild PrintSink.slnx /t:Restore /p:Platform=x64
+.\build.ps1 -Target Restore
 ```
 
 Central Package Management is enabled. Package versions belong in `Directory.Packages.props`, not in individual project references.
@@ -20,10 +20,16 @@ Central Package Management is enabled. Package versions belong in `Directory.Pac
 ## Debug Build
 
 ```powershell
-msbuild PrintSink.slnx /p:Configuration=Debug /p:Platform=x64
+.\build.ps1
 ```
 
 Use an explicit platform for WinUI, CsWinRT, and C++/WinRT projects. Local x64 is the default development target.
+
+The script runs:
+
+```powershell
+msbuild .\PrintSink.slnx /t:Build /p:Configuration=Debug /p:Platform=x64
+```
 
 ## Visual Studio
 
@@ -63,7 +69,7 @@ The CLI is not a print activation entry point. It is for validation, diagnostics
 For the full MSIX path, use MSBuild or Visual Studio:
 
 ```powershell
-msbuild PrintSink.slnx /p:Configuration=Release /p:Platform=x64
+.\build.ps1 -Configuration Release
 ```
 
 Signing and deployment are package concerns. Lab installs should use a trusted test certificate. Store or production packaging must use the final publisher identity and certificate.

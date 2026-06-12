@@ -93,6 +93,7 @@
         <PackageReference Include="Microsoft.UI.Reactor" />
         <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
         <ProjectReference Include="..\PrintSink.Tasks\PrintSink.Tasks.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\PrintSink.Xps.Projections\PrintSink.Xps.Projections.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\PrintSink.Xps\PrintSink.Xps.vcxproj" ReferenceOutputAssembly="false" Condition="'$(MSBuildRuntimeType)' != 'Core'" />
     </ItemGroup>
 
@@ -106,6 +107,9 @@
         <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd">
             <TargetPath>PrintSink.Xps.winmd</TargetPath>
         </AppxPackagePayload>
+        <AppxPackagePayload Include="..\PrintSink.Xps.Projections\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Xps.Projections.dll">
+            <TargetPath>PrintSink.Xps.Projections.dll</TargetPath>
+        </AppxPackagePayload>
     </ItemGroup>
 
     <Target Name="IncludePrintSinkTasksActivationAssets" AfterTargets="Build">
@@ -117,6 +121,7 @@
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.runtimeconfig.json" />
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.Shim.dll" />
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Runtime.dll" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Xps.Projections\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Xps.Projections.dll" />
         </ItemGroup>
         <Copy
             SourceFiles="@(_PrintSinkTasksActivationAsset)"

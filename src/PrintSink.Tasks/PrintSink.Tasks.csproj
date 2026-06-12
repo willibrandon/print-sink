@@ -19,5 +19,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CsWinRT" />
     <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
+    <ProjectReference Include="..\PrintSink.Xps.Projections\PrintSink.Xps.Projections.csproj" />
   </ItemGroup>
 </Project>

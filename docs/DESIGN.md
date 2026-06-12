@@ -692,7 +692,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 
 ## 10. Build, packaging, deployment
 
-- **Build:** Visual Studio 2026 or MSBuild (`msbuild PrintSink.slnx /p:Platform=x64 /p:Configuration=Release`).
+- **Build:** Visual Studio 2026 or the root build script (`.\build.ps1 -Configuration Release`).
   `dotnet` CLI is **not** supported for the full solution (C++/WinRT). Unit-test projects that don't
   reference the native component still run under `dotnet test`; `PrintSink.Cli` also builds and runs
   under `dotnet run`.

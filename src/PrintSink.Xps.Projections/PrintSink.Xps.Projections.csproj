@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkWindowsTargetFramework)</TargetFramework>
+    <RootNamespace>PrintSink.Xps.Projections</RootNamespace>
+    <Platforms>x64;ARM64;X86</Platforms>
+    <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+    <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+    <CsWinRTPrivateProjection>true</CsWinRTPrivateProjection>
+    <CsWinRTIncludesPrivate>
+      PrintSink.Xps.IXpsPageWatermarker;
+      PrintSink.Xps.XpsPageWatermarker
+    </CsWinRTIncludesPrivate>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
+    <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
+    <PrintSinkXpsWinmd>..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.winmd</PrintSinkXpsWinmd>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" />
+    <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
+    <ProjectReference Include="..\PrintSink.Xps\PrintSink.Xps.vcxproj" ReferenceOutputAssembly="false" Condition="'$(MSBuildRuntimeType)' != 'Core'" />
+    <CsWinRTInputs Include="$(PrintSinkXpsWinmd)" />
+  </ItemGroup>
+
+  <Target Name="ValidatePrintSinkXpsMetadata" BeforeTargets="ResolveReferences" Condition="'$(MSBuildRuntimeType)' != 'Core' And !Exists('$(PrintSinkXpsWinmd)')">
+    <Error Text="PrintSink.Xps metadata was not found at '$(PrintSinkXpsWinmd)'. Build PrintSink.Xps with Visual Studio/MSBuild before generating the C# projection." />
+  </Target>
+
+</Project>
