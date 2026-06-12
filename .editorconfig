@@ -10,6 +10,7 @@ indent_style = space
 indent_size = 4
 dotnet_diagnostic.CS1591.severity = error
 dotnet_diagnostic.MSTEST0046.severity = error
+dotnet_diagnostic.SYSLIB1054.severity = error
 
 [*.{xml,csproj,props,targets,slnx}]
 indent_size = 2
