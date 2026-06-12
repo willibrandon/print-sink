@@ -7,11 +7,13 @@ PrintSink uses fast automated checks for code that can run without the print bro
 Run this before committing:
 
 ```powershell
-dotnet build PrintSink.slnx --no-restore -p:Platform=x64
-dotnet test PrintSink.slnx --no-build -p:Platform=x64
+.\build.ps1 -Configuration Debug -Platform x64
+dotnet test .\PrintSink.slnx --no-build -p:Platform=x64
 ```
 
 The build treats warnings as errors. Do not disable analyzers to pass the gate; fix the source issue.
+Use the build script for the full gate because `PrintSink.Xps` is a native C++/WinRT project and
+requires MSBuild or Visual Studio.
 
 ## CLI Validation
 
