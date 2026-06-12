@@ -10,8 +10,20 @@ public sealed class SinkWriteContext
     /// </summary>
     /// <param name="endpoint">The target endpoint.</param>
     /// <param name="contentType">The content type being written.</param>
-    /// <param name="targetPath">The target file path, when the endpoint writes to a file.</param>
+    /// <param name="targetPath">The target file path, when the endpoint writes to a file path.</param>
     public SinkWriteContext(VirtualEndpoint endpoint, string contentType, string? targetPath)
+        : this(endpoint, contentType, targetPath, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SinkWriteContext"/> class.
+    /// </summary>
+    /// <param name="endpoint">The target endpoint.</param>
+    /// <param name="contentType">The content type being written.</param>
+    /// <param name="targetPath">The target file path, when the endpoint writes to a file path.</param>
+    /// <param name="targetStream">The target stream, when the endpoint writes to an OS-provided stream.</param>
+    public SinkWriteContext(VirtualEndpoint endpoint, string contentType, string? targetPath, Stream? targetStream)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
@@ -19,6 +31,7 @@ public sealed class SinkWriteContext
         Endpoint = endpoint;
         ContentType = contentType;
         TargetPath = targetPath;
+        TargetStream = targetStream;
     }
 
     /// <summary>
@@ -32,7 +45,12 @@ public sealed class SinkWriteContext
     public string ContentType { get; }
 
     /// <summary>
-    /// Gets the target file path, when the endpoint writes to a file.
+    /// Gets the target file path, when the endpoint writes to a file path.
     /// </summary>
     public string? TargetPath { get; }
+
+    /// <summary>
+    /// Gets the target stream, when the endpoint writes to an OS-provided stream.
+    /// </summary>
+    public Stream? TargetStream { get; }
 }
