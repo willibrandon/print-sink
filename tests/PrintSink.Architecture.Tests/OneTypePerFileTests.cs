@@ -37,7 +37,7 @@ public sealed class OneTypePerFileTests
 
             if (typeNames.Length == 1)
             {
-                string fileName = Path.GetFileNameWithoutExtension(sourceFile);
+                string fileName = GetExpectedTypeName(sourceFile);
                 if (!string.Equals(fileName, typeNames[0], StringComparison.Ordinal))
                 {
                     failures.Add($"{SourceFileDiscovery.RelativePath(repositoryRoot, sourceFile)} declares '{typeNames[0]}' but the file name is '{fileName}'.");
@@ -58,4 +58,11 @@ public sealed class OneTypePerFileTests
         };
     }
 
+    private static string GetExpectedTypeName(string sourceFile)
+    {
+        string fileName = Path.GetFileNameWithoutExtension(sourceFile);
+        return fileName.EndsWith(".xaml", StringComparison.Ordinal)
+            ? Path.GetFileNameWithoutExtension(fileName)
+            : fileName;
+    }
 }

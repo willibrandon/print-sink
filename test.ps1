@@ -11,25 +11,40 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $testProjects = @(
-    'tests\PrintSink.Architecture.Tests\PrintSink.Architecture.Tests.csproj',
-    'tests\PrintSink.Cli.Tests\PrintSink.Cli.Tests.csproj',
-    'tests\PrintSink.Core.Tests\PrintSink.Core.Tests.csproj',
-    'tests\PrintSink.Xps.Tests\PrintSink.Xps.Tests.csproj'
+    @{
+        Path = 'tests\PrintSink.Architecture.Tests\PrintSink.Architecture.Tests.csproj'
+        UsePlatform = $false
+    },
+    @{
+        Path = 'tests\PrintSink.Cli.Tests\PrintSink.Cli.Tests.csproj'
+        UsePlatform = $false
+    },
+    @{
+        Path = 'tests\PrintSink.Core.Tests\PrintSink.Core.Tests.csproj'
+        UsePlatform = $false
+    },
+    @{
+        Path = 'tests\PrintSink.Xps.Tests\PrintSink.Xps.Tests.csproj'
+        UsePlatform = $true
+    }
 )
 
 $resultsDirectory = Join-Path $PSScriptRoot "artifacts\test-results\$Platform"
 New-Item -ItemType Directory -Force -Path $resultsDirectory | Out-Null
 
 foreach ($testProject in $testProjects) {
-    $projectPath = Join-Path $PSScriptRoot $testProject
+    $projectPath = Join-Path $PSScriptRoot $testProject.Path
     $arguments = @(
         'test',
         '--project',
         $projectPath,
         '--configuration',
-        $Configuration,
-        "-p:Platform=$Platform"
+        $Configuration
     )
+
+    if ($testProject.UsePlatform) {
+        $arguments += "-p:Platform=$Platform"
+    }
 
     if ($NoBuild) {
         $arguments += '--no-build'

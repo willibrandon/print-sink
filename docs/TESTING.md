@@ -9,14 +9,17 @@ Run this before committing:
 ```powershell
 .\build.ps1 -Configuration Debug -Platform x64
 .\test.ps1 -Configuration Debug -Platform x64 -NoBuild
+.\test-app.ps1 -Configuration Debug -Platform x64 -NoBuild
 .\test-coverage.ps1 -Configuration Debug -Platform x64
 ```
 
 The build treats warnings as errors. Do not disable analyzers to pass the gate; fix the source issue.
 Use the build script for the full gate because `PrintSink.Xps` is a native C++/WinRT project and
-requires MSBuild or Visual Studio. The test script runs the MSTest projects through the .NET 10
-Microsoft.Testing.Platform runner; it does not call `dotnet test` on the solution file because the
-solution also contains the native `PrintSink.Xps` project.
+requires MSBuild or Visual Studio. The test script runs the plain MSTest projects through the .NET 10
+Microsoft.Testing.Platform runner; the packaged app test script uses Visual Studio's test platform
+against the generated `.appxrecipe` so the WinUI test host runs with package identity. The scripts do
+not call `dotnet test` on the solution file because the solution also contains the native
+`PrintSink.Xps` project.
 
 ## Continuous Integration
 

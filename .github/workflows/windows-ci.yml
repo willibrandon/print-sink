@@ -60,6 +60,10 @@ jobs:
         shell: pwsh
         run: .\test.ps1 -Configuration Debug -Platform ${{ matrix.platform }} -NoBuild
 
+      - name: Packaged app tests
+        shell: pwsh
+        run: .\test-app.ps1 -Configuration Debug -Platform ${{ matrix.platform }} -NoBuild
+
       - name: Core coverage
         shell: pwsh
         run: .\test-coverage.ps1 -Configuration Debug -Platform ${{ matrix.platform }}
