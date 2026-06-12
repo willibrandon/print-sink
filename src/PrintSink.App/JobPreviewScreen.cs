@@ -3,7 +3,6 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
 using PrintSink.Core.Settings;
 using PrintSink.Core.Watermark;
-using Windows.Foundation;
 using Windows.Graphics.Printing.Workflow;
 using Windows.Storage;
 using static Microsoft.UI.Reactor.Factories;
@@ -385,52 +384,4 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         return Math.Min(Math.Max(value, min), max);
     }
 
-    private sealed class JobUiDeferralState
-    {
-        private PrintWorkflowConfiguration? configuration;
-        private Deferral? pdlDeferral;
-        private Deferral? notificationDeferral;
-
-        public void SetPdl(PrintWorkflowConfiguration nextConfiguration, Deferral nextDeferral)
-        {
-            ArgumentNullException.ThrowIfNull(nextConfiguration);
-            ArgumentNullException.ThrowIfNull(nextDeferral);
-
-            configuration = nextConfiguration;
-            CompletePdl();
-            pdlDeferral = nextDeferral;
-        }
-
-        public void SetNotification(Deferral nextDeferral)
-        {
-            ArgumentNullException.ThrowIfNull(nextDeferral);
-
-            CompleteNotification();
-            notificationDeferral = nextDeferral;
-        }
-
-        public void AbortAndComplete()
-        {
-            configuration?.AbortPrintFlow(PrintWorkflowJobAbortReason.UserCanceled);
-            CompleteAll();
-        }
-
-        public void CompleteAll()
-        {
-            CompletePdl();
-            CompleteNotification();
-        }
-
-        private void CompletePdl()
-        {
-            pdlDeferral?.Complete();
-            pdlDeferral = null;
-        }
-
-        private void CompleteNotification()
-        {
-            notificationDeferral?.Complete();
-            notificationDeferral = null;
-        }
-    }
 }

@@ -136,5 +136,4 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         await pdl.CopyToAsync(Stream.Null, cancellationToken).ConfigureAwait(false);
     }
 
-    private readonly record struct JobUiCompletionResult(bool ShouldProcess, bool UsedForegroundUi);
 }

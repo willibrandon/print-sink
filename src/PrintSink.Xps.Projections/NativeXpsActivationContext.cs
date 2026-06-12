@@ -85,17 +85,4 @@ internal sealed partial class NativeXpsActivationContext : IDisposable
     [LibraryImport("kernel32.dll")]
     private static partial void ReleaseActCtx(nint context);
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct ActivationContext
-    {
-        internal int Size;
-        internal uint Flags;
-        internal nint Source;
-        internal ushort ProcessorArchitecture;
-        internal ushort LanguageId;
-        internal nint AssemblyDirectory;
-        internal nint ResourceName;
-        internal nint ApplicationName;
-        internal nint Module;
-    }
 }
