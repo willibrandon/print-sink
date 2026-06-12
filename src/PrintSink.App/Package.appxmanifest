@@ -119,6 +119,15 @@
             PdcFile="Config\PrinterPwgRaster.pdc.xml"
             PdrFile="Config\PrinterPwgRaster.pdr.xml" />
         </printsupport2:Extension>
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter
+            DisplayName="ms-resource:PclmPrintDisplayName"
+            PrinterUri="printsink:print-to-pclm"
+            PreferredInputFormat="application/oxps"
+            OutputFileTypes="pclm"
+            PdcFile="Config\PrinterPclm.pdc.xml"
+            PdrFile="Config\PrinterPclm.pdr.xml" />
+        </printsupport2:Extension>
       </Extensions>
     </Application>
   </Applications>

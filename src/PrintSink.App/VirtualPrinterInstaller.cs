@@ -124,6 +124,7 @@ internal static class VirtualPrinterInstaller
             EndpointKind.PostScript => "PrinterPostScript",
             EndpointKind.Cloud => "PrinterCloud",
             EndpointKind.PwgRaster => "PrinterPwgRaster",
+            EndpointKind.Pclm => "PrinterPclm",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported endpoint kind."),
         };
     }

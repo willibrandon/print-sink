@@ -39,6 +39,7 @@ dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\C
 dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\Config\PrinterPostScript.pdc.xml --pdr src\PrintSink.App\Config\PrinterPostScript.pdr.xml
 dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\Config\PrinterCloud.pdc.xml --pdr src\PrintSink.App\Config\PrinterCloud.pdr.xml
 dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\Config\PrinterPwgRaster.pdc.xml --pdr src\PrintSink.App\Config\PrinterPwgRaster.pdr.xml
+dotnet run --project src\PrintSink.Cli -- pdc validate --pdc src\PrintSink.App\Config\PrinterPclm.pdc.xml --pdr src\PrintSink.App\Config\PrinterPclm.pdr.xml
 ```
 
 Useful fixture checks:
@@ -83,7 +84,7 @@ The script validates the installed package before provisioning:
 
 - `printsink-app.exe` app execution alias.
 - all print-support foreground/background extensions.
-- all five virtual-printer manifest entries.
+- all six virtual-printer manifest entries.
 - packaged PDC/PDR files for each queue.
 - `WinRT.Host.dll`, `PrintSink.Tasks.winmd`, `PrintSink.Xps.dll`, and the registered activatable classes.
 
@@ -97,6 +98,7 @@ The harness must assert these queues:
 - `PrintSink - PostScript`
 - `PrintSink - Cloud`
 - `PrintSink - PWG Raster`
+- `PrintSink - PCLm`
 
 The automated E2E suite is extended as features land:
 
@@ -115,6 +117,7 @@ Output assertions:
 - XPS/OXPS opens in the Windows viewer or another XPS reader.
 - PostScript starts with `%!PS`.
 - PWG Raster output is non-empty and recognized by the chosen PWG inspection tool.
+- PCLm output is non-empty and recognized by the chosen PCLm inspection tool.
 - Watermark text or image appears on rendered pages when enabled.
 
 The CI job records the package version, Windows build, architecture, source application, target queue, and output result for each run.

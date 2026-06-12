@@ -177,7 +177,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 
 | # | Feature | Contract / API | Component | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries + `VirtualPrinterManager` | Manifest + headless provisioning | PDF, XPS, PostScript, Cloud, PWG-Raster endpoints |
+| 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries + `VirtualPrinterManager` | Manifest + headless provisioning | PDF, XPS, PostScript, Cloud, PWG-Raster, PCLm endpoints |
 | 2 | Receive spooled PDL + content type | `PrintWorkflowVirtualPrinterSession.VirtualPrinterDataAvailable`, `args.SourceContent` | `VirtualPrinterBackgroundTask` | |
 | 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest | Per-queue |
 | 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router | e.g. Edge → PDF passthrough |
@@ -322,7 +322,7 @@ identity and manifest extensions.
 ## 6. MSIX manifest design
 
 The manifest is the single source of truth for which queues exist and which contracts route to which
-entry points. PrintSink declares **five virtual printers** to exercise every code path, plus the three
+entry points. PrintSink declares **six virtual printers** to exercise every code path, plus the three
 shared PSA contracts, plus the in-process WinRT activation hosts.
 
 ```xml
@@ -406,6 +406,14 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPwgrName"
               PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps"
               OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml"/>
+        </printsupport2:Extension>
+
+        <!-- (f) PCLm file output (mobile raster pipeline) -->
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow"
+                                 EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPclmName"
+              PrinterUri="printsink:print-to-pclm" PreferredInputFormat="application/oxps"
+              OutputFileTypes="pclm" PdcFile="Config\PrinterPclm.pdc.xml" PdrFile="Config\PrinterPclm.pdr.xml"/>
         </printsupport2:Extension>
       </Extensions>
     </Application>
@@ -675,11 +683,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    as scripted Windows automation on a GitHub `windows-2025` runner when possible and on a clean
    Windows 11 26100+ VM for package-signing or desktop-interaction cases the hosted runner cannot expose:
    - Install the signed package, run `printsink-app.exe --install-virtual-printers`, and assert all
-     five queues appear (`Get-Printer`).
+     six queues appear (`Get-Printer`).
    - Print from scripted Win32 and WinRT fixtures, plus PDF passthrough fixtures, to each endpoint.
    - Assert: PDF endpoint yields a valid PDF (verify header `%PDF-1.7`, page count); XPS endpoint yields
      openable XPS; PS endpoint yields PostScript; cloud endpoint invokes the sink with no Save-As;
-     PWG-Raster endpoint yields valid PWG.
+     PWG-Raster endpoint yields valid PWG; PCLm endpoint yields valid PCLm.
    - Watermark: assert overlay present in rendered output.
    - Settings UI: launch from printer preferences through UI automation; assert modality to owner; change
      a custom feature; assert `RefreshPrintDeviceCapabilities` reflects it.
@@ -746,8 +754,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    retaining the packaged MSIX shape required by PSA activation.
 3. **Native XPS via C++/WinRT** (`PrintSink.Xps`) — required for full watermarking; accept MSBuild-only
    build.
-4. **Five virtual printers** (PDF, XPS, PostScript, Cloud, PWG-Raster) to exercise file output, cloud
-   sink, passthrough, and every PDL converter — full feature coverage, not a single demo queue.
+4. **Six virtual printers** (PDF, XPS, PostScript, Cloud, PWG-Raster, PCLm) to exercise file output,
+   cloud sink, passthrough, and every PDL converter — full feature coverage, not a single demo queue.
 5. **`PrintSink.Core` abstraction layer** so logic is unit-testable off the print stack — chosen over
    testing only via the live stack.
 6. **CLI/TUI model:** `System.CommandLine` for scriptable commands and Hex1b for terminal UI. The
@@ -773,12 +781,12 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M2 | `PrintSink.Xps` + `PrintSink.Xps.Projections` + component tests (watermark fidelity). |
 | M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
 | M4 | `PrintSink.App`: Reactor activation router, Settings UI (modal), Job UI/preview, Management UI; `PrintSink.Cli tui` Hex1b dashboard. |
-| M5 | Manifest (5 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
+| M5 | Manifest (6 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
 | M6 | Packaged-app tests + E2E automation; CI on windows-2025 (x64/ARM64). |
 | M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
-E2E automation passes for all five queues including watermark, settings modality, PDC refresh, and
+E2E automation passes for all six queues including watermark, settings modality, PDC refresh, and
 cancel paths.
 
 ---

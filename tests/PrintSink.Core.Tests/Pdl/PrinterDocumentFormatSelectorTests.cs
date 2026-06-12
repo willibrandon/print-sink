@@ -40,6 +40,21 @@ public sealed class PrinterDocumentFormatSelectorTests
     }
 
     /// <summary>
+    /// Verifies that XPS can be converted to a default PCLm document format.
+    /// </summary>
+    [TestMethod]
+    public void Select_uses_pclm_default_when_xps_conversion_exists()
+    {
+        PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
+            "application/oxps",
+            "application/pclm",
+            ["application/pdf"]);
+
+        Assert.AreEqual("application/pclm", plan.TargetContentType);
+        Assert.AreEqual(PdlConversionKind.XpsToPclm, plan.ConversionKind);
+    }
+
+    /// <summary>
     /// Verifies that the first supported convertible format is used when the default is not usable.
     /// </summary>
     [TestMethod]

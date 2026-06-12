@@ -19,7 +19,8 @@ $expectedQueues = @(
     'PrintSink - XPS',
     'PrintSink - PostScript',
     'PrintSink - Cloud',
-    'PrintSink - PWG Raster'
+    'PrintSink - PWG Raster',
+    'PrintSink - PCLm'
 )
 
 $expectedVirtualPrinters = @(
@@ -70,6 +71,14 @@ $expectedVirtualPrinters = @(
         outputFileTypes = 'pwg'
         pdcFile = 'Config\PrinterPwgRaster.pdc.xml'
         pdrFile = 'Config\PrinterPwgRaster.pdr.xml'
+        supportedFormats = @()
+    },
+    [ordered]@{
+        printerUri = 'printsink:print-to-pclm'
+        preferredInputFormat = 'application/oxps'
+        outputFileTypes = 'pclm'
+        pdcFile = 'Config\PrinterPclm.pdc.xml'
+        pdrFile = 'Config\PrinterPclm.pdr.xml'
         supportedFormats = @()
     }
 )

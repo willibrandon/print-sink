@@ -25,6 +25,7 @@ internal static class EndpointParser
             "POSTSCRIPT" or "POST-SCRIPT" or "PS" => EndpointKind.PostScript,
             "CLOUD" => EndpointKind.Cloud,
             "PWG" or "PWG-RASTER" or "PWGRASTER" => EndpointKind.PwgRaster,
+            "PCLM" or "PCL-M" => EndpointKind.Pclm,
             _ => default,
         };
 

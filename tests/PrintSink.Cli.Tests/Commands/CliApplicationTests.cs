@@ -27,6 +27,7 @@ public sealed class CliApplicationTests
         Assert.Contains("Installed", output);
         Assert.Contains("PrintSink - PDF", output);
         Assert.Contains("PrintSink - PWG Raster", output);
+        Assert.Contains("PrintSink - PCLm", output);
     }
 
     /// <summary>
@@ -450,7 +451,7 @@ public sealed class CliApplicationTests
 
         await File.WriteAllTextAsync(Path.Combine(directory, "Package.appxmanifest"), manifest, TestContext.CancellationToken).ConfigureAwait(false);
 
-        foreach (string prefix in new[] { "Pdf", "Xps", "PostScript", "Cloud", "PwgRaster" })
+        foreach (string prefix in new[] { "Pdf", "Xps", "PostScript", "Cloud", "PwgRaster", "Pclm" })
         {
             await File.WriteAllTextAsync(
                 Path.Combine(configDirectory, $"Printer{prefix}.pdc.xml"),
@@ -521,6 +522,9 @@ public sealed class CliApplicationTests
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
                   <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
                 </printsupport2:Extension>
+                <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PclmPrintDisplayName" PrinterUri="printsink:print-to-pclm" PreferredInputFormat="application/oxps" OutputFileTypes="pclm" PdcFile="Config\PrinterPclm.pdc.xml" PdrFile="Config\PrinterPclm.pdr.xml" />
+                </printsupport2:Extension>
               </Extensions>
             </Application>
           </Applications>
@@ -584,6 +588,9 @@ public sealed class CliApplicationTests
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
                   <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
+                </printsupport2:Extension>
+                <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PclmPrintDisplayName" PrinterUri="printsink:print-to-pclm" PreferredInputFormat="application/oxps" OutputFileTypes="pclm" PdcFile="Config\PrinterPclm.pdc.xml" PdrFile="Config\PrinterPclm.pdr.xml" />
                 </printsupport2:Extension>
               </Extensions>
             </Application>

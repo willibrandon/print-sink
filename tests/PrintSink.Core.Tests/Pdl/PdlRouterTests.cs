@@ -22,6 +22,7 @@ public sealed class PdlRouterTests
     [DataRow("application/pdf", EndpointKind.Cloud, PdlActionKind.Copy, null)]
     [DataRow("application/postscript", EndpointKind.PostScript, PdlActionKind.Copy, null)]
     [DataRow("application/oxps", EndpointKind.PwgRaster, PdlActionKind.Convert, PdlConversionKind.XpsToPwgRaster)]
+    [DataRow("application/oxps", EndpointKind.Pclm, PdlActionKind.Convert, PdlConversionKind.XpsToPclm)]
     [DataRow("application/pdf", EndpointKind.Xps, PdlActionKind.Reject, null)]
     [DataRow("application/octet-stream", EndpointKind.Pdf, PdlActionKind.Reject, null)]
     public void Resolve_returns_expected_plan(

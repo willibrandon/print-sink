@@ -29,4 +29,9 @@ public enum EndpointKind
     /// PWG Raster file endpoint.
     /// </summary>
     PwgRaster,
+
+    /// <summary>
+    /// PCLm file endpoint.
+    /// </summary>
+    Pclm,
 }

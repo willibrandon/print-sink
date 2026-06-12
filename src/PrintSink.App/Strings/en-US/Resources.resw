@@ -18,4 +18,7 @@
   <data name="PwgRasterPrintDisplayName" xml:space="preserve">
     <value>PrintSink - PWG Raster</value>
   </data>
+  <data name="PclmPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - PCLm</value>
+  </data>
 </root>

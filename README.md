@@ -2,7 +2,7 @@
 
 PrintSink is a packaged Windows virtual printer built on the Print Support App v4 surface. It is a modern software printer: no legacy driver, no port monitor, and no INF.
 
-The app installs PrintSink queues for PDF, XPS/OXPS, PostScript, cloud/custom routing, and PWG Raster. The foreground app is WinUI 3 with Microsoft.UI.Reactor. Background print activations run through CsWinRT components, while the shared routing and validation logic lives in `PrintSink.Core`.
+The app installs PrintSink queues for PDF, XPS/OXPS, PostScript, cloud/custom routing, PWG Raster, and PCLm. The foreground app is WinUI 3 with Microsoft.UI.Reactor. Background print activations run through CsWinRT components, while the shared routing and validation logic lives in `PrintSink.Core`.
 
 ## Requirements
 

@@ -123,6 +123,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             [EndpointKind.PostScript] = new TargetStreamSink(),
             [EndpointKind.Cloud] = new CloudSink(DrainCloudSinkAsync),
             [EndpointKind.PwgRaster] = new TargetStreamSink(),
+            [EndpointKind.Pclm] = new TargetStreamSink(),
         });
 
         return new VirtualPrinterJobProcessor(

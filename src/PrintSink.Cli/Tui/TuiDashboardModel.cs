@@ -86,6 +86,7 @@ internal sealed class TuiDashboardModel
             [EndpointKind.Xps] = new TargetStreamSink(),
             [EndpointKind.PostScript] = new TargetStreamSink(),
             [EndpointKind.PwgRaster] = new TargetStreamSink(),
+            [EndpointKind.Pclm] = new TargetStreamSink(),
             [EndpointKind.Cloud] = cloudSink,
         });
         string contentType = PdlFormatInfo.GetContentType(endpoint.PreferredInputFormat);
@@ -140,6 +141,7 @@ internal sealed class TuiDashboardModel
             EndpointKind.PostScript => "PostScript",
             EndpointKind.Cloud => "Cloud",
             EndpointKind.PwgRaster => "PwgRaster",
+            EndpointKind.Pclm => "Pclm",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown endpoint kind."),
         };
     }

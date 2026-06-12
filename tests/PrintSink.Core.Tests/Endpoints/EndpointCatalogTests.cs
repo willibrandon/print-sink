@@ -22,6 +22,7 @@ public sealed class EndpointCatalogTests
             EndpointKind.PostScript,
             EndpointKind.Cloud,
             EndpointKind.PwgRaster,
+            EndpointKind.Pclm,
         ];
 
         CollectionAssert.AreEqual(expected, EndpointCatalog.All.Select(endpoint => endpoint.Kind).ToArray());

@@ -29,7 +29,7 @@ internal static class SinkCommand
     {
         Option<string> endpointOption = new("--endpoint", "-e")
         {
-            Description = "Endpoint kind: pdf, xps, postscript, cloud, or pwg-raster.",
+            Description = "Endpoint kind: pdf, xps, postscript, cloud, pwg-raster, or pclm.",
             Required = true,
         };
         Option<string> contentTypeOption = new("--content-type", "-c")
@@ -85,6 +85,7 @@ internal static class SinkCommand
                 [EndpointKind.Xps] = fileSink,
                 [EndpointKind.PostScript] = fileSink,
                 [EndpointKind.PwgRaster] = fileSink,
+                [EndpointKind.Pclm] = fileSink,
                 [EndpointKind.Cloud] = cloudSink,
             });
             FixtureVirtualPrinterJob job = new(contentType, endpoint, inputPath, outputPath);

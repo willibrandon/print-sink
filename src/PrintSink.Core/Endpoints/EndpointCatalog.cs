@@ -55,6 +55,15 @@ public static class EndpointCatalog
             [],
             true,
             ".pwg"),
+        new(
+            EndpointKind.Pclm,
+            "PrintSink - PCLm",
+            new Uri("printsink:print-to-pclm"),
+            PdlFormat.Oxps,
+            PdlFormat.Pclm,
+            [],
+            true,
+            ".pclm"),
     ];
 
     /// <summary>
