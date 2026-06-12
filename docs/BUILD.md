@@ -62,4 +62,4 @@ C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin
 - `global.json` pins SDK `10.0.301` with feature roll-forward.
 - `Directory.Packages.props` uses Central Package Management.
 - The WinUI CLI templates are installed. `dotnet new list winui` shows the WinUI Blank App, NavigationView App, TabView App, class library, and unit test templates.
-- Full native/package validation will become available after the `PrintSink.Tasks`, `PrintSink.Xps`, PSA manifest entries, and signing flow are added.
+- Native XPS and signing validation are still pending. `PrintSink.Tasks` and the PSA manifest entries build in the current package.

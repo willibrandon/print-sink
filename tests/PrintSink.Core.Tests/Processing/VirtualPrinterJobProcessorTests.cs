@@ -11,7 +11,7 @@ namespace PrintSink.Core.Tests.Processing;
 /// Tests for <see cref="VirtualPrinterJobProcessor"/>.
 /// </summary>
 [TestClass]
-public sealed class VirtualPrinterJobProcessorTests
+internal sealed class VirtualPrinterJobProcessorTests
 {
     private const string PrintTicketXml = """
         <psf:PrintTicket xmlns:psf="http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework" />
@@ -27,7 +27,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task ProcessAsync_PdfPassthrough_WritesOriginalBytes()
+    public async Task ProcessAsyncPdfPassthroughWritesOriginalBytes()
     {
         RecordingSink sink = new();
         RecordingPdlConverter converter = new();
@@ -36,7 +36,7 @@ public sealed class VirtualPrinterJobProcessorTests
         byte[] source = Encoding.UTF8.GetBytes("%PDF-1.7");
         TestVirtualPrinterJob job = new(PdlFormatInfo.PdfContentType, EndpointCatalog.Pdf, source, sink, PrintTicketXml);
 
-        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken);
+        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterProcessingStatus.Succeeded, result.Status);
         CollectionAssert.AreEqual(source, sink.Bytes);
@@ -50,7 +50,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task ProcessAsync_OxpsToPdf_ConvertsWithPrintTicket()
+    public async Task ProcessAsyncOxpsToPdfConvertsWithPrintTicket()
     {
         RecordingSink sink = new();
         RecordingPdlConverter converter = new();
@@ -58,7 +58,7 @@ public sealed class VirtualPrinterJobProcessorTests
         VirtualPrinterJobProcessor processor = CreateProcessor(converter, watermarker, WatermarkOptions.Disabled);
         TestVirtualPrinterJob job = new(PdlFormatInfo.OxpsContentType, EndpointCatalog.Pdf, Encoding.UTF8.GetBytes("oxps"), sink, PrintTicketXml);
 
-        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken);
+        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterProcessingStatus.Succeeded, result.Status);
         Assert.AreEqual(PdlConversionKind.XpsToPdf, converter.Conversion);
@@ -73,7 +73,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task ProcessAsync_WatermarkedOxps_WatermarksBeforeConversion()
+    public async Task ProcessAsyncWatermarkedOxpsWatermarksBeforeConversion()
     {
         RecordingSink sink = new();
         RecordingPdlConverter converter = new();
@@ -86,7 +86,7 @@ public sealed class VirtualPrinterJobProcessorTests
         VirtualPrinterJobProcessor processor = CreateProcessor(converter, watermarker, watermark);
         TestVirtualPrinterJob job = new(PdlFormatInfo.OxpsContentType, EndpointCatalog.Pdf, Encoding.UTF8.GetBytes("oxps"), sink, PrintTicketXml);
 
-        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken);
+        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterProcessingStatus.Succeeded, result.Status);
         Assert.IsTrue(watermarker.WasInvoked);
@@ -98,7 +98,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task ProcessAsync_UnsupportedContent_ReturnsRejected()
+    public async Task ProcessAsyncUnsupportedContentReturnsRejected()
     {
         RecordingSink sink = new();
         RecordingPdlConverter converter = new();
@@ -106,7 +106,7 @@ public sealed class VirtualPrinterJobProcessorTests
         VirtualPrinterJobProcessor processor = CreateProcessor(converter, watermarker, WatermarkOptions.Disabled);
         TestVirtualPrinterJob job = new("application/example", EndpointCatalog.Pdf, Encoding.UTF8.GetBytes("bad"), sink, PrintTicketXml);
 
-        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken);
+        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterProcessingStatus.Rejected, result.Status);
         Assert.IsFalse(job.WasSourceOpened);
@@ -119,7 +119,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task ProcessAsync_CanceledToken_ReturnsCanceled()
+    public async Task ProcessAsyncCanceledTokenReturnsCanceled()
     {
         RecordingSink sink = new();
         RecordingPdlConverter converter = new();
@@ -127,9 +127,9 @@ public sealed class VirtualPrinterJobProcessorTests
         VirtualPrinterJobProcessor processor = CreateProcessor(converter, watermarker, WatermarkOptions.Disabled);
         TestVirtualPrinterJob job = new(PdlFormatInfo.PdfContentType, EndpointCatalog.Pdf, Encoding.UTF8.GetBytes("pdf"), sink, PrintTicketXml);
         using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-        await cancellation.CancelAsync();
+        await cancellation.CancelAsync().ConfigureAwait(false);
 
-        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, cancellation.Token);
+        VirtualPrinterProcessingResult result = await processor.ProcessAsync(job, cancellation.Token).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterProcessingStatus.Canceled, result.Status);
     }

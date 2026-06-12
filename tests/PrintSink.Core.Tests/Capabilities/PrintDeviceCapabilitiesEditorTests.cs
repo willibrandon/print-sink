@@ -7,7 +7,7 @@ namespace PrintSink.Core.Tests.Capabilities;
 /// Tests for <see cref="PrintDeviceCapabilitiesEditor"/>.
 /// </summary>
 [TestClass]
-public sealed class PrintDeviceCapabilitiesEditorTests
+internal sealed class PrintDeviceCapabilitiesEditorTests
 {
     private const string BaseCapabilitiesXml = """
         <psf:PrintCapabilities
@@ -23,7 +23,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies custom features are injected with PrintSink namespaces and options.
     /// </summary>
     [TestMethod]
-    public void Apply_CustomFeature_InsertsFeature()
+    public void ApplyCustomFeatureInsertsFeature()
     {
         PrintDeviceCapabilitiesEditor editor = new();
         CustomFeature feature = new(
@@ -48,7 +48,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies applying the same feature twice is idempotent.
     /// </summary>
     [TestMethod]
-    public void Apply_SameFeatureTwice_IsIdempotent()
+    public void ApplySameFeatureTwiceIsIdempotent()
     {
         PrintDeviceCapabilitiesEditor editor = new();
         CustomFeature feature = new(
@@ -73,7 +73,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies media size options carry width and height scored properties.
     /// </summary>
     [TestMethod]
-    public void Apply_MediaSizeFeature_AddsDimensions()
+    public void ApplyMediaSizeFeatureAddsDimensions()
     {
         PrintDeviceCapabilitiesEditor editor = new();
         MediaSize label = new("Label4x6", "4 x 6 in label", 101_600, 152_400);
@@ -88,10 +88,10 @@ public sealed class PrintDeviceCapabilitiesEditorTests
 
         XElement inserted = AssertSingleFeature(result, "printsink:CustomMediaSize");
         string xml = inserted.ToString(SaveOptions.DisableFormatting);
-        StringAssert.Contains(xml, "printsink:MediaSizeWidth");
-        StringAssert.Contains(xml, "101600");
-        StringAssert.Contains(xml, "printsink:MediaSizeHeight");
-        StringAssert.Contains(xml, "152400");
+        StringAssert.Contains(xml, "printsink:MediaSizeWidth", StringComparison.Ordinal);
+        StringAssert.Contains(xml, "101600", StringComparison.Ordinal);
+        StringAssert.Contains(xml, "printsink:MediaSizeHeight", StringComparison.Ordinal);
+        StringAssert.Contains(xml, "152400", StringComparison.Ordinal);
     }
 
     private static XElement AssertSingleFeature(XDocument document, string featureName)

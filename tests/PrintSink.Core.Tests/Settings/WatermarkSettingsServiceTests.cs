@@ -7,7 +7,7 @@ namespace PrintSink.Core.Tests.Settings;
 /// Tests for <see cref="WatermarkSettingsService"/>.
 /// </summary>
 [TestClass]
-public sealed class WatermarkSettingsServiceTests
+internal sealed class WatermarkSettingsServiceTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for the current test.
@@ -19,7 +19,7 @@ public sealed class WatermarkSettingsServiceTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task SaveAndLoadAsync_EnabledOptions_RoundTrips()
+    public async Task SaveAndLoadAsyncEnabledOptionsRoundTrips()
     {
         InMemorySettingsStore store = new();
         WatermarkSettingsService service = new(store);
@@ -29,8 +29,8 @@ public sealed class WatermarkSettingsServiceTests
             isImageEnabled: true,
             image: new ImageWatermark("Assets/watermark.png", 96, 96, 128, 64, 0.5));
 
-        await service.SaveAsync(expected, TestContext.CancellationToken);
-        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken);
+        await service.SaveAsync(expected, TestContext.CancellationToken).ConfigureAwait(false);
+        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.IsTrue(actual.IsEnabled);
         Assert.IsNotNull(actual.Text);
@@ -44,13 +44,13 @@ public sealed class WatermarkSettingsServiceTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task SaveAsync_DisabledOptions_RemovesStoredValue()
+    public async Task SaveAsyncDisabledOptionsRemovesStoredValue()
     {
         InMemorySettingsStore store = new();
         WatermarkSettingsService service = new(store);
 
-        await service.SaveAsync(WatermarkOptions.Disabled, TestContext.CancellationToken);
-        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken);
+        await service.SaveAsync(WatermarkOptions.Disabled, TestContext.CancellationToken).ConfigureAwait(false);
+        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.IsFalse(actual.IsEnabled);
     }

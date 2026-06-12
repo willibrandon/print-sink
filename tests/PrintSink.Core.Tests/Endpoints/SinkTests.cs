@@ -8,7 +8,7 @@ namespace PrintSink.Core.Tests.Endpoints;
 /// Tests for concrete sink implementations.
 /// </summary>
 [TestClass]
-public sealed class SinkTests
+internal sealed class SinkTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for the current test.
@@ -20,14 +20,14 @@ public sealed class SinkTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task FileSink_CopiesPdlToTargetStream()
+    public async Task FileSinkCopiesPdlToTargetStream()
     {
-        await using MemoryStream source = new(Encoding.UTF8.GetBytes("%PDF-1.7"));
-        await using MemoryStream target = new();
+        using MemoryStream source = new(Encoding.UTF8.GetBytes("%PDF-1.7"));
+        using MemoryStream target = new();
         FileSink sink = new(target, leaveOpen: true);
         SinkWriteContext context = new(EndpointCatalog.Pdf, PdlFormatInfo.PdfContentType, "test");
 
-        await sink.WriteAsync(source, context, TestContext.CancellationToken);
+        await sink.WriteAsync(source, context, TestContext.CancellationToken).ConfigureAwait(false);
 
         CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("%PDF-1.7"), target.ToArray());
     }
@@ -37,14 +37,14 @@ public sealed class SinkTests
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
     [TestMethod]
-    public async Task CloudSink_DelegatesToUploadClient()
+    public async Task CloudSinkDelegatesToUploadClient()
     {
         RecordingCloudUploadClient client = new();
         CloudSink sink = new(client);
-        await using MemoryStream source = new(Encoding.UTF8.GetBytes("cloud"));
+        using MemoryStream source = new(Encoding.UTF8.GetBytes("cloud"));
         SinkWriteContext context = new(EndpointCatalog.Cloud, PdlFormatInfo.PdfContentType, "cloud-job");
 
-        await sink.WriteAsync(source, context, TestContext.CancellationToken);
+        await sink.WriteAsync(source, context, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual("cloud-job", client.JobName);
         CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("cloud"), client.Bytes);

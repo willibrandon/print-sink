@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Tickets;
 /// Tests for <see cref="IppAttributeMapper"/>.
 /// </summary>
 [TestClass]
-public sealed class IppAttributeMapperTests
+internal sealed class IppAttributeMapperTests
 {
     private const string TicketXml = """
         <psf:PrintTicket
@@ -34,7 +34,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies common print ticket values map to IPP attributes.
     /// </summary>
     [TestMethod]
-    public void FromPrintTicket_DefaultOptions_MapsExpectedAttributes()
+    public void FromPrintTicketDefaultOptionsMapsExpectedAttributes()
     {
         IppAttributeMapper mapper = new();
 
@@ -51,7 +51,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies media size is preserved when requested by merge options.
     /// </summary>
     [TestMethod]
-    public void FromPrintTicket_WhenMediaRemovalDisabled_IncludesMedia()
+    public void FromPrintTicketWhenMediaRemovalDisabledIncludesMedia()
     {
         IppAttributeMapper mapper = new();
         AttributeMergePolicyOptions options = new(IppAttributeMergePolicy.Replace, removeMediaSize: false, includeCopies: true);
@@ -65,7 +65,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies encrypted job password attributes are added in the expected operation collection shape.
     /// </summary>
     [TestMethod]
-    public void FromPrintTicket_WithPasswordOptions_AddsOperationAttributes()
+    public void FromPrintTicketWithPasswordOptionsAddsOperationAttributes()
     {
         IppAttributeMapper mapper = new();
         JobPasswordOptions password = new(new byte[] { 1, 2, 3, 4 }, "printsink-aes256-gcm");

@@ -2,8 +2,11 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  xmlns:printsupport="http://schemas.microsoft.com/appx/manifest/printsupport/windows10"
+  xmlns:printsupport2="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
+  IgnorableNamespaces="uap uap10 rescap printsupport printsupport2">
 
   <Identity
     Name="PrintSink"
@@ -29,7 +32,8 @@
     <Application
       Id="App"
       Executable="$targetnametoken$.exe"
-      EntryPoint="$targetentrypoint$">
+      EntryPoint="$targetentrypoint$"
+      uap10:SupportsMultipleInstances="true">
       <uap:VisualElements
         DisplayName="PrintSink"
         Description="PrintSink"
@@ -39,10 +43,62 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="Microsoft.UI.Reactor.ReactorApplication" />
+        <printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="Microsoft.UI.Reactor.ReactorApplication" />
+        <printsupport:Extension Category="windows.printSupportWorkflow" EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" />
+        <printsupport:Extension Category="windows.printSupportExtension" EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask" />
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPdfDisplayName" PrinterUri="printsink:/pdf" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterResources.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterXpsDisplayName" PrinterUri="printsink:/xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps,xps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterResources.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/oxps" />
+              <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPostScriptDisplayName" PrinterUri="printsink:/postscript" PreferredInputFormat="application/postscript" OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterResources.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/postscript" />
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterCloudDisplayName" PrinterUri="printsink:/cloud" PreferredInputFormat="application/oxps" PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterResources.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+        <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
+          <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPwgRasterDisplayName" PrinterUri="printsink:/pwg-raster" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterResources.pdr.xml">
+            <printsupport2:SupportedFormats>
+              <printsupport2:SupportedFormat Type="image/pwg-raster" />
+            </printsupport2:SupportedFormats>
+          </printsupport2:PrintSupportVirtualPrinter>
+        </printsupport2:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
+  <Extensions>
+    <Extension Category="windows.activatableClass.inProcessServer">
+      <InProcessServer>
+        <Path>WinRT.Host.dll</Path>
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.VirtualPrinterBackgroundTask" ThreadingModel="both" />
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" ThreadingModel="both" />
+        <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportExtensionBackgroundTask" ThreadingModel="both" />
+      </InProcessServer>
+    </Extension>
+  </Extensions>
 </Package>

@@ -5,7 +5,7 @@ namespace PrintSink.Core.Tests.Processing;
 /// <summary>
 /// Records sink writes for processor tests.
 /// </summary>
-public sealed class RecordingSink : ISink
+internal sealed class RecordingSink : ISink
 {
     /// <summary>
     /// Gets the written bytes.

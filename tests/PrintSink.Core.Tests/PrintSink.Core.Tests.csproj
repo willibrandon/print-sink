@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>$(PrintSinkTargetFramework)</TargetFramework>
     <RootNamespace>PrintSink.Core.Tests</RootNamespace>
+    <MicrosoftTestingPlatformVersion>1.9.1</MicrosoftTestingPlatformVersion>
+    <MicrosoftTestingExtensionsCodeCoverageVersion>18.0.4</MicrosoftTestingExtensionsCodeCoverageVersion>
   </PropertyGroup>
 
   <ItemGroup>

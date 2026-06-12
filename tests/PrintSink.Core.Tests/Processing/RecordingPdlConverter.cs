@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Processing;
 /// <summary>
 /// Records PDL conversion calls for processor tests.
 /// </summary>
-public sealed class RecordingPdlConverter : IPdlConverter
+internal sealed class RecordingPdlConverter : IPdlConverter
 {
     /// <summary>
     /// Gets the requested conversion.

@@ -5,7 +5,7 @@ namespace PrintSink.Core.Tests.Endpoints;
 /// <summary>
 /// Records cloud uploads for sink tests.
 /// </summary>
-public sealed class RecordingCloudUploadClient : ICloudUploadClient
+internal sealed class RecordingCloudUploadClient : ICloudUploadClient
 {
     /// <summary>
     /// Gets the uploaded bytes.

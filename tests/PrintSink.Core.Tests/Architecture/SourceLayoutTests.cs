@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Architecture;
 /// Tests repository source layout rules that are not enforced by the C# compiler.
 /// </summary>
 [TestClass]
-public sealed partial class SourceLayoutTests
+internal sealed partial class SourceLayoutTests
 {
     /// <summary>
     /// Verifies production C# files contain at most one declared type.

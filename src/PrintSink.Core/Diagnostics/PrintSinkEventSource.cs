@@ -94,4 +94,19 @@ public sealed class PrintSinkEventSource : EventSource
             WriteEvent(4, endpointKind, errorCode, message);
         }
     }
+
+    /// <summary>
+    /// Emits a background-task-failed event.
+    /// </summary>
+    /// <param name="taskName">The registered background task name.</param>
+    /// <param name="exceptionType">The exception type.</param>
+    /// <param name="message">The diagnostic message.</param>
+    [Event(5, Level = EventLevel.Error, Message = "Background task {0} failed: {1} {2}.")]
+    public void BackgroundTaskFailed(string taskName, string exceptionType, string message)
+    {
+        if (IsEnabled())
+        {
+            WriteEvent(5, taskName, exceptionType, message);
+        }
+    }
 }

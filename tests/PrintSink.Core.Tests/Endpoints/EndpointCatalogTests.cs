@@ -7,13 +7,13 @@ namespace PrintSink.Core.Tests.Endpoints;
 /// Tests for <see cref="EndpointCatalog"/>.
 /// </summary>
 [TestClass]
-public sealed class EndpointCatalogTests
+internal sealed class EndpointCatalogTests
 {
     /// <summary>
     /// Verifies the design-approved manifest queue count.
     /// </summary>
     [TestMethod]
-    public void BuiltInQueues_ReturnsFiveManifestQueues()
+    public void BuiltInQueuesReturnsFiveManifestQueues()
     {
         Assert.AreEqual(5, EndpointCatalog.BuiltInQueues.Count);
         CollectionAssert.AreEqual(
@@ -32,7 +32,7 @@ public sealed class EndpointCatalogTests
     /// Verifies the cloud endpoint does not use the Save As broker.
     /// </summary>
     [TestMethod]
-    public void CloudEndpoint_IsNotFileBacked()
+    public void CloudEndpointIsNotFileBacked()
     {
         Assert.IsFalse(EndpointCatalog.Cloud.UsesSaveAsDialog);
         Assert.IsFalse(EndpointCatalog.Cloud.IsFileBacked);
@@ -43,7 +43,7 @@ public sealed class EndpointCatalogTests
     /// Verifies URI path lookup accepts paths without a leading slash.
     /// </summary>
     [TestMethod]
-    public void FromEndpointPath_WithoutLeadingSlash_ReturnsEndpoint()
+    public void FromEndpointPathWithoutLeadingSlashReturnsEndpoint()
     {
         VirtualEndpoint endpoint = EndpointCatalog.FromEndpointPath("pdf");
 

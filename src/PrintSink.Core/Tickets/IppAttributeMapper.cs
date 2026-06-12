@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text;
 using System.Xml.Linq;
 
 namespace PrintSink.Tickets;
@@ -99,7 +100,19 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         int separator = value.IndexOf(':', StringComparison.Ordinal);
         string unqualified = separator >= 0 ? value[(separator + 1)..] : value;
-        return unqualified.Replace("_", "-", StringComparison.Ordinal).ToLowerInvariant();
+        StringBuilder normalized = new(unqualified.Length);
+
+        foreach (char character in unqualified)
+        {
+            normalized.Append(character switch
+            {
+                '_' => '-',
+                >= 'A' and <= 'Z' => (char)(character - 'A' + 'a'),
+                _ => character,
+            });
+        }
+
+        return normalized.ToString();
     }
 
     private static string MapColorMode(string value)

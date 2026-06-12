@@ -4,6 +4,7 @@
       <Platform Project="x64" />
     </Project>
     <Project Path="src/PrintSink.Core/PrintSink.Core.csproj" />
+    <Project Path="src/PrintSink.Tasks/PrintSink.Tasks.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PrintSink.Core.Tests/PrintSink.Core.Tests.csproj" />

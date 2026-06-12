@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Processing;
 /// <summary>
 /// Provides an in-memory virtual printer job for processor tests.
 /// </summary>
-public sealed class TestVirtualPrinterJob : IVirtualPrinterJob
+internal sealed class TestVirtualPrinterJob : IVirtualPrinterJob
 {
     private readonly byte[] sourceBytes;
     private readonly ISink sink;

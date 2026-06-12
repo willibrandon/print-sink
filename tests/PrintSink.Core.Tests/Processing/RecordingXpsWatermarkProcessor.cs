@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Processing;
 /// <summary>
 /// Records XPS watermark calls for processor tests.
 /// </summary>
-public sealed class RecordingXpsWatermarkProcessor : IXpsWatermarkProcessor
+internal sealed class RecordingXpsWatermarkProcessor : IXpsWatermarkProcessor
 {
     /// <summary>
     /// Gets a value indicating whether watermarking was invoked.
@@ -16,7 +16,7 @@ public sealed class RecordingXpsWatermarkProcessor : IXpsWatermarkProcessor
     /// <summary>
     /// Gets the source bytes observed by the watermarker.
     /// </summary>
-    public byte[] SourceBytes { get; private set; } = Array.Empty<byte>();
+    public IReadOnlyList<byte> SourceBytes { get; private set; } = Array.Empty<byte>();
 
     /// <inheritdoc />
     public async Task<Stream> ApplyAsync(Stream source, WatermarkOptions options, CancellationToken cancellationToken = default)
@@ -32,7 +32,7 @@ public sealed class RecordingXpsWatermarkProcessor : IXpsWatermarkProcessor
         byte[] prefix = Encoding.UTF8.GetBytes("watermarked:");
         MemoryStream output = new();
         await output.WriteAsync(prefix, cancellationToken).ConfigureAwait(false);
-        await output.WriteAsync(SourceBytes, cancellationToken).ConfigureAwait(false);
+        await output.WriteAsync(SourceBytes.ToArray(), cancellationToken).ConfigureAwait(false);
         output.Position = 0;
         return output;
     }

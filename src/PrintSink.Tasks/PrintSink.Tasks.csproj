@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(PrintSinkTargetFramework)</TargetFramework>
+    <RootNamespace>PrintSink.Tasks</RootNamespace>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+    <Platforms>x64;ARM64;x86</Platforms>
+    <CsWinRTComponent>true</CsWinRTComponent>
+    <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" />
+    <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
+  </ItemGroup>
+</Project>

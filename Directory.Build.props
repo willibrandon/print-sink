@@ -10,6 +10,5 @@
     <AnalysisLevel>latest-all</AnalysisLevel>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);NU1507</NoWarn>
   </PropertyGroup>
 </Project>

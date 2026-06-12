@@ -8,13 +8,13 @@ namespace PrintSink.Core.Tests.Pdl;
 /// Tests for <see cref="PdlRouter"/>.
 /// </summary>
 [TestClass]
-public sealed class PdlRouterTests
+internal sealed class PdlRouterTests
 {
     /// <summary>
     /// Verifies OXPS to PDF conversion with pre-conversion watermarking.
     /// </summary>
     [TestMethod]
-    public void Resolve_OxpsToPdfWithWatermark_ReturnsXpsToPdfPlan()
+    public void ResolveOxpsToPdfWithWatermarkReturnsXpsToPdfPlan()
     {
         PdlRouter router = new();
         WatermarkOptions watermark = new(
@@ -36,7 +36,7 @@ public sealed class PdlRouterTests
     /// Verifies PDF passthrough for the PDF endpoint.
     /// </summary>
     [TestMethod]
-    public void Resolve_PdfPassthrough_ReturnsCopyPlan()
+    public void ResolvePdfPassthroughReturnsCopyPlan()
     {
         PdlRouter router = new();
 
@@ -53,7 +53,7 @@ public sealed class PdlRouterTests
     /// Verifies PostScript passthrough for the PostScript endpoint.
     /// </summary>
     [TestMethod]
-    public void Resolve_PostScriptPassthrough_ReturnsCopyPlan()
+    public void ResolvePostScriptPassthroughReturnsCopyPlan()
     {
         PdlRouter router = new();
 
@@ -68,7 +68,7 @@ public sealed class PdlRouterTests
     /// Verifies OXPS to PWG Raster conversion.
     /// </summary>
     [TestMethod]
-    public void Resolve_OxpsToPwgRaster_ReturnsXpsToPwgrPlan()
+    public void ResolveOxpsToPwgRasterReturnsXpsToPwgrPlan()
     {
         PdlRouter router = new();
 
@@ -83,7 +83,7 @@ public sealed class PdlRouterTests
     /// Verifies OXPS to PCLm conversion for custom-file endpoints.
     /// </summary>
     [TestMethod]
-    public void Resolve_OxpsToPclm_ReturnsXpsToPclmPlan()
+    public void ResolveOxpsToPclmReturnsXpsToPclmPlan()
     {
         PdlRouter router = new();
 
@@ -98,7 +98,7 @@ public sealed class PdlRouterTests
     /// Verifies unsupported source content is rejected deterministically.
     /// </summary>
     [TestMethod]
-    public void Resolve_UnsupportedContentType_ReturnsRejectPlan()
+    public void ResolveUnsupportedContentTypeReturnsRejectPlan()
     {
         PdlRouter router = new();
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="schemas.printsink.dev/printschema/2026/Watermark"><value>Watermark</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/None"><value>None</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Confidential"><value>Confidential</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Draft"><value>Draft</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Endpoint"><value>Endpoint</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Pdf"><value>PDF</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Xps"><value>XPS</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/PostScript"><value>PostScript</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Cloud"><value>Cloud</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/PwgRaster"><value>PWG Raster</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Dpi300"><value>300 DPI</value></data>
+  <data name="schemas.printsink.dev/printschema/2026/Dpi600"><value>600 DPI</value></data>
+</root>
