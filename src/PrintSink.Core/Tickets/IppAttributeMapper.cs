@@ -84,7 +84,7 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
         {
             if (!options.ShouldRemove(attribute.Key))
             {
-                result[attribute.Key] = attribute.Value;
+                result[attribute.Key] = ApplyCollectionMemberRemovals(attribute.Value, options);
             }
         }
 
@@ -181,5 +181,35 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
                     buffer[index] = source[index] == '_' ? '-' : char.ToLowerInvariant(source[index]);
                 }
             });
+    }
+
+    private static IppAttributeValue ApplyCollectionMemberRemovals(
+        IppAttributeValue attribute,
+        AttributeMergePolicyOptions options)
+    {
+        if (attribute.Collections.Count == 0)
+        {
+            return attribute;
+        }
+
+        List<IReadOnlyDictionary<string, IppAttributeValue>> collections = [];
+        bool changed = false;
+
+        foreach (IReadOnlyDictionary<string, IppAttributeValue> collection in attribute.Collections)
+        {
+            Dictionary<string, IppAttributeValue> updated = new(collection, StringComparer.OrdinalIgnoreCase);
+            foreach (string memberName in collection.Keys)
+            {
+                if (options.ShouldRemoveCollectionMember(attribute.Name, memberName))
+                {
+                    updated.Remove(memberName);
+                    changed = true;
+                }
+            }
+
+            collections.Add(updated);
+        }
+
+        return changed ? IppAttributeValue.CollectionArray(attribute.Name, collections) : attribute;
     }
 }

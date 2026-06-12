@@ -59,6 +59,33 @@ public sealed class IppAttributeMapperTests
         Assert.IsTrue(result.ContainsKey("sides"));
     }
 
+    /// <summary>
+    /// Verifies that the default physical-workflow policy removes media-size from media-col collections.
+    /// </summary>
+    [TestMethod]
+    public void ApplyMergePolicy_removes_pdl_embedded_media_size()
+    {
+        Dictionary<string, IppAttributeValue> mediaCol = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["media-size"] = IppAttributeValue.Single("media-size", "na_letter_8.5x11in"),
+            ["media-type"] = IppAttributeValue.Single("media-type", "stationery"),
+        };
+        Dictionary<string, IppAttributeValue> attributes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["media-col"] = IppAttributeValue.Collection("media-col", mediaCol),
+            ["sides"] = IppAttributeValue.Single("sides", "one-sided"),
+        };
+
+        IReadOnlyDictionary<string, IppAttributeValue> result = mapper.ApplyMergePolicy(
+            attributes,
+            AttributeMergePolicyOptions.RemovePdlEmbeddedMediaSize);
+
+        IReadOnlyDictionary<string, IppAttributeValue> resultMediaCol = result["media-col"].Collections[0];
+        Assert.IsFalse(resultMediaCol.ContainsKey("media-size"));
+        Assert.IsTrue(resultMediaCol.ContainsKey("media-type"));
+        Assert.IsTrue(result.ContainsKey("sides"));
+    }
+
     private static XDocument CreatePrintTicket()
     {
         return XDocument.Parse(
