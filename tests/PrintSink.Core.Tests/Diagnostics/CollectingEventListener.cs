@@ -5,7 +5,7 @@ namespace PrintSink.Core.Tests.Diagnostics;
 internal sealed class CollectingEventListener : EventListener
 {
     private readonly List<string> eventNames = [];
-    private readonly object gate = new();
+    private readonly Lock gate = new();
 
     internal IReadOnlyList<string> EventNames
     {
