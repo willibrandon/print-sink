@@ -1,7 +1,8 @@
 using Windows.ApplicationModel.Background;
+using PrintSink.Core.Endpoints;
+using PrintSink.Core.Pdl;
+using PrintSink.Core.Processing;
 using Windows.Graphics.Printing.Workflow;
-using Windows.Storage;
-using Windows.Storage.Streams;
 
 namespace PrintSink.Tasks;
 
@@ -34,61 +35,64 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterSession sender,
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args)
     {
-        PrintWorkflowSubmittedStatus status = PrintWorkflowSubmittedStatus.Failed;
         try
         {
-            state.Run(() =>
+            bool handled = state.Run(() =>
             {
-                StorageFile? targetFile = args.GetTargetFileAsync().AsTask().GetAwaiter().GetResult();
-                if (targetFile is null)
-                {
-                    status = PrintWorkflowSubmittedStatus.Succeeded;
-                    return;
-                }
-
-                using IRandomAccessStream targetStream = targetFile.OpenAsync(FileAccessMode.ReadWrite)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
-                using IOutputStream output = targetStream.GetOutputStreamAt(0);
-
-                PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
-                IInputStream input = sourceContent.GetInputStream();
-                PrintWorkflowPdlConversionType? conversionType = ResolveConversion(sourceContent.ContentType, targetFile.FileType);
-
-                if (conversionType is null)
-                {
-                    RandomAccessStream.CopyAndCloseAsync(input, output).AsTask().GetAwaiter().GetResult();
-                }
-                else
-                {
-                    PrintWorkflowPdlConverter converter = args.GetPdlConverter(conversionType.Value);
-                    converter.ConvertPdlAsync(args.GetJobPrintTicket(), input, output).AsTask().GetAwaiter().GetResult();
-                }
-
-                status = PrintWorkflowSubmittedStatus.Succeeded;
+                ProcessJobAsync(sender, args).GetAwaiter().GetResult();
             });
+
+            if (!handled)
+            {
+                args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+            }
         }
         finally
         {
-            args.CompleteJob(status);
             state.CompleteWhenIdle();
         }
     }
 
-    private static PrintWorkflowPdlConversionType? ResolveConversion(string contentType, string fileType)
+    private static async Task ProcessJobAsync(
+        PrintWorkflowVirtualPrinterSession session,
+        PrintWorkflowVirtualPrinterDataAvailableEventArgs args)
     {
-        if (!string.Equals(contentType, "application/oxps", StringComparison.OrdinalIgnoreCase))
+        if (!EndpointCatalog.TryResolve(session.Printer.PrinterUri, out VirtualEndpoint? endpoint) || endpoint is null)
         {
-            return null;
+            args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+            return;
         }
 
-        return fileType.ToUpperInvariant() switch
+        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
+        VirtualPrinterJobProcessor processor = CreateProcessor(args, printTicket);
+        WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
+        await processor.ProcessAsync(job).ConfigureAwait(false);
+    }
+
+    private static VirtualPrinterJobProcessor CreateProcessor(
+        PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
+        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket)
+    {
+        EndpointSinkResolver sinkResolver = new(new Dictionary<EndpointKind, ISink>
         {
-            ".PDF" => PrintWorkflowPdlConversionType.XpsToPdf,
-            ".PWG" => PrintWorkflowPdlConversionType.XpsToPwgr,
-            ".PCLM" => PrintWorkflowPdlConversionType.XpsToPclm,
-            _ => null,
-        };
+            [EndpointKind.Pdf] = new TargetStreamSink(),
+            [EndpointKind.Xps] = new TargetStreamSink(),
+            [EndpointKind.PostScript] = new TargetStreamSink(),
+            [EndpointKind.Cloud] = new CloudSink(DrainCloudSinkAsync),
+            [EndpointKind.PwgRaster] = new TargetStreamSink(),
+        });
+
+        return new VirtualPrinterJobProcessor(
+            new PdlRouter(),
+            new WinRtPdlConverter(args, printTicket),
+            sinkResolver);
+    }
+
+    private static async Task DrainCloudSinkAsync(
+        Stream pdl,
+        SinkWriteContext context,
+        CancellationToken cancellationToken)
+    {
+        await pdl.CopyToAsync(Stream.Null, cancellationToken).ConfigureAwait(false);
     }
 }
