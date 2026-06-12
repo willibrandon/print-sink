@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <!-- <snippet:template-shape> -->
     <PropertyGroup>
@@ -54,6 +54,12 @@
         <Content Include="Assets\StoreLogo.png" />
         <Content Include="Assets\AppIcon.ico" />
         <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Config\*.xml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="schemas.printsink.dev/printing/keywords/Dpi600"><value>600 dpi</value></data>
+  <data name="schemas.printsink.dev/printing/keywords/ArchivePaper"><value>Archive paper</value></data>
+  <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
+  <data name="schemas.printsink.dev/printing/keywords/WatermarkOff"><value>Off</value></data>
+  <data name="schemas.printsink.dev/printing/keywords/WatermarkText"><value>Text</value></data>
+  <data name="schemas.printsink.dev/printing/keywords/WatermarkImage"><value>Image</value></data>
+</root>

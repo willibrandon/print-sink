@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Dpi600" xml:space="preserve">
+    <value>600 dpi</value>
+  </data>
+  <data name="ArchivePaper" xml:space="preserve">
+    <value>Archive paper</value>
+  </data>
+  <data name="WatermarkMode" xml:space="preserve">
+    <value>Watermark</value>
+  </data>
+  <data name="WatermarkOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="WatermarkText" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="WatermarkImage" xml:space="preserve">
+    <value>Image</value>
+  </data>
+</root>

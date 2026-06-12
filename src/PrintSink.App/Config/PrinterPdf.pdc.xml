@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<psf2:PrintDeviceCapabilities
+  xmlns:psf2="http://schemas.microsoft.com/windows/2013/12/printing/printschemaframework2"
+  xmlns:printsink="https://schemas.printsink.dev/printing/keywords"
+  xmlns:psk="http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords"
+  xmlns:psk12="http://schemas.microsoft.com/windows/2013/12/printing/printschemakeywordsv12"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <psk:PageMediaSize psf2:psftype="Feature">
+    <psk:NorthAmericaLetter psf2:psftype="Option" psf2:default="true">
+      <psk12:PortraitImageableSize psf2:psftype="Property" xsi:type="psf2:ImageableAreaType">0,0,215900,279400</psk12:PortraitImageableSize>
+      <psk:MediaSizeWidth psf2:psftype="ScoredProperty" xsi:type="xsd:integer">215900</psk:MediaSizeWidth>
+      <psk:MediaSizeHeight psf2:psftype="ScoredProperty" xsi:type="xsd:integer">279400</psk:MediaSizeHeight>
+    </psk:NorthAmericaLetter>
+    <psk:ISOA4 psf2:psftype="Option">
+      <psk12:PortraitImageableSize psf2:psftype="Property" xsi:type="psf2:ImageableAreaType">0,0,210000,297000</psk12:PortraitImageableSize>
+      <psk:MediaSizeWidth psf2:psftype="ScoredProperty" xsi:type="xsd:integer">210000</psk:MediaSizeWidth>
+      <psk:MediaSizeHeight psf2:psftype="ScoredProperty" xsi:type="xsd:integer">297000</psk:MediaSizeHeight>
+    </psk:ISOA4>
+  </psk:PageMediaSize>
+  <psk:PageOrientation psf2:psftype="Feature">
+    <psk:Portrait psf2:psftype="Option" psf2:default="true" />
+    <psk:Landscape psf2:psftype="Option" />
+  </psk:PageOrientation>
+  <psk:PageOutputColor psf2:psftype="Feature">
+    <psk:Color psf2:psftype="Option" psf2:default="true">
+      <psk:DeviceBitsPerPixel psf2:psftype="ScoredProperty" xsi:type="xsd:integer">24</psk:DeviceBitsPerPixel>
+      <psk:DriverBitsPerPixel psf2:psftype="ScoredProperty" xsi:type="xsd:integer">24</psk:DriverBitsPerPixel>
+    </psk:Color>
+    <psk:Monochrome psf2:psftype="Option">
+      <psk:DeviceBitsPerPixel psf2:psftype="ScoredProperty" xsi:type="xsd:integer">1</psk:DeviceBitsPerPixel>
+      <psk:DriverBitsPerPixel psf2:psftype="ScoredProperty" xsi:type="xsd:integer">1</psk:DriverBitsPerPixel>
+    </psk:Monochrome>
+  </psk:PageOutputColor>
+  <psk:JobDuplexAllDocumentsContiguously psf2:psftype="Feature">
+    <psk:OneSided psf2:psftype="Option" psf2:default="true" />
+    <psk:TwoSidedLongEdge psf2:psftype="Option" />
+    <psk:TwoSidedShortEdge psf2:psftype="Option" />
+  </psk:JobDuplexAllDocumentsContiguously>
+  <psk:PageResolution psf2:psftype="Feature">
+    <printsink:Dpi600 psf2:psftype="Option" psf2:default="true">
+      <psk:ResolutionX psf2:psftype="ScoredProperty" xsi:type="xsd:integer">600</psk:ResolutionX>
+      <psk:ResolutionY psf2:psftype="ScoredProperty" xsi:type="xsd:integer">600</psk:ResolutionY>
+    </printsink:Dpi600>
+  </psk:PageResolution>
+  <psk:PageOutputQuality psf2:psftype="Feature">
+    <psk:Normal psf2:psftype="Option" psf2:default="true" />
+    <psk:Draft psf2:psftype="Option" />
+    <psk:High psf2:psftype="Option" />
+  </psk:PageOutputQuality>
+  <psk:PageMediaType psf2:psftype="Feature">
+    <psk:Stationery psf2:psftype="Option" psf2:default="true" />
+    <printsink:ArchivePaper psf2:psftype="Option" />
+  </psk:PageMediaType>
+  <printsink:WatermarkMode psf2:psftype="Feature">
+    <printsink:WatermarkOff psf2:psftype="Option" psf2:default="true" />
+    <printsink:WatermarkText psf2:psftype="Option" />
+    <printsink:WatermarkImage psf2:psftype="Option" />
+  </printsink:WatermarkMode>
+</psf2:PrintDeviceCapabilities>

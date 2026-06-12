@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="PackageDisplayName" xml:space="preserve">
+    <value>PrintSink</value>
+  </data>
+  <data name="PdfPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - PDF</value>
+  </data>
+  <data name="XpsPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - XPS</value>
+  </data>
+  <data name="PostScriptPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - PostScript</value>
+  </data>
+  <data name="CloudPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - Cloud</value>
+  </data>
+  <data name="PwgRasterPrintDisplayName" xml:space="preserve">
+    <value>PrintSink - PWG Raster</value>
+  </data>
+</root>
