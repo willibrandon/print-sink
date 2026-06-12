@@ -446,6 +446,149 @@ function Find-EnabledDescendantByFilter {
     throw "Timed out waiting for $Description."
 }
 
+function Add-DialogNativeMethods {
+    if ('PrintSinkE2E.DialogNativeMethods' -as [type]) {
+        return
+    }
+
+    Add-Type -Namespace PrintSinkE2E -Name DialogNativeMethods -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool SetWindowText(System.IntPtr hWnd, string lpString);
+
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, System.IntPtr lParam);
+
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, string lParam);
+
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int GetWindowText(System.IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool IsWindow(System.IntPtr hWnd);
+'@
+}
+
+function Set-DialogEditText {
+    param(
+        [System.Windows.Automation.AutomationElement] $Dialog,
+        [System.Windows.Automation.AutomationElement] $Element,
+        [string] $Text
+    )
+
+    Add-DialogNativeMethods
+    $windowHandle = [IntPtr]$Element.Current.NativeWindowHandle
+
+    [object] $valuePattern = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$valuePattern)) {
+        $valuePattern.SetValue($Text)
+        return
+    }
+
+    $legacyAccessiblePatternType = 'System.Windows.Automation.LegacyIAccessiblePattern' -as [type]
+    if ($null -ne $legacyAccessiblePatternType) {
+        [object] $legacyPattern = $null
+        $legacyPatternIdentifier = $legacyAccessiblePatternType.GetField('Pattern').GetValue($null)
+        if ($Element.TryGetCurrentPattern($legacyPatternIdentifier, [ref]$legacyPattern)) {
+            $legacyPattern.SetValue($Text)
+            return
+        }
+    }
+
+    if ($windowHandle -eq [IntPtr]::Zero) {
+        throw 'The dialog edit control does not expose ValuePattern or a native window handle.'
+    }
+
+    if (-not [PrintSinkE2E.DialogNativeMethods]::SetWindowText($windowHandle, $Text)) {
+        throw "SetWindowText failed for the dialog edit control. Win32 error: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+
+    [PrintSinkE2E.DialogNativeMethods]::SendMessage($windowHandle, 0x000C, [IntPtr]::Zero, $Text) | Out-Null
+    $actualText = [System.Text.StringBuilder]::new([Math]::Max(1024, $Text.Length + 1))
+    [PrintSinkE2E.DialogNativeMethods]::GetWindowText($windowHandle, $actualText, $actualText.Capacity) | Out-Null
+    if ($actualText.ToString() -ne $Text) {
+        throw "The dialog edit control did not accept the output path. Current value: '$($actualText.ToString())'"
+    }
+}
+
+function Invoke-DialogButton {
+    param(
+        [System.Windows.Automation.AutomationElement] $Dialog,
+        [System.Windows.Automation.AutomationElement] $Element
+    )
+
+    Add-DialogNativeMethods
+    $dialogHandle = [IntPtr]$Dialog.Current.NativeWindowHandle
+    $buttonHandle = [IntPtr]$Element.Current.NativeWindowHandle
+
+    if ($dialogHandle -ne [IntPtr]::Zero -and $buttonHandle -ne [IntPtr]::Zero) {
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0111, [IntPtr]1, $buttonHandle) | Out-Null
+        Start-Sleep -Milliseconds 250
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+        return
+    }
+
+    [object] $invokePattern = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invokePattern)) {
+        $invokePattern.Invoke()
+    }
+    elseif ($buttonHandle -ne [IntPtr]::Zero) {
+        $legacyAccessiblePatternType = 'System.Windows.Automation.LegacyIAccessiblePattern' -as [type]
+        if ($null -ne $legacyAccessiblePatternType) {
+            $legacyPatternIdentifier = $legacyAccessiblePatternType.GetField('Pattern').GetValue($null)
+        }
+
+        if ($null -ne $legacyAccessiblePatternType -and $Element.TryGetCurrentPattern($legacyPatternIdentifier, [ref]$invokePattern)) {
+            $invokePattern.DoDefaultAction()
+        }
+
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($buttonHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    }
+    else {
+        throw 'The dialog button does not expose InvokePattern or a native window handle.'
+    }
+}
+
+function Wait-ForDialogClosed {
+    param(
+        [System.Windows.Automation.AutomationElement] $Dialog,
+        [int] $TimeoutSeconds
+    )
+
+    Add-DialogNativeMethods
+    $dialogHandle = [IntPtr]$Dialog.Current.NativeWindowHandle
+    if ($dialogHandle -eq [IntPtr]::Zero) {
+        return
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (-not [PrintSinkE2E.DialogNativeMethods]::IsWindow($dialogHandle)) {
+            return
+        }
+
+        $currentDialog = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As'))
+        if ($null -eq $currentDialog) {
+            return
+        }
+
+        if ([IntPtr]$currentDialog.Current.NativeWindowHandle -ne $dialogHandle) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw 'The Save Print Output As dialog did not close after accepting the file path.'
+}
+
 function Set-FileDialogPath {
     param(
         [System.Windows.Automation.AutomationElement] $Dialog,
@@ -458,77 +601,35 @@ function Set-FileDialogPath {
             -Predicate {
                 param($element)
 
-                $element.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit `
-                    -and ($element.Current.AutomationId -eq '1001' -or $element.Current.Name -eq 'File name:')
+                ($element.Current.AutomationId -eq '1001' -and $element.Current.ClassName -eq 'Edit') `
+                    -or ($element.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit `
+                        -and $element.Current.Name -eq 'File name:')
             } `
             -TimeoutSeconds 15 `
             -Description 'the Save As file name field'
 
-        $valuePattern = $fileNameEdit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-        $valuePattern.SetValue($OutputPath)
+        Set-DialogEditText -Dialog $Dialog -Element $fileNameEdit -Text $OutputPath
 
         $saveButton = Find-EnabledDescendantByFilter `
             -Root $Dialog `
             -Predicate {
                 param($element)
 
-                $element.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button `
-                    -and ($element.Current.AutomationId -eq '1' -or $element.Current.Name -eq 'Save')
+                ($element.Current.AutomationId -eq '1' -and $element.Current.ClassName -eq 'Button') `
+                    -or ($element.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button `
+                        -and $element.Current.Name -eq 'Save')
             } `
             -TimeoutSeconds 15 `
             -Description 'the Save button'
-        $invokePattern = $saveButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-        $invokePattern.Invoke()
+        Invoke-DialogButton -Dialog $Dialog -Element $saveButton
+        Wait-ForDialogClosed -Dialog $Dialog -TimeoutSeconds 5
         return
     }
     catch [System.Exception] {
         $primaryError = $_.Exception.Message
-        try {
-            Set-FileDialogPathWithKeyboard -Dialog $Dialog -OutputPath $OutputPath
-            return
-        }
-        catch [System.Exception] {
-            $fallbackError = $_.Exception.Message
-            $snapshot = Format-AutomationSnapshot -Root $Dialog
-            throw "Unable to set Save Print Output As path. UIA: $primaryError Keyboard: $fallbackError`n$snapshot"
-        }
+        $snapshot = Format-AutomationSnapshot -Root $Dialog
+        throw "Unable to set Save Print Output As path. $primaryError`n$snapshot"
     }
-}
-
-function Escape-SendKeysText {
-    param(
-        [string] $Text
-    )
-
-    return ($Text -replace '([+^%~(){}\[\]])', '{$1}')
-}
-
-function Set-FileDialogPathWithKeyboard {
-    param(
-        [System.Windows.Automation.AutomationElement] $Dialog,
-        [string] $OutputPath
-    )
-
-    Add-Type -AssemblyName System.Windows.Forms
-    if (-not ('PrintSinkE2E.NativeMethods' -as [type])) {
-        Add-Type -Namespace PrintSinkE2E -Name NativeMethods -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("user32.dll")]
-[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-public static extern bool SetForegroundWindow(System.IntPtr hWnd);
-'@
-    }
-
-    $windowHandle = [IntPtr]$Dialog.Current.NativeWindowHandle
-    if ($windowHandle -ne [IntPtr]::Zero) {
-        [PrintSinkE2E.NativeMethods]::SetForegroundWindow($windowHandle) | Out-Null
-    }
-
-    Start-Sleep -Milliseconds 250
-    [System.Windows.Forms.SendKeys]::SendWait('%n')
-    Start-Sleep -Milliseconds 100
-    [System.Windows.Forms.SendKeys]::SendWait('^a')
-    [System.Windows.Forms.SendKeys]::SendWait((Escape-SendKeysText -Text $OutputPath))
-    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
 }
 
 function Format-AutomationSnapshot {
@@ -781,6 +882,120 @@ Add-Type -AssemblyName System.Drawing
     }
 }
 
+function Invoke-PrintSinkJobUiCancelPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $printerName = 'PrintSink - PDF'
+    $startedUtc = [DateTimeOffset]::UtcNow
+    $outputPath = Join-Path $OutputDirectory 'PrintSink-JobUI-Cancel.pdf'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
+    Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.JobUICancel.$([Guid]::NewGuid()).ps1"
+    $printScript = @"
+Add-Type -AssemblyName System.Drawing
+`$document = [System.Drawing.Printing.PrintDocument]::new()
+`$document.DocumentName = 'PrintSink E2E Job UI Cancel'
+`$document.PrinterSettings.PrinterName = 'PrintSink - PDF'
+`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
+`$document.add_PrintPage({
+    param(`$sender, `$eventArgs)
+    `$font = [System.Drawing.Font]::new('Consolas', 16)
+    try {
+        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
+        `$eventArgs.HasMorePages = `$false
+    }
+    finally {
+        `$font.Dispose()
+    }
+})
+`$document.Print()
+"@
+
+    Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
+    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+
+    try {
+        $dialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As')) `
+            -TimeoutSeconds 30 `
+            -Description 'the Save Print Output As dialog for the Job UI cancel test'
+        Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
+
+        $jobWindow = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Job preview')) `
+            -TimeoutSeconds 45 `
+            -Description 'the PrintSink Job preview window for cancel'
+
+        Invoke-Button -Root $jobWindow -Name 'Cancel' -TimeoutSeconds 30
+
+        if (-not $process.WaitForExit(30000)) {
+            throw 'Job UI cancel print process did not exit.'
+        }
+
+        if ($process.ExitCode -ne 0) {
+            throw "Job UI cancel print process exited with $($process.ExitCode)."
+        }
+
+        $diagnostic = Wait-ForPrintSinkJobCanceled `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printerName `
+            -StartedUtc $startedUtc
+
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        do {
+            if (Test-Path -LiteralPath $outputPath) {
+                $file = Get-Item -LiteralPath $outputPath
+                if ($file.Length -gt 0) {
+                    throw "Canceled Job UI print wrote output: $outputPath"
+                }
+            }
+
+            Start-Sleep -Milliseconds 500
+        }
+        while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+        $outputExists = Test-Path -LiteralPath $outputPath
+        $bytes = if ($outputExists) {
+            (Get-Item -LiteralPath $outputPath).Length
+        }
+        else {
+            0
+        }
+
+        return [ordered]@{
+            queue = $printerName
+            format = 'pdf'
+            outputPath = $outputPath
+            outputExists = $outputExists
+            bytes = $bytes
+            mode = 'job-ui-cancel'
+            diagnostic = $diagnostic
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+
+        Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
+        Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+    }
+}
+
 function Wait-ForNonEmptyFile {
     param(
         [string] $Path,
@@ -959,6 +1174,65 @@ function Wait-ForPrintSinkJobCompleted {
     throw "Timed out waiting for PrintSink job completion diagnostic for $Endpoint."
 }
 
+function Wait-ForPrintSinkJobCanceled {
+    param(
+        [string] $PackageFamilyName,
+        [string] $Endpoint,
+        [DateTimeOffset] $StartedUtc
+    )
+
+    $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
+    do {
+        if (Test-Path -LiteralPath $diagnosticPath) {
+            $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            $match = $events |
+                Where-Object {
+                    ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace([string]$_.endpoint)) `
+                        -and $_.message -eq 'Job canceled' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $match) {
+                return [ordered]@{
+                    timestamp = $match.timestamp
+                    source = $match.source
+                    message = $match.message
+                    endpoint = $match.endpoint
+                    detail = $match.detail
+                }
+            }
+
+            $completion = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Job completed' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $completion) {
+                throw "PrintSink job completed instead of canceling for ${Endpoint}: $($completion.detail)"
+            }
+
+            $failure = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Job failed' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $failure) {
+                throw "PrintSink job failed instead of canceling for ${Endpoint}: $($failure.detail)"
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for PrintSink job cancellation diagnostic for $Endpoint."
+}
+
 if (-not $SkipPackageInstall) {
     if ([string]::IsNullOrWhiteSpace($PackagePath)) {
         throw 'Pass -PackagePath or use -SkipPackageInstall when the package is already installed.'
@@ -985,6 +1259,7 @@ try {
     Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
 
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+    Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
     $printers = Get-Printer
     $installedNames = @($printers | ForEach-Object Name)
@@ -1006,6 +1281,9 @@ try {
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $jobUiCancelResult = Invoke-PrintSinkJobUiCancelPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
     Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI after the Job UI E2E path'
 
     $result = [ordered]@{
@@ -1023,6 +1301,7 @@ try {
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
         jobUiWatermark = $jobUiResult
+        jobUiCancel = $jobUiCancelResult
     }
 
     if ($Cleanup) {

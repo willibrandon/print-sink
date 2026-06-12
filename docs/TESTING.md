@@ -80,6 +80,7 @@ tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
 
 `-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
 The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue.
+The harness drives the Save-As broker by setting the native filename control and accepting the dialog through window messages, so it does not rely on keyboard focus in CI.
 
 To remove the queues after assertion:
 
@@ -112,10 +113,11 @@ The required E2E suite proves the current installed-package behavior:
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
 3. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-4. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-5. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+4. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+5. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+6. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
-Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the same change. The next known gaps are WinRT source printing, explicit PDF passthrough, Settings UI owner-window automation, PDC refresh from a Settings change, and Job UI cancel behavior.
+Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the same change. The next known gaps are WinRT source printing, explicit PDF passthrough, Settings UI owner-window automation, and PDC refresh from a Settings change.
 
 Real output assertions:
 
@@ -126,5 +128,6 @@ Real output assertions:
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output and must still report `Job completed` from the real background task.
 - Watermark text or image appears on rendered pages when enabled.
+- Job UI cancel leaves the selected target empty and records `Job canceled` before aborting the real print flow.
 
 The CI job records the package version, Windows build, architecture, source application, target queue, and output result for each run.

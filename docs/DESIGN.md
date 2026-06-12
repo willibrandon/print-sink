@@ -694,8 +694,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
-   - Watermark: assert overlay present in rendered output.
-   - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough, cancel,
+   - Job UI: assert watermark changes are applied, and assert cancel aborts the real print flow while
+     leaving the selected target empty and recording `Job canceled`.
+   - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough,
      or a new sink behavior changes, add the corresponding real E2E assertion in the same commit.
 
 ### 9.2 Test tooling

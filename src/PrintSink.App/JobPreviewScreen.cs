@@ -1,6 +1,7 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Settings;
 using PrintSink.Core.Watermark;
 using Windows.Graphics.Printing.Workflow;
@@ -248,7 +249,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                                 .IsEnabled(canContinue),
                             Button(
                                 "Cancel",
-                                () => CancelJob(jobState.Current))
+                                () => _ = CancelJobAsync(jobState.Current, jobTitle, source, setStatus))
                                 .IsEnabled(canContinue)))))
             .Padding(32)
             .MaxWidth(920)
@@ -368,10 +369,38 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         }
     }
 
-    private static void CancelJob(JobUiDeferralState jobState)
+    private static async Task CancelJobAsync(
+        JobUiDeferralState jobState,
+        string jobTitle,
+        string source,
+        Action<string> setStatus)
     {
-        jobState.AbortAndComplete();
-        Microsoft.UI.Xaml.Application.Current.Exit();
+        try
+        {
+            await AppSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Warning,
+                        nameof(JobPreviewScreen),
+                        "Job canceled",
+                        null,
+                        $"User canceled from Job UI. Job: {jobTitle}; Source: {source}."))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            UiDispatch.Post(() => setStatus($"Cancel diagnostic failed: {ex.Message}"));
+        }
+        finally
+        {
+            UiDispatch.Post(() =>
+            {
+                jobState.AbortAndComplete();
+                Microsoft.UI.Xaml.Application.Current.Exit();
+            });
+        }
     }
 
     private static double Clamp(double value, double min, double max)

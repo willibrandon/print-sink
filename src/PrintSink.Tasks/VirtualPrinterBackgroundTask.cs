@@ -66,7 +66,9 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         }
 
         LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
-        JobUiCompletionResult uiCompletion = await CompleteJobUiAsync(args, settingsStore).ConfigureAwait(false);
+        LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+        JobUiCompletionResult uiCompletion = await CompleteJobUiAsync(args, settingsStore, endpoint, diagnosticEventStore)
+            .ConfigureAwait(false);
         if (!uiCompletion.ShouldProcess)
         {
             return;
@@ -75,7 +77,6 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         JobProcessingOptions? jobProcessingOptions = uiCompletion.UsedForegroundUi
             ? await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false)
             : null;
-        LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
         VirtualPrinterJobProcessor processor = CreateProcessor(
             args,
@@ -89,7 +90,9 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
 
     private static async Task<JobUiCompletionResult> CompleteJobUiAsync(
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
-        LocalSettingsStore settingsStore)
+        LocalSettingsStore settingsStore,
+        VirtualEndpoint endpoint,
+        IDiagnosticEventStore diagnosticEventStore)
     {
         JobUiOptions options = await settingsStore.GetJobUiOptionsAsync().ConfigureAwait(false);
         if (!options.LaunchJobUi)
@@ -111,9 +114,35 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         }
 
         await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false);
-        args.CompleteJob(uiStatus == PrintWorkflowUICompletionStatus.UserCanceled
-            ? PrintWorkflowSubmittedStatus.Canceled
-            : PrintWorkflowSubmittedStatus.Failed);
+        if (uiStatus == PrintWorkflowUICompletionStatus.UserCanceled)
+        {
+            args.CompleteJob(PrintWorkflowSubmittedStatus.Canceled);
+            await diagnosticEventStore
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Warning,
+                        nameof(VirtualPrinterBackgroundTask),
+                        "Job canceled",
+                        endpoint.QueueName,
+                        "User canceled from Job UI."))
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+            await diagnosticEventStore
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Error,
+                        nameof(VirtualPrinterBackgroundTask),
+                        "Job failed",
+                        endpoint.QueueName,
+                        $"Job UI completed with {uiStatus}."))
+                .ConfigureAwait(false);
+        }
+
         return new JobUiCompletionResult(false, true);
     }
 
