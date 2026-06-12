@@ -1,4 +1,5 @@
 using PrintSink.Core.Settings;
+using PrintSink.Core.Diagnostics;
 using Windows.Storage;
 
 namespace PrintSink.App;
@@ -15,6 +16,15 @@ internal static class AppSettingsStoreFactory
     internal static LocalSettingsStore Create()
     {
         return new LocalSettingsStore(GetRootDirectory());
+    }
+
+    /// <summary>
+    /// Creates a diagnostic event store for the current packaged app identity.
+    /// </summary>
+    /// <returns>The local diagnostic event store.</returns>
+    internal static LocalDiagnosticEventStore CreateDiagnosticEventStore()
+    {
+        return new LocalDiagnosticEventStore(GetRootDirectory());
     }
 
     /// <summary>

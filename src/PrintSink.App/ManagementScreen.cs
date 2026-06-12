@@ -1,6 +1,7 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Settings;
@@ -25,6 +26,7 @@ internal sealed class ManagementScreen : Component
         var (selectedKind, setSelectedKind) = UseState(EndpointKind.Pdf);
         var (statusText, setStatusText) = UseState("Ready.");
         var (jobUiOptions, setJobUiOptions) = UseState(JobUiOptions.Default);
+        var (diagnosticEvents, setDiagnosticEvents) = UseState(Array.Empty<DiagnosticEventRecord>());
         var (installedPrinters, setInstalledPrinters) =
             UseState<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>>(InstalledVirtualPrinterReader.ReadAll());
 
@@ -38,6 +40,7 @@ internal sealed class ManagementScreen : Component
         UseEffect(() =>
         {
             _ = LoadJobUiOptionsAsync(setJobUiOptions, setStatusText);
+            _ = LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText);
             return static () => { };
         }, EmptyDependencies);
 
@@ -57,7 +60,8 @@ internal sealed class ManagementScreen : Component
                     () => RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText),
                     jobUiOptions.LaunchJobUi,
                     () => _ = SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText),
-                    () => _ = SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText))))
+                    () => _ = SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText)),
+                DiagnosticsPanel(diagnosticEvents, () => _ = LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText))))
             .Padding(32)
             .MaxWidth(1180)
             .HAlign(HorizontalAlignment.Center);
@@ -176,6 +180,24 @@ internal sealed class ManagementScreen : Component
                     .Foreground(Theme.SecondaryText)));
     }
 
+    private static BorderElement DiagnosticsPanel(
+        DiagnosticEventRecord[] diagnosticEvents,
+        Action refreshDiagnostics)
+    {
+        Element[] eventRows = diagnosticEvents.Length == 0
+            ? [TextBlock("No recent diagnostics").Foreground(Theme.SecondaryText)]
+            : [.. diagnosticEvents.Select(DiagnosticRow)];
+
+        return CardSurface(
+            VStack(14,
+                HStack(12,
+                    TextBlock("Recent diagnostics")
+                        .ApplyStyle("SubtitleTextBlockStyle")
+                        .Bold(),
+                    Button("Refresh", refreshDiagnostics)),
+                VStack(8, eventRows)));
+    }
+
     private static BorderElement SummaryCard(string label, string value, string description)
     {
         return CardSurface(
@@ -260,6 +282,33 @@ internal sealed class ManagementScreen : Component
                 .Grid(row: 1, column: 1));
     }
 
+    private static GridElement DiagnosticRow(DiagnosticEventRecord diagnosticEvent)
+    {
+        string endpoint = string.IsNullOrWhiteSpace(diagnosticEvent.Endpoint)
+            ? "Package"
+            : diagnosticEvent.Endpoint;
+        string detail = string.IsNullOrWhiteSpace(diagnosticEvent.Detail)
+            ? string.Empty
+            : diagnosticEvent.Detail;
+
+        return Grid(
+            columns: [GridSize.Px(104), GridSize.Star()],
+            rows: [GridSize.Auto, GridSize.Auto],
+            TextBlock(diagnosticEvent.Severity.ToString())
+                .Bold()
+                .Foreground(Theme.SecondaryText)
+                .Grid(row: 0, column: 0, rowSpan: 2),
+            TextBlock($"{endpoint}: {diagnosticEvent.Message}")
+                .Bold()
+                .Set(text => text.TextWrapping = TextWrapping.Wrap)
+                .Grid(row: 0, column: 1),
+            TextBlock(FormatDiagnosticDetail(diagnosticEvent, detail))
+                .ApplyStyle("CaptionTextBlockStyle")
+                .Foreground(Theme.SecondaryText)
+                .Set(text => text.TextWrapping = TextWrapping.Wrap)
+                .Grid(row: 1, column: 1));
+    }
+
     private static BorderElement CardSurface(Element content)
     {
         return Border(content)
@@ -329,6 +378,17 @@ internal sealed class ManagementScreen : Component
         };
     }
 
+    private static string FormatDiagnosticDetail(DiagnosticEventRecord diagnosticEvent, string detail)
+    {
+        string timestamp = diagnosticEvent.Timestamp
+            .ToLocalTime()
+            .ToString("u", System.Globalization.CultureInfo.InvariantCulture);
+
+        return string.IsNullOrWhiteSpace(detail)
+            ? timestamp
+            : $"{timestamp} | {detail}";
+    }
+
     private static void RefreshInstalledPrinters(
         Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
         Action<string> setStatusText)
@@ -371,6 +431,25 @@ internal sealed class ManagementScreen : Component
         catch (Exception ex)
         {
             UiDispatch.Post(() => setStatusText($"Job UI setting load failed: {ex.Message}"));
+        }
+    }
+
+    private static async Task LoadDiagnosticsAsync(
+        Action<DiagnosticEventRecord[]> setDiagnosticEvents,
+        Action<string> setStatusText)
+    {
+        try
+        {
+            IReadOnlyList<DiagnosticEventRecord> events = await AppSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .ReadRecentAsync(8)
+                .ConfigureAwait(false);
+
+            UiDispatch.Post(() => setDiagnosticEvents([.. events]));
+        }
+        catch (Exception ex)
+        {
+            UiDispatch.Post(() => setStatusText($"Diagnostic load failed: {ex.Message}"));
         }
     }
 

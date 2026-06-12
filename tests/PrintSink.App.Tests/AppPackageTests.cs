@@ -3,6 +3,7 @@ extern alias PrintSinkApp;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.VisualStudio.TestTools.UnitTesting.AppContainer;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Settings;
 using PrintSink.Core.Watermark;
@@ -212,6 +213,42 @@ public sealed class AppPackageTests
                 .ConfigureAwait(false);
 
             Assert.IsFalse(actual.LaunchJobUi);
+        }
+        finally
+        {
+            DeleteDirectory(rootDirectory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies packaged diagnostics round-trip through package-backed local storage.
+    /// </summary>
+    [TestMethod]
+    public async Task App_diagnostic_store_round_trips_events_inside_package_identity()
+    {
+        string rootDirectory = ResetPackagedSettingsDirectory();
+        LocalDiagnosticEventStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.CreateDiagnosticEventStore();
+        DiagnosticEventRecord expected = new(
+            DateTimeOffset.UtcNow,
+            DiagnosticEventSeverity.Information,
+            "Test",
+            "Job completed",
+            "PrintSink - PDF",
+            "Succeeded; 10 ms");
+
+        try
+        {
+            await store
+                .AppendAsync(expected, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            IReadOnlyList<DiagnosticEventRecord> actual = await store
+                .ReadRecentAsync(4, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.HasCount(1, actual);
+            Assert.AreEqual("Job completed", actual[0].Message);
+            Assert.AreEqual("PrintSink - PDF", actual[0].Endpoint);
         }
         finally
         {
