@@ -63,10 +63,36 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             return;
         }
 
+        if (!await CompleteJobUiAsync(args).ConfigureAwait(false))
+        {
+            return;
+        }
+
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
         VirtualPrinterJobProcessor processor = CreateProcessor(args, printTicket);
         WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
         await processor.ProcessAsync(job).ConfigureAwait(false);
+    }
+
+    private static async Task<bool> CompleteJobUiAsync(PrintWorkflowVirtualPrinterDataAvailableEventArgs args)
+    {
+        if (!args.UILauncher.IsUILaunchEnabled())
+        {
+            return true;
+        }
+
+        PrintWorkflowUICompletionStatus uiStatus = await args.UILauncher.LaunchAndCompleteUIAsync()
+            .AsTask()
+            .ConfigureAwait(false);
+        if (uiStatus == PrintWorkflowUICompletionStatus.Completed)
+        {
+            return true;
+        }
+
+        args.CompleteJob(uiStatus == PrintWorkflowUICompletionStatus.UserCanceled
+            ? PrintWorkflowSubmittedStatus.Canceled
+            : PrintWorkflowSubmittedStatus.Failed);
+        return false;
     }
 
     private static VirtualPrinterJobProcessor CreateProcessor(
