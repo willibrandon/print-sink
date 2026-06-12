@@ -1,5 +1,6 @@
 using Hex1b;
 using Hex1b.Widgets;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 
 namespace PrintSink.Cli.Tui;
@@ -54,6 +55,20 @@ internal static class TuiDashboard
                         routeCheck.Status,
                         " | bytes=",
                         routeCheck.OutputBytes)));
+            }
+
+            widgets.Add(stack.Text(""));
+            widgets.Add(stack.Text("Recent diagnostics"));
+            if (model.DiagnosticEvents.Count == 0)
+            {
+                widgets.Add(stack.Text("No recent diagnostics"));
+            }
+            else
+            {
+                foreach (DiagnosticEventRecord diagnosticEvent in model.DiagnosticEvents)
+                {
+                    widgets.Add(stack.Text(FormatDiagnosticEvent(diagnosticEvent)));
+                }
             }
 
             widgets.AddRange(
@@ -121,6 +136,26 @@ internal static class TuiDashboard
     private static string FormatStatus(bool succeeded)
     {
         return succeeded ? "ok" : "fail";
+    }
+
+    private static string FormatDiagnosticEvent(DiagnosticEventRecord diagnosticEvent)
+    {
+        string endpoint = string.IsNullOrWhiteSpace(diagnosticEvent.Endpoint)
+            ? "package"
+            : diagnosticEvent.Endpoint;
+        string detail = string.IsNullOrWhiteSpace(diagnosticEvent.Detail)
+            ? string.Empty
+            : $" | {diagnosticEvent.Detail}";
+
+        return string.Concat(
+            diagnosticEvent.Timestamp.ToLocalTime().ToString("u", System.Globalization.CultureInfo.InvariantCulture),
+            " | ",
+            diagnosticEvent.Severity,
+            " | ",
+            endpoint,
+            " | ",
+            diagnosticEvent.Message,
+            detail);
     }
 
     private static string TrimPath(string path)

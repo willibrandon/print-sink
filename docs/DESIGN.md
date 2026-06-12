@@ -641,6 +641,7 @@ keys or mouse input, capturing terminal output, and scripting assertions.
   against `ResourceLanguage`.
 - **Observability:** `EventSource`/ETW tracing in `PrintSink.Core` (provider `PrintSink-Diagnostics`) for
   job lifecycle, format decisions, conversion timings — usable with WPR/PerfView for field diagnosis.
+  A small package-local JSON event store keeps recent job diagnostics available to the Hex1b TUI.
 - **Versioning:** package `Version` Major.Minor.Build.Revision; `AppxAutoIncrementPackageRevision` on
   publish.
 

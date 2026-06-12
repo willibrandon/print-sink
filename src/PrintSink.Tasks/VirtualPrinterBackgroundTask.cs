@@ -1,4 +1,5 @@
 using Windows.ApplicationModel.Background;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Processing;
@@ -74,8 +75,14 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         JobProcessingOptions? jobProcessingOptions = uiCompletion.UsedForegroundUi
             ? await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false)
             : null;
+        LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
-        VirtualPrinterJobProcessor processor = CreateProcessor(args, printTicket, settingsStore, jobProcessingOptions);
+        VirtualPrinterJobProcessor processor = CreateProcessor(
+            args,
+            printTicket,
+            settingsStore,
+            jobProcessingOptions,
+            diagnosticEventStore);
         WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
         await processor.ProcessAsync(job).ConfigureAwait(false);
     }
@@ -114,7 +121,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket,
         LocalSettingsStore settingsStore,
-        JobProcessingOptions? jobProcessingOptions)
+        JobProcessingOptions? jobProcessingOptions,
+        IDiagnosticEventStore diagnosticEventStore)
     {
         EndpointSinkResolver sinkResolver = new(new Dictionary<EndpointKind, ISink>
         {
@@ -132,7 +140,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             sinkResolver,
             settingsStore,
             jobProcessingOptions,
-            new XpsWatermarkPdlTransformer(new ProjectedXpsWatermarker()));
+            new XpsWatermarkPdlTransformer(new ProjectedXpsWatermarker()),
+            diagnosticEventStore);
     }
 
     private static async Task DrainCloudSinkAsync(

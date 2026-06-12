@@ -1,6 +1,8 @@
 using PrintSink.Core.Endpoints;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Processing;
+using PrintSink.Core.Settings;
 
 namespace PrintSink.Cli.Tui;
 
@@ -9,15 +11,18 @@ internal sealed class TuiDashboardModel
     private TuiDashboardModel(
         TuiAssetValidation manifest,
         TuiAssetValidation[] printDeviceCapabilities,
-        TuiRouteCheck[] routeChecks)
+        TuiRouteCheck[] routeChecks,
+        IReadOnlyList<DiagnosticEventRecord> diagnosticEvents)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(printDeviceCapabilities);
         ArgumentNullException.ThrowIfNull(routeChecks);
+        ArgumentNullException.ThrowIfNull(diagnosticEvents);
 
         Manifest = manifest;
         PrintDeviceCapabilities = printDeviceCapabilities;
         RouteChecks = routeChecks;
+        DiagnosticEvents = diagnosticEvents;
     }
 
     internal TuiAssetValidation Manifest { get; }
@@ -26,11 +31,27 @@ internal sealed class TuiDashboardModel
 
     internal IReadOnlyList<TuiRouteCheck> RouteChecks { get; }
 
+    internal IReadOnlyList<DiagnosticEventRecord> DiagnosticEvents { get; }
+
     internal static async Task<TuiDashboardModel> LoadAsync(
         string workingDirectory,
         CancellationToken cancellationToken)
     {
+        string diagnosticsRootDirectory = ResolveDiagnosticsRootDirectory(workingDirectory);
+        return await LoadAsync(
+                workingDirectory,
+                new LocalDiagnosticEventStore(diagnosticsRootDirectory),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<TuiDashboardModel> LoadAsync(
+        string workingDirectory,
+        IDiagnosticEventStore diagnosticEventStore,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        ArgumentNullException.ThrowIfNull(diagnosticEventStore);
 
         string appDirectory = ResolveAppDirectory(workingDirectory);
         string manifestPath = Path.Combine(appDirectory, "Package.appxmanifest");
@@ -44,8 +65,11 @@ internal sealed class TuiDashboardModel
         TuiAssetValidation[] pdcValidations = ValidatePrintDeviceCapabilities(appDirectory);
         TuiRouteCheck[] routeChecks = await RunRouteChecksAsync(cancellationToken)
             .ConfigureAwait(false);
+        IReadOnlyList<DiagnosticEventRecord> diagnosticEvents = await diagnosticEventStore
+            .ReadRecentAsync(8, cancellationToken)
+            .ConfigureAwait(false);
 
-        return new TuiDashboardModel(manifest, pdcValidations, routeChecks);
+        return new TuiDashboardModel(manifest, pdcValidations, routeChecks, diagnosticEvents);
     }
 
     private static TuiAssetValidation[] ValidatePrintDeviceCapabilities(string appDirectory)
@@ -130,6 +154,61 @@ internal sealed class TuiDashboardModel
         }
 
         return Path.Combine(Path.GetFullPath(workingDirectory), "src", "PrintSink.App");
+    }
+
+    private static string ResolveDiagnosticsRootDirectory(string workingDirectory)
+    {
+        string? packageSettingsDirectory = TryResolveInstalledPackageSettingsDirectory();
+        if (packageSettingsDirectory is not null)
+        {
+            return packageSettingsDirectory;
+        }
+
+        return Path.Combine(ResolveRepositoryRoot(workingDirectory), ".printsink", "Settings");
+    }
+
+    private static string ResolveRepositoryRoot(string workingDirectory)
+    {
+        DirectoryInfo? directory = new(Path.GetFullPath(workingDirectory));
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "PrintSink.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return Path.GetFullPath(workingDirectory);
+    }
+
+    private static string? TryResolveInstalledPackageSettingsDirectory()
+    {
+        string localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localApplicationData))
+        {
+            return null;
+        }
+
+        string packagesDirectory = Path.Combine(localApplicationData, "Packages");
+        if (!Directory.Exists(packagesDirectory))
+        {
+            return null;
+        }
+
+        DirectoryInfo? packageDirectory = Directory
+            .EnumerateDirectories(packagesDirectory, "PrintSink_*")
+            .Select(path => new DirectoryInfo(path))
+            .OrderByDescending(directory => directory.LastWriteTimeUtc)
+            .FirstOrDefault();
+        if (packageDirectory is null)
+        {
+            return null;
+        }
+
+        string localStateDirectory = Path.Combine(packageDirectory.FullName, "LocalState");
+        return PackagedSettingsDirectory.GetRootDirectory(localStateDirectory);
     }
 
     private static string GetConfigAssetName(EndpointKind kind)

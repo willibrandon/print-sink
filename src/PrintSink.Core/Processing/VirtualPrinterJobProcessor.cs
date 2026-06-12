@@ -19,6 +19,7 @@ public sealed class VirtualPrinterJobProcessor
     private readonly IEndpointSinkResolver sinkResolver;
     private readonly ISettingsStore? settingsStore;
     private readonly JobProcessingOptions? jobProcessingOptions;
+    private readonly IDiagnosticEventStore? diagnosticEventStore;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
@@ -87,6 +88,28 @@ public sealed class VirtualPrinterJobProcessor
         ISettingsStore? settingsStore,
         JobProcessingOptions? jobProcessingOptions,
         IPdlTransformer transformer)
+        : this(router, converter, sinkResolver, settingsStore, jobProcessingOptions, transformer, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
+    /// </summary>
+    /// <param name="router">The PDL router.</param>
+    /// <param name="converter">The PDL converter.</param>
+    /// <param name="sinkResolver">The endpoint sink resolver.</param>
+    /// <param name="settingsStore">The settings store used to load endpoint options.</param>
+    /// <param name="jobProcessingOptions">The foreground job options, when job UI collected any.</param>
+    /// <param name="transformer">The PDL transformer applied before conversion or sink writes.</param>
+    /// <param name="diagnosticEventStore">The store used to persist recent diagnostics.</param>
+    public VirtualPrinterJobProcessor(
+        IPdlRouter router,
+        IPdlConverter converter,
+        IEndpointSinkResolver sinkResolver,
+        ISettingsStore? settingsStore,
+        JobProcessingOptions? jobProcessingOptions,
+        IPdlTransformer transformer,
+        IDiagnosticEventStore? diagnosticEventStore)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(converter);
@@ -99,6 +122,7 @@ public sealed class VirtualPrinterJobProcessor
         this.sinkResolver = sinkResolver;
         this.settingsStore = settingsStore;
         this.jobProcessingOptions = jobProcessingOptions;
+        this.diagnosticEventStore = diagnosticEventStore;
     }
 
     /// <summary>
@@ -123,6 +147,16 @@ public sealed class VirtualPrinterJobProcessor
             plan.TargetFormat.ToString(),
             plan.ConversionKind?.ToString() ?? "None",
             plan.Reason);
+        await RecordDiagnosticEventAsync(
+            new DiagnosticEventRecord(
+                DateTimeOffset.UtcNow,
+                DiagnosticEventSeverity.Information,
+                nameof(VirtualPrinterJobProcessor),
+                "Route resolved",
+                job.Endpoint.QueueName,
+                $"{job.ContentType} -> {plan.TargetFormat}; {plan.ActionKind}; {plan.Reason}"),
+            cancellationToken)
+            .ConfigureAwait(false);
 
         if (plan.ActionKind == PdlActionKind.Reject)
         {
@@ -131,6 +165,16 @@ public sealed class VirtualPrinterJobProcessor
                 job.Endpoint.QueueName,
                 plan.Reason,
                 GetElapsedMilliseconds(started));
+            await RecordDiagnosticEventAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Warning,
+                    nameof(VirtualPrinterJobProcessor),
+                    "Job rejected",
+                    job.Endpoint.QueueName,
+                    plan.Reason),
+                CancellationToken.None)
+                .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, null);
         }
 
@@ -142,6 +186,16 @@ public sealed class VirtualPrinterJobProcessor
                 job.Endpoint.QueueName,
                 VirtualPrinterJobStatus.Succeeded.ToString(),
                 GetElapsedMilliseconds(started));
+            await RecordDiagnosticEventAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(VirtualPrinterJobProcessor),
+                    "Job completed",
+                    job.Endpoint.QueueName,
+                    $"{VirtualPrinterJobStatus.Succeeded}; {GetElapsedMilliseconds(started)} ms"),
+                CancellationToken.None)
+                .ConfigureAwait(false);
 
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Succeeded, null);
         }
@@ -153,6 +207,16 @@ public sealed class VirtualPrinterJobProcessor
                 ex.GetType().FullName ?? ex.GetType().Name,
                 ex.Message,
                 GetElapsedMilliseconds(started));
+            await RecordDiagnosticEventAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Warning,
+                    nameof(VirtualPrinterJobProcessor),
+                    "Job canceled",
+                    job.Endpoint.QueueName,
+                    ex.Message),
+                CancellationToken.None)
+                .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Canceled, ex);
         }
         catch (Exception ex)
@@ -163,6 +227,16 @@ public sealed class VirtualPrinterJobProcessor
                 ex.GetType().FullName ?? ex.GetType().Name,
                 ex.Message,
                 GetElapsedMilliseconds(started));
+            await RecordDiagnosticEventAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Error,
+                    nameof(VirtualPrinterJobProcessor),
+                    "Job failed",
+                    job.Endpoint.QueueName,
+                    ex.Message),
+                CancellationToken.None)
+                .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, ex);
         }
     }
@@ -257,5 +331,24 @@ public sealed class VirtualPrinterJobProcessor
         return await settingsStore
             .GetWatermarkOptionsAsync(endpoint.PrinterUri, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async Task RecordDiagnosticEventAsync(
+        DiagnosticEventRecord record,
+        CancellationToken cancellationToken)
+    {
+        if (diagnosticEventStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await diagnosticEventStore.AppendAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Diagnostics persistence must never fail print-job processing.
+        }
     }
 }

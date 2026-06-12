@@ -3,6 +3,7 @@ using Hex1b.Automation;
 using Hex1b.Input;
 using PrintSink.Cli.Tui;
 using PrintSink.Core.Abstractions;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 
 namespace PrintSink.Cli.Tests.Tui;
@@ -34,6 +35,7 @@ public sealed class TuiDashboardTests
         Assert.HasCount(EndpointCatalog.All.Count, model.RouteChecks);
         Assert.IsTrue(model.RouteChecks.All(routeCheck => routeCheck.Status == VirtualPrinterJobStatus.Succeeded));
         Assert.IsTrue(model.RouteChecks.All(routeCheck => routeCheck.OutputBytes > 0));
+        Assert.IsNotNull(model.DiagnosticEvents);
     }
 
     /// <summary>
@@ -42,9 +44,31 @@ public sealed class TuiDashboardTests
     [TestMethod]
     public async Task Dashboard_renders_in_headless_terminal()
     {
-        TuiDashboardModel model = await TuiDashboardModel
-            .LoadAsync(Environment.CurrentDirectory, TestContext.CancellationToken)
-            .ConfigureAwait(false);
+        string directory = CreateTestDirectory();
+        TuiDashboardModel model;
+        try
+        {
+            LocalDiagnosticEventStore diagnosticEventStore = new(directory);
+            await diagnosticEventStore
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        "Test",
+                        "Job completed",
+                        "PrintSink - PDF",
+                        "Succeeded; 12 ms"),
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            model = await TuiDashboardModel
+                .LoadAsync(Environment.CurrentDirectory, diagnosticEventStore, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+
         using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(context => TuiDashboard.Build(context, model))
             .WithHeadless()
@@ -83,7 +107,16 @@ public sealed class TuiDashboardTests
         Assert.Contains("Fixture routes", screenText);
         Assert.Contains("XpsToPdf", screenText);
         Assert.Contains("status=Succeeded", screenText);
+        Assert.Contains("Recent diagnostics", screenText);
+        Assert.Contains("Job completed", screenText);
         Assert.Contains("PrintSink - PDF", screenText);
         Assert.Contains(".xps,.oxps", screenText);
+    }
+
+    private static string CreateTestDirectory()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 }
