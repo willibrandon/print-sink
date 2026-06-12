@@ -36,6 +36,21 @@
         <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
         <WinUISDKReferences>false</WinUISDKReferences>
         <EnableMsixTooling>true</EnableMsixTooling>
+        <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+        <CsWinRTPrivateProjection>true</CsWinRTPrivateProjection>
+        <CsWinRTIncludesPrivate>
+            Windows.Devices.Printers.VirtualPrinterInstallationParameters;
+            Windows.Devices.Printers.VirtualPrinterInstallationResult;
+            Windows.Devices.Printers.VirtualPrinterInstallationStatus;
+            Windows.Devices.Printers.VirtualPrinterPreferredInputFormat;
+            Windows.Devices.Printers.VirtualPrinterManager;
+            Windows.Devices.Printers.VirtualPrinterSupportedFormat;
+            Windows.Devices.Printers.IVirtualPrinterInstallationParameters;
+            Windows.Devices.Printers.IVirtualPrinterInstallationResult;
+            Windows.Devices.Printers.IVirtualPrinterManagerStatics;
+            Windows.Devices.Printers.IVirtualPrinterSupportedFormat;
+            Windows.Devices.Printers.IVirtualPrinterSupportedFormatFactory
+        </CsWinRTIncludesPrivate>
         <!--
             Default unqualified CLI runs to x64 through the Platform property above. Keeping all
             generated WinUI sources under obj\<Platform>\... avoids Visual Studio design-time builds
@@ -80,6 +95,12 @@
         <ProjectReference Include="..\PrintSink.Tasks\PrintSink.Tasks.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
+    <ItemGroup>
+        <AppxPackagePayload Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd">
+            <TargetPath>PrintSink.Tasks.winmd</TargetPath>
+        </AppxPackagePayload>
+    </ItemGroup>
+
     <Target Name="IncludePrintSinkTasksActivationAssets" AfterTargets="Build">
         <ItemGroup>
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.dll" />
@@ -100,6 +121,16 @@
             DestinationFolder="$(OutputPath)AppX"
             SkipUnchangedFiles="true"
             Condition="Exists('$(OutputPath)AppX') And Exists('%(_PrintSinkTasksActivationAsset.Identity)')" />
+    </Target>
+
+    <Target
+        Name="PatchPrintSinkAppExecutionAliasManifest"
+        BeforeTargets="_ValidateAppxManifest;_GenerateAppxPackageRecipe;_GenerateAppxPackageFile"
+        Condition="'$(AppxPackage)' == 'true' And Exists('$(FinalAppxManifestName)')">
+        <XmlPoke
+            XmlInputPath="$(FinalAppxManifestName)"
+            Query="//*[local-name()='Extension' and @Category='windows.appExecutionAlias']/@Executable"
+            Value="$(TargetName).exe" />
     </Target>
 
     <!--

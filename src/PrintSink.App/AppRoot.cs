@@ -45,7 +45,7 @@ internal sealed class AppRoot : Component
             .Backdrop(BackdropKind.Mica);
     }
 
-    private static Element RenderRoute(AppActivationRoute route)
+    private static ComponentElement RenderRoute(AppActivationRoute route)
     {
         return route.Kind switch
         {

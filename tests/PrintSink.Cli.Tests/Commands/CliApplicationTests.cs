@@ -1,4 +1,6 @@
 using PrintSink.Cli;
+using PrintSink.Cli.Commands;
+using System.CommandLine;
 
 namespace PrintSink.Cli.Tests.Commands;
 
@@ -22,8 +24,38 @@ public sealed class CliApplicationTests
         (int exitCode, string output, _) = await InvokeAsync("queues").ConfigureAwait(false);
 
         Assert.AreEqual(0, exitCode);
+        Assert.Contains("Installed", output);
         Assert.Contains("PrintSink - PDF", output);
         Assert.Contains("PrintSink - PWG Raster", output);
+    }
+
+    /// <summary>
+    /// Verifies that the queue command marks queues found in the local print stack.
+    /// </summary>
+    [TestMethod]
+    public async Task Queues_reports_installed_status_when_snapshot_is_available()
+    {
+        (int exitCode, string output, string error) = await InvokeQueuesAsync(
+            PrinterQueueSnapshot.Available(["printsink - pdf"])).ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.AreEqual(string.Empty, error);
+        Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tyes", output);
+        Assert.Contains("PrintSink - XPS\tOxps\tOxps\t.oxps\tno", output);
+    }
+
+    /// <summary>
+    /// Verifies that the queue command stays useful when installed queue inspection is unavailable.
+    /// </summary>
+    [TestMethod]
+    public async Task Queues_reports_unknown_status_when_snapshot_is_unavailable()
+    {
+        (int exitCode, string output, string error) = await InvokeQueuesAsync(
+            PrinterQueueSnapshot.Unavailable("print stack unavailable")).ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.Contains("PrintSink - PDF\tPdf\tOxps\t.pdf\tunknown", output);
+        Assert.Contains("warning: installed queue status unavailable: print stack unavailable", error);
     }
 
     /// <summary>
@@ -267,6 +299,27 @@ public sealed class CliApplicationTests
         return (exitCode, output.ToString(), error.ToString());
     }
 
+    private async Task<(int ExitCode, string Output, string Error)> InvokeQueuesAsync(PrinterQueueSnapshot snapshot)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        CliContext context = new(output, error, Environment.CurrentDirectory);
+        RootCommand rootCommand = new("test root");
+        rootCommand.Subcommands.Add(QueuesCommand.Create(context, () => snapshot));
+        InvocationConfiguration configuration = new()
+        {
+            Output = output,
+            Error = error,
+        };
+
+        int exitCode = await rootCommand
+            .Parse(["queues"])
+            .InvokeAsync(configuration, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+
+        return (exitCode, output.ToString(), error.ToString());
+    }
+
     private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
@@ -322,14 +375,14 @@ public sealed class CliApplicationTests
                 <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="PrintSink.App.App" />
                 <printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="PrintSink.App.App" />
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PdfPrintDisplayName" PrinterUri="ipp://localhost/printsink/pdf" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterPdf.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PdfPrintDisplayName" PrinterUri="printsink:print-to-pdf" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterPdf.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="ipp://localhost/printsink/xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/oxps" />
                       <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />
@@ -337,21 +390,21 @@ public sealed class CliApplicationTests
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PostScriptPrintDisplayName" PrinterUri="ipp://localhost/printsink/postscript" PreferredInputFormat="application/postscript" OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterPostScript.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PostScriptPrintDisplayName" PrinterUri="printsink:print-to-ps" PreferredInputFormat="application/postscript" OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterPostScript.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/postscript" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:CloudPrintDisplayName" PrinterUri="ipp://localhost/printsink/cloud" PreferredInputFormat="application/oxps" PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterCloud.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:CloudPrintDisplayName" PrinterUri="printsink:print-to-cloud" PreferredInputFormat="application/oxps" PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterCloud.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="ipp://localhost/printsink/pwg-raster" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
                 </printsupport2:Extension>
               </Extensions>
             </Application>
@@ -386,14 +439,14 @@ public sealed class CliApplicationTests
                 <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="PrintSink.App.App" />
                 <printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="PrintSink.App.App" />
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PdfPrintDisplayName" PrinterUri="ipp://localhost/printsink/pdf" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterPdf.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PdfPrintDisplayName" PrinterUri="printsink:print-to-pdf" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterPdf.pdc.xml" PdrFile="Config\PrinterPdf.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="ipp://localhost/printsink/xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/oxps" />
                       <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />
@@ -401,21 +454,21 @@ public sealed class CliApplicationTests
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PostScriptPrintDisplayName" PrinterUri="ipp://localhost/printsink/postscript" PreferredInputFormat="application/postscript" OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterPostScript.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PostScriptPrintDisplayName" PrinterUri="printsink:print-to-ps" PreferredInputFormat="application/postscript" OutputFileTypes="ps" PdcFile="Config\PrinterPostScript.pdc.xml" PdrFile="Config\PrinterPostScript.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/postscript" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:CloudPrintDisplayName" PrinterUri="ipp://localhost/printsink/cloud" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterCloud.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:CloudPrintDisplayName" PrinterUri="printsink:print-to-cloud" PreferredInputFormat="application/oxps" OutputFileTypes="pdf" PdcFile="Config\PrinterCloud.pdc.xml" PdrFile="Config\PrinterCloud.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/pdf" MaxVersion="1.7" />
                     </printsupport2:SupportedFormats>
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="ipp://localhost/printsink/pwg-raster" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PwgRasterPrintDisplayName" PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps" OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml" />
                 </printsupport2:Extension>
               </Extensions>
             </Application>

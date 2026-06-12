@@ -4,7 +4,7 @@ namespace PrintSink.Tasks;
 
 internal sealed class BackgroundTaskHandlerState
 {
-    private readonly object gate = new();
+    private readonly Lock gate = new();
     private BackgroundTaskDeferral? taskDeferral;
     private bool isCancellationRequested;
     private int activeHandlerCount;

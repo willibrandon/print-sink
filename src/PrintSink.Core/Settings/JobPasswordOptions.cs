@@ -8,7 +8,7 @@ namespace PrintSink.Core.Settings;
 /// </summary>
 public sealed class JobPasswordOptions
 {
-    private static readonly ISet<string> SupportedEncryptionMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> SupportedEncryptionMethods = new(StringComparer.OrdinalIgnoreCase)
     {
         "sha2-256",
         "none",

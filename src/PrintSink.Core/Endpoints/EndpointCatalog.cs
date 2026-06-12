@@ -12,7 +12,7 @@ public static class EndpointCatalog
         new(
             EndpointKind.Pdf,
             "PrintSink - PDF",
-            new Uri("ipp://localhost/printsink/pdf"),
+            new Uri("printsink:print-to-pdf"),
             PdlFormat.Oxps,
             PdlFormat.Pdf,
             [PdlFormat.Pdf],
@@ -21,7 +21,7 @@ public static class EndpointCatalog
         new(
             EndpointKind.Xps,
             "PrintSink - XPS",
-            new Uri("ipp://localhost/printsink/xps"),
+            new Uri("printsink:print-to-xps"),
             PdlFormat.Oxps,
             PdlFormat.Oxps,
             [PdlFormat.Oxps, PdlFormat.Xps],
@@ -30,7 +30,7 @@ public static class EndpointCatalog
         new(
             EndpointKind.PostScript,
             "PrintSink - PostScript",
-            new Uri("ipp://localhost/printsink/postscript"),
+            new Uri("printsink:print-to-ps"),
             PdlFormat.PostScript,
             PdlFormat.PostScript,
             [PdlFormat.PostScript],
@@ -39,7 +39,7 @@ public static class EndpointCatalog
         new(
             EndpointKind.Cloud,
             "PrintSink - Cloud",
-            new Uri("ipp://localhost/printsink/cloud"),
+            new Uri("printsink:print-to-cloud"),
             PdlFormat.Oxps,
             PdlFormat.Pdf,
             [PdlFormat.Pdf],
@@ -48,7 +48,7 @@ public static class EndpointCatalog
         new(
             EndpointKind.PwgRaster,
             "PrintSink - PWG Raster",
-            new Uri("ipp://localhost/printsink/pwg-raster"),
+            new Uri("printsink:print-to-pwgr"),
             PdlFormat.Oxps,
             PdlFormat.PwgRaster,
             [],

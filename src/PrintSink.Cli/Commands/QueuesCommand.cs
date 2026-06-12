@@ -15,23 +15,46 @@ internal static class QueuesCommand
     /// <returns>The configured command.</returns>
     public static Command Create(CliContext context)
     {
+        return Create(context, InstalledPrinterReader.Read);
+    }
+
+    internal static Command Create(CliContext context, Func<PrinterQueueSnapshot> readInstalledQueues)
+    {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(readInstalledQueues);
 
         Command command = new("queues", "List the PrintSink virtual queues.");
         command.SetAction(_ =>
         {
-            context.Output.WriteLine("Queue\tTarget\tPreferred\tSink");
+            PrinterQueueSnapshot installedQueues = readInstalledQueues();
+            context.Output.WriteLine("Queue\tTarget\tPreferred\tSink\tInstalled");
 
             foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
             {
                 string sink = endpoint.RequiresTargetFile ? endpoint.DefaultExtension ?? "file" : "custom";
+                string installed = GetInstalledStatus(installedQueues, endpoint);
                 context.Output.WriteLine(
-                    $"{endpoint.QueueName}\t{endpoint.TargetFormat}\t{endpoint.PreferredInputFormat}\t{sink}");
+                    $"{endpoint.QueueName}\t{endpoint.TargetFormat}\t{endpoint.PreferredInputFormat}\t{sink}\t{installed}");
+            }
+
+            if (!installedQueues.IsAvailable)
+            {
+                context.Error.WriteLine($"warning: installed queue status unavailable: {installedQueues.UnavailableReason}");
             }
 
             return CliExitCodes.Success;
         });
 
         return command;
+    }
+
+    private static string GetInstalledStatus(PrinterQueueSnapshot installedQueues, VirtualEndpoint endpoint)
+    {
+        if (!installedQueues.IsAvailable)
+        {
+            return "unknown";
+        }
+
+        return installedQueues.Contains(endpoint.QueueName) ? "yes" : "no";
     }
 }

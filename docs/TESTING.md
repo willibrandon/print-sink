@@ -1,6 +1,6 @@
 # Testing
 
-PrintSink uses fast automated checks for code that can run without the print broker, plus a manual end-to-end runbook for the real Windows print stack.
+PrintSink uses fast automated checks for code that can run without the print broker, plus Windows-runner automation for the real print stack.
 
 ## Automated Gate
 
@@ -42,15 +42,29 @@ dotnet run --project src\PrintSink.App
 
 Verify that a PrintSink window opens and responds. Close it after the check if more builds will follow.
 
-## Manual Print-Stack Runbook
+## Print-Stack E2E Automation
 
-Use a clean Windows 11 24H2 VM or newer. Install the signed MSIX package, then verify the queues:
+Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Build a signed MSIX, install it, provision the queues through the app execution alias, and assert the queues through the scriptable print stack.
 
 ```powershell
-Get-Printer | Where-Object Name -like 'PrintSink*' | Select-Object Name,DriverName,PortName
+tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix>
 ```
 
-Expected queues:
+When the package is already installed:
+
+```powershell
+tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
+```
+
+To remove the queues after assertion:
+
+```powershell
+tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -Cleanup
+```
+
+The script runs `printsink-app.exe --install-virtual-printers` and fails with `%TEMP%\PrintSink.App.headless.log` if provisioning fails. App execution aliases are verified against the signed MSIX package, not loose development registration.
+
+The harness must assert these queues:
 
 - `PrintSink - PDF`
 - `PrintSink - XPS`
@@ -58,18 +72,18 @@ Expected queues:
 - `PrintSink - Cloud`
 - `PrintSink - PWG Raster`
 
-Run these scenarios:
+The automated E2E suite is extended as features land:
 
-1. Print from a Win32 app through the common print dialog to each file-backed queue.
-2. Print from a WinRT or packaged app through the modern print dialog.
-3. Print a PDF from Edge to the PDF queue and confirm PDF passthrough.
+1. Print from a Win32 source through the common print path to each file-backed queue.
+2. Print from a WinRT or packaged source through the modern print path.
+3. Print a PDF fixture to the PDF queue and confirm PDF passthrough.
 4. Print to the cloud queue and confirm no Save As target is requested.
-5. Open printer preferences and confirm the settings UI is modal to the owner window.
-6. Change a setting that affects capabilities and confirm the PDC refresh path runs.
-7. Launch job UI, change watermark options, complete the job, and confirm the output reflects the choice.
-8. Cancel from job UI and confirm no output file is written.
+5. Open printer preferences through automation and confirm the settings UI is modal to the owner window.
+6. Change a setting that affects capabilities and assert the PDC refresh path.
+7. Launch job UI, change watermark options, complete the job, and assert the output reflects the choice.
+8. Cancel from job UI and assert no output file is written.
 
-Output checks:
+Output assertions:
 
 - PDF starts with `%PDF-`.
 - XPS/OXPS opens in the Windows viewer or another XPS reader.
@@ -77,4 +91,4 @@ Output checks:
 - PWG Raster output is non-empty and recognized by the chosen PWG inspection tool.
 - Watermark text or image appears on rendered pages when enabled.
 
-Record the package version, Windows build, architecture, source application, target queue, and output result for each run.
+The CI job records the package version, Windows build, architecture, source application, target queue, and output result for each run.

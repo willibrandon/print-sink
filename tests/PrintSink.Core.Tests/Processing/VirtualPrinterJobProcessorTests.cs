@@ -29,7 +29,7 @@ public sealed class VirtualPrinterJobProcessorTests
         TestPdlConverter converter = new(Encoding.UTF8.GetBytes("converted"));
         VirtualPrinterJobProcessor processor = CreateProcessor(new TargetStreamSink(), converter);
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, job.CompletedStatus);
@@ -54,7 +54,7 @@ public sealed class VirtualPrinterJobProcessorTests
         CapturingSink sink = new();
         VirtualPrinterJobProcessor processor = CreateProcessor(sink, converter);
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, job.CompletedStatus);
@@ -79,7 +79,7 @@ public sealed class VirtualPrinterJobProcessorTests
         CapturingSink sink = new();
         VirtualPrinterJobProcessor processor = CreateProcessor(sink, new TestPdlConverter([]));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
@@ -103,7 +103,7 @@ public sealed class VirtualPrinterJobProcessorTests
             false);
         VirtualPrinterJobProcessor processor = CreateProcessor(new CapturingSink(expected), new TestPdlConverter([]));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
@@ -123,7 +123,7 @@ public sealed class VirtualPrinterJobProcessorTests
             null);
         InMemorySettingsStore settingsStore = new();
         await settingsStore
-            .SaveWatermarkOptionsAsync(endpoint.PrinterUri, expected)
+            .SaveWatermarkOptionsAsync(endpoint.PrinterUri, expected, TestContext.CancellationToken)
             .ConfigureAwait(false);
         InMemoryVirtualPrinterJob job = new(
             PdlFormatInfo.PdfContentType,
@@ -140,7 +140,7 @@ public sealed class VirtualPrinterJobProcessorTests
             }),
             settingsStore);
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
         Assert.AreSame(expected, sink.Context?.WatermarkOptions);
@@ -157,7 +157,7 @@ public sealed class VirtualPrinterJobProcessorTests
         await settingsStore
             .SaveWatermarkOptionsAsync(
                 endpoint.PrinterUri,
-                new WatermarkOptions(true, new TextWatermark("Endpoint", "Segoe UI", 48, 0.35, -30, 0, 0), null))
+                new WatermarkOptions(true, new TextWatermark("Endpoint", "Segoe UI", 48, 0.35, -30, 0, 0), null), TestContext.CancellationToken)
             .ConfigureAwait(false);
         InMemoryVirtualPrinterJob job = new(
             PdlFormatInfo.PdfContentType,
@@ -175,7 +175,7 @@ public sealed class VirtualPrinterJobProcessorTests
             settingsStore,
             new JobProcessingOptions(WatermarkOptions.Disabled));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
         Assert.AreSame(WatermarkOptions.Disabled, sink.Context?.WatermarkOptions);
@@ -236,4 +236,9 @@ public sealed class VirtualPrinterJobProcessorTests
             return Task.FromResult<JobProcessingOptions?>(null);
         }
     }
+
+    /// <summary>
+    /// Gets or sets the current MSTest context.
+    /// </summary>
+    public TestContext TestContext { get; set; }
 }

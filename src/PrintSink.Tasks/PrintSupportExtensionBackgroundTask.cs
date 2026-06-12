@@ -114,7 +114,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
                 {
                     XmlDocument resources = args.GetCurrentPrintDeviceResources();
-                    IReadOnlyDictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
+                    Dictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
                     if (localizedResources.Count > 0)
                     {
                         XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
@@ -169,7 +169,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         return result;
     }
 
-    private static IReadOnlyDictionary<string, string> LoadLocalizedResources(string resourceLanguage)
+    private static Dictionary<string, string> LoadLocalizedResources(string resourceLanguage)
     {
         ResourceContext resourceContext = ResourceContext.GetForViewIndependentUse();
         if (!string.IsNullOrWhiteSpace(resourceLanguage))

@@ -39,8 +39,8 @@ PSA v4 surface exposes** — no feature is descoped.
 4. Strict engineering standards: **one type per file**, **triple-slash XML docs on every public member**,
    nullable reference types, analyzers as errors.
 5. Fully tested following Microsoft's current guidance, using the current test stack
-   (**MSTest on Microsoft.Testing.Platform**, .NET 10), plus a deterministic manual
-   end-to-end print-stack validation plan.
+   (**MSTest on Microsoft.Testing.Platform**, .NET 10), plus deterministic automated
+   end-to-end print-stack validation on Windows runners or clean VMs.
 6. Ship a companion `PrintSink.Cli` executable: command-line automation through
    `System.CommandLine`, with a Hex1b TUI for local diagnostics and operator workflows.
 
@@ -59,7 +59,7 @@ PSA v4 surface exposes** — no feature is descoped.
 | --- | --- |
 | **PSA** | Print Support App — packaged app using the `Windows.Graphics.Printing.PrintSupport` / `Windows.Graphics.Printing.Workflow` APIs. |
 | **Virtual Printer / Software Endpoint** | A print queue backed by a PSA app instead of a driver. Added to the system as an `IppPrintDevice` whose `IsIppPrinter` returns true so PDL passthrough reuses the PSA surface. |
-| **DEH** | Windows deployment extension handler — installs the virtual printer queue(s) from the MSIX manifest declaration. |
+| **DEH** | Windows deployment extension handler — reads the package's virtual-printer manifest declarations. PrintSink also exposes a signed-package headless provisioning command that calls `VirtualPrinterManager` for deterministic local and CI installs. |
 | **PDL** | Page Description Language — the spooled document format (OXPS, PostScript, PDF, PWG Raster, PCLm). |
 | **PDC** | Print Device Capabilities XML — declares printer features/options (media sizes, duplex, color, custom features). Mandatory per virtual printer. |
 | **PDR** | Print Device Resources XML — localized display strings for custom PDC features. Optional. |
@@ -177,7 +177,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 
 | # | Feature | Contract / API | Component | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries | Manifest + DEH | PDF, XPS, PostScript, Cloud, Custom-file endpoints |
+| 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries + `VirtualPrinterManager` | Manifest + headless provisioning | PDF, XPS, PostScript, Cloud, PWG-Raster endpoints |
 | 2 | Receive spooled PDL + content type | `PrintWorkflowVirtualPrinterSession.VirtualPrinterDataAvailable`, `args.SourceContent` | `VirtualPrinterBackgroundTask` | |
 | 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest | Per-queue |
 | 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router | e.g. Edge → PDF passthrough |
@@ -216,7 +216,7 @@ print-sink/
 ├─ global.json                          # pin .NET 10 SDK
 ├─ docs/
 │  ├─ DESIGN.md                         # this document
-│  ├─ TESTING.md                        # test plan + manual E2E runbook
+│  ├─ TESTING.md                        # test plan + automated E2E runbook
 │  └─ BUILD.md                          # MSBuild/VS build & deploy steps
 ├─ src/
 │  ├─ PrintSink.App/                    # WinUI 3 + Reactor packaged app (Single-project MSIX)
@@ -439,8 +439,8 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
 - `OutputFileTypes` present ⇒ file printer + Save-As dialog ⇒ `GetTargetFileAsync()` returns a real
   `StorageFile`. Absent ⇒ custom sink, no Save-As (cloud endpoint (d)).
 - `SupportedFormat MaxVersion` must be `Major.Minor` numeric — validated in the PDC/manifest lint step.
-- `PdcFile` mandatory and must be valid PDC XML — install fails otherwise; covered by a build-time
-  schema-validation MSBuild target.
+- `PdcFile` mandatory and must be valid PDC XML — install fails otherwise; covered by manifest/PDC
+  linting and signed-package E2E.
 - `PdrFile` optional; present only where we ship localized custom features.
 
 ---
@@ -459,7 +459,7 @@ Implements `IBackgroundTask`. On `Run`:
 
 On `VirtualPrinterDataAvailable(args)`:
 
-1. Resolve the endpoint from `printDevice.PrinterUri.AbsolutePath` → `EndpointKind` (PrintSink.Core).
+1. Resolve the endpoint from `printDevice.PrinterUri` → `EndpointKind` (PrintSink.Core).
 2. Read `args.SourceContent` (`ContentType`, `GetInputStream()`).
 3. Decide whether UI is needed (`IVirtualPrinterPolicy.IsUiRequired(printTicket, endpoint)`); if so and
    `args.UILauncher.IsUILaunchEnabled()`, call `LaunchAndCompleteUIAsync()` and honor
@@ -660,21 +660,20 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    identity to validate activation routing logic, `OwnerWindowId` modality wiring, settings persistence
    visible across the UI/background boundary, and Reactor screen behavior. UI automation (optional) via
    **Appium + WinAppDriver** for the Settings/Job pages.
-5. **End-to-end / manual print-stack validation — `docs/TESTING.md` runbook.** The live PSA activation
-   (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E is a
-   **scripted, deterministic manual gate**, executed on a clean Windows 11 26100+ VM with test-signing:
-   - Install the signed package; assert all five queues appear (`Get-Printer`).
-   - Print from Notepad/WordPad (CPD/Win32), from a WinRT app (MPD), and from Edge (PDF passthrough) to
-     each endpoint.
+5. **End-to-end print-stack automation — `docs/TESTING.md` + `tests/e2e`.** The live PSA activation
+   (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E runs
+   as scripted Windows automation on a GitHub `windows-2025` runner when possible and on a clean
+   Windows 11 26100+ VM for package-signing or desktop-interaction cases the hosted runner cannot expose:
+   - Install the signed package, run `printsink-app.exe --install-virtual-printers`, and assert all
+     five queues appear (`Get-Printer`).
+   - Print from scripted Win32 and WinRT fixtures, plus PDF passthrough fixtures, to each endpoint.
    - Assert: PDF endpoint yields a valid PDF (verify header `%PDF-1.7`, page count); XPS endpoint yields
      openable XPS; PS endpoint yields PostScript; cloud endpoint invokes the sink with no Save-As;
      PWG-Raster endpoint yields valid PWG.
-   - Watermark: confirm overlay present in output.
-   - Settings UI: launch from printer preferences; confirm modality to owner; change a custom feature;
-     confirm `RefreshPrintDeviceCapabilities` reflects it.
+   - Watermark: assert overlay present in rendered output.
+   - Settings UI: launch from printer preferences through UI automation; assert modality to owner; change
+     a custom feature; assert `RefreshPrintDeviceCapabilities` reflects it.
    - Cancel path: cancel in Job UI → `Canceled`, no output file written.
-   - PowerShell harness automates install + print-to-file + output assertions where the endpoint writes
-     a file, so most E2E checks are scripted even though activation is real.
 
 ### 9.2 Test tooling
 
@@ -683,8 +682,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
   `Microsoft.UI.Reactor`, `System.CommandLine`, and `Hex1b`.
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
-- CI runs unit + Xps + packaged-app tests on `windows-2025` runners (MSBuild, x64 and ARM64);
-  the E2E runbook is gated to a pre-release manual stage on a VM.
+- CI runs unit + Xps + packaged-app tests on `windows-2025` runners (MSBuild, x64 and ARM64).
+  Print-stack E2E starts on hosted Windows runners and uses a clean VM only for the pieces that need
+  package signing, desktop interaction, or spooler behavior unavailable in hosted CI.
 
 ---
 
@@ -704,8 +704,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 - **Signing:** package signed with a trusted cert (`AppxPackageSigningEnabled=true`,
   `PackageCertificateThumbprint`). For lab installs, enable test-signing and trust the dev cert.
 - **Architectures:** x64, ARM64, x86.
-- **Install / test:** Add-AppxPackage the signed `.msix`; queues install via the DEH. For debugging an
-  activation, use VS "Debug Installed App Package" with "Do not launch, but debug my code when it starts".
+- **Install / test:** Add-AppxPackage the signed `.msix`, then run
+  `printsink-app.exe --install-virtual-printers` from the app execution alias. Loose development
+  registration is useful for F5, but the alias/provisioning path is verified against the signed MSIX.
+  For debugging an activation, use VS "Debug Installed App Package" with "Do not launch, but debug my
+  code when it starts".
 
 ---
 
@@ -744,7 +747,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    `IppPrintDevice`. **PrintSink resolves this by pinning to a ref package that includes the projections;
    if a conflict remains, author a scoped CsWinRT projection (`CsWinRTIncludes`) for the virtual-printer
    namespace only.** No functionality is left disabled.
-8. **Testing:** MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted manual E2E — the current
+8. **Testing:** MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E — the current
    Microsoft-recommended stack.
 9. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.
 
@@ -760,12 +763,12 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
 | M4 | `PrintSink.App`: Reactor activation router, Settings UI (modal), Job UI/preview, Management UI; `PrintSink.Cli tui` Hex1b dashboard. |
 | M5 | Manifest (5 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
-| M6 | Packaged-app tests + E2E runbook automation; CI on windows-2025 (x64/ARM64). |
-| M7 | Full E2E validation pass on clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
+| M6 | Packaged-app tests + E2E automation; CI on windows-2025 (x64/ARM64). |
+| M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
-E2E runbook passes on a clean Windows 11 26100+ VM for all five queues including watermark, settings
-modality, PDC refresh, and cancel paths.
+E2E automation passes for all five queues including watermark, settings modality, PDC refresh, and
+cancel paths.
 
 ---
 
@@ -777,7 +780,7 @@ modality, PDC refresh, and cancel paths.
   https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/msix-manifest-specification-print-support-virtual-printer
 - End of servicing plan for third-party printer drivers on Windows —
   https://learn.microsoft.com/en-us/windows-hardware/drivers/print/end-of-servicing-plan-for-third-party-printer-drivers-on-windows
-- Reference sample (local): `D:\SRC\print-oem-samples\PSASamples\WinAppSdk\CSharp`
+- Microsoft print OEM samples: https://github.com/microsoft/print-oem-samples
 - Microsoft.UI.Reactor NuGet package: https://www.nuget.org/packages/Microsoft.UI.Reactor
 - Hex1b NuGet package: https://www.nuget.org/packages/Hex1b
 - System.CommandLine NuGet package: https://www.nuget.org/packages/System.CommandLine

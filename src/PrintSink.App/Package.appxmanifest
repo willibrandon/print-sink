@@ -4,11 +4,13 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:printsupport="http://schemas.microsoft.com/appx/manifest/printsupport/windows10"
   xmlns:printsupport2="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap10 printsupport printsupport2 rescap">
+  IgnorableNamespaces="uap uap3 uap10 desktop printsupport printsupport2 rescap">
 
   <Identity
     Name="PrintSink"
@@ -47,6 +49,11 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="printsink-app.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
         <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="PrintSink.App.App" />
         <printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="PrintSink.App.App" />
         <printsupport:Extension Category="windows.printSupportWorkflow" EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" />
@@ -54,7 +61,7 @@
         <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter
             DisplayName="ms-resource:PdfPrintDisplayName"
-            PrinterUri="ipp://localhost/printsink/pdf"
+            PrinterUri="printsink:print-to-pdf"
             PreferredInputFormat="application/oxps"
             OutputFileTypes="pdf"
             PdcFile="Config\PrinterPdf.pdc.xml"
@@ -67,7 +74,7 @@
         <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter
             DisplayName="ms-resource:XpsPrintDisplayName"
-            PrinterUri="ipp://localhost/printsink/xps"
+            PrinterUri="printsink:print-to-xps"
             PreferredInputFormat="application/oxps"
             OutputFileTypes="oxps"
             PdcFile="Config\PrinterXps.pdc.xml"
@@ -81,7 +88,7 @@
         <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter
             DisplayName="ms-resource:PostScriptPrintDisplayName"
-            PrinterUri="ipp://localhost/printsink/postscript"
+            PrinterUri="printsink:print-to-ps"
             PreferredInputFormat="application/postscript"
             OutputFileTypes="ps"
             PdcFile="Config\PrinterPostScript.pdc.xml"
@@ -94,7 +101,7 @@
         <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter
             DisplayName="ms-resource:CloudPrintDisplayName"
-            PrinterUri="ipp://localhost/printsink/cloud"
+            PrinterUri="printsink:print-to-cloud"
             PreferredInputFormat="application/oxps"
             PdcFile="Config\PrinterCloud.pdc.xml"
             PdrFile="Config\PrinterCloud.pdr.xml">
@@ -106,7 +113,7 @@
         <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter
             DisplayName="ms-resource:PwgRasterPrintDisplayName"
-            PrinterUri="ipp://localhost/printsink/pwg-raster"
+            PrinterUri="printsink:print-to-pwgr"
             PreferredInputFormat="application/oxps"
             OutputFileTypes="pwg"
             PdcFile="Config\PrinterPwgRaster.pdc.xml"

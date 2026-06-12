@@ -202,7 +202,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             targetStream.GetOutputStream()).AsTask().GetAwaiter().GetResult();
     }
 
-    private static IDictionary<string, WinRtIppAttributeValue> ApplyMergePolicy(
+    private static Dictionary<string, WinRtIppAttributeValue> ApplyMergePolicy(
         IDictionary<string, WinRtIppAttributeValue> attributes,
         AttributeMergePolicyOptions options)
     {
@@ -221,7 +221,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
     }
 
     private static void RemoveCollectionMember(
-        IDictionary<string, WinRtIppAttributeValue> attributes,
+        Dictionary<string, WinRtIppAttributeValue> attributes,
         IppCollectionMemberRemoval removal)
     {
         if (!attributes.TryGetValue(removal.AttributeName, out WinRtIppAttributeValue? attribute))

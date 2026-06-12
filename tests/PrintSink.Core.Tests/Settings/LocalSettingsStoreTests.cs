@@ -26,7 +26,7 @@ public sealed class LocalSettingsStoreTests
         try
         {
             WatermarkOptions options = await store
-                .GetWatermarkOptionsAsync(new Uri("ipp://localhost/printsink/pdf"), TestContext.CancellationToken)
+                .GetWatermarkOptionsAsync(new Uri("printsink:print-to-pdf"), TestContext.CancellationToken)
                 .ConfigureAwait(false);
 
             Assert.IsFalse(options.Enabled);
@@ -45,7 +45,7 @@ public sealed class LocalSettingsStoreTests
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
-        Uri printerUri = new("ipp://localhost/printsink/pdf");
+        Uri printerUri = new("printsink:print-to-pdf");
         WatermarkOptions expected = new(
             true,
             new TextWatermark("Confidential", "Segoe UI", 42, 0.25, -30, 10, 20),
@@ -82,7 +82,7 @@ public sealed class LocalSettingsStoreTests
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
-        Uri printerUri = new("ipp://localhost/printsink/pdf");
+        Uri printerUri = new("printsink:print-to-pdf");
         WatermarkOptions expected = new(
             true,
             null,
@@ -125,13 +125,13 @@ public sealed class LocalSettingsStoreTests
         {
             await store
                 .SaveWatermarkOptionsAsync(
-                    new Uri("ipp://localhost/printsink/pdf"),
+                    new Uri("printsink:print-to-pdf"),
                     new WatermarkOptions(true, new TextWatermark("PDF", "Segoe UI", 36, 0.2, 0, 0, 0), null),
                     TestContext.CancellationToken)
                 .ConfigureAwait(false);
 
             WatermarkOptions xpsOptions = await store
-                .GetWatermarkOptionsAsync(new Uri("ipp://localhost/printsink/xps"), TestContext.CancellationToken)
+                .GetWatermarkOptionsAsync(new Uri("printsink:print-to-xps"), TestContext.CancellationToken)
                 .ConfigureAwait(false);
 
             Assert.IsFalse(xpsOptions.Enabled);

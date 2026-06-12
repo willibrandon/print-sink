@@ -40,7 +40,7 @@ public sealed class PrintSinkDiagnosticsTests
             false);
         VirtualPrinterJobProcessor processor = CreateProcessor(new CapturingSink(), new TestPdlConverter(Encoding.UTF8.GetBytes("pdf")));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
         Assert.Contains("JobRouteResolved", listener.EventNames);
@@ -65,7 +65,7 @@ public sealed class PrintSinkDiagnosticsTests
             false);
         VirtualPrinterJobProcessor processor = CreateProcessor(new CapturingSink(), new TestPdlConverter([]));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
         Assert.Contains("JobRouteResolved", listener.EventNames);
@@ -90,7 +90,7 @@ public sealed class PrintSinkDiagnosticsTests
             new CapturingSink(new InvalidOperationException("sink failed")),
             new TestPdlConverter([]));
 
-        VirtualPrinterJobResult result = await processor.ProcessAsync(job).ConfigureAwait(false);
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
         Assert.Contains("JobRouteResolved", listener.EventNames);
@@ -107,4 +107,9 @@ public sealed class PrintSinkDiagnosticsTests
                 [EndpointKind.Pdf] = sink,
             }));
     }
+
+    /// <summary>
+    /// Gets or sets the current MSTest context.
+    /// </summary>
+    public TestContext TestContext { get; set; }
 }

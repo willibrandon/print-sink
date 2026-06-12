@@ -71,7 +71,7 @@ public sealed class EndpointCatalogTests
     [TestMethod]
     public void TryResolve_accepts_registered_uri_case_insensitively()
     {
-        Uri printerUri = new("IPP://LOCALHOST/PrintSink/PDF/");
+        Uri printerUri = new("PRINTSINK:PRINT-TO-PDF");
 
         bool resolved = EndpointCatalog.TryResolve(printerUri, out VirtualEndpoint? endpoint);
 

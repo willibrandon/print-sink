@@ -33,6 +33,7 @@
     </Project>
   </Folder>
   <Folder Name="/tests/">
+    <File Path="tests/e2e/Invoke-PrintSinkE2E.ps1" />
     <Project Path="tests/PrintSink.Cli.Tests/PrintSink.Cli.Tests.csproj" />
     <Project Path="tests/PrintSink.Core.Tests/PrintSink.Core.Tests.csproj" />
   </Folder>

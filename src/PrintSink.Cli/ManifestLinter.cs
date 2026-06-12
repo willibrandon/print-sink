@@ -132,10 +132,9 @@ internal static class ManifestLinter
 
     private static void ValidateVirtualPrinters(XElement package, string manifestDirectory, List<string> messages)
     {
-        List<XElement> printerElements = package
+        List<XElement> printerElements = [.. package
             .Descendants()
-            .Where(element => element.Name.LocalName == "PrintSupportVirtualPrinter")
-            .ToList();
+            .Where(element => element.Name.LocalName == "PrintSupportVirtualPrinter")];
 
         if (printerElements.Count == 0)
         {
@@ -334,7 +333,7 @@ internal static class ManifestLinter
         return Path.Combine(manifestDirectory, relativePath);
     }
 
-    private static IEnumerable<string> SplitDelimitedValues(string value)
+    private static string[] SplitDelimitedValues(string value)
     {
         return value.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
