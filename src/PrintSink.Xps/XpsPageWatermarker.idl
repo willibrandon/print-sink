@@ -11,6 +11,13 @@ namespace PrintSink.Xps
         Double RotationDegrees;
         Double OffsetX;
         Double OffsetY;
+        String ImagePath;
+        Double ImageWidth;
+        Double ImageHeight;
+        Double ImageOpacity;
+        Double ImageRotationDegrees;
+        Double ImageOffsetX;
+        Double ImageOffsetY;
     }
 
     runtimeclass XpsSequentialDocument

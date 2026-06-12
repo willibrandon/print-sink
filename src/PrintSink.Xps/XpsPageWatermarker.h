@@ -22,6 +22,20 @@ namespace winrt::PrintSink::Xps::implementation
         void OffsetX(double value);
         double OffsetY() const;
         void OffsetY(double value);
+        winrt::hstring ImagePath() const;
+        void ImagePath(winrt::hstring const& value);
+        double ImageWidth() const;
+        void ImageWidth(double value);
+        double ImageHeight() const;
+        void ImageHeight(double value);
+        double ImageOpacity() const;
+        void ImageOpacity(double value);
+        double ImageRotationDegrees() const;
+        void ImageRotationDegrees(double value);
+        double ImageOffsetX() const;
+        void ImageOffsetX(double value);
+        double ImageOffsetY() const;
+        void ImageOffsetY(double value);
         void ApplyWatermarksToXpsPage(winrt::com_ptr<IXpsOMPage> const& xpsPage);
 
     private:
@@ -33,11 +47,23 @@ namespace winrt::PrintSink::Xps::implementation
         double rotationDegrees{ -30.0 };
         double offsetX{ 0.0 };
         double offsetY{ 0.0 };
+        winrt::hstring imagePath;
+        double imageWidth{ 144.0 };
+        double imageHeight{ 144.0 };
+        double imageOpacity{ 0.35 };
+        double imageRotationDegrees{ 0.0 };
+        double imageOffsetX{ 0.0 };
+        double imageOffsetY{ 0.0 };
 
         void AddWatermarkText(winrt::com_ptr<IXpsOMPage> const& xpsPage);
+        void AddWatermarkImage(winrt::com_ptr<IXpsOMPage> const& xpsPage);
         winrt::com_ptr<IXpsOMFontResource> CreateFontResource(std::wstring const& fontFilePath);
         winrt::com_ptr<IXpsOMSolidColorBrush> CreateTextBrush();
+        winrt::com_ptr<IXpsOMImageResource> CreateImageResource(std::wstring const& imageFilePath);
+        winrt::com_ptr<IXpsOMPath> CreateRectanglePath(XPS_RECT const& rect);
+        XPS_IMAGE_TYPE ResolveImageType(std::wstring const& imageFilePath) const;
         static std::wstring ResolveFontPath(winrt::hstring const& requestedFontFamily);
+        static XPS_MATRIX CreateRotationMatrix(double rotation, double centerX, double centerY);
         static uint8_t ToAlpha(double opacityValue);
     };
 }

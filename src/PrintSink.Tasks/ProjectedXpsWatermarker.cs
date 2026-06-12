@@ -39,6 +39,11 @@ internal sealed class ProjectedXpsWatermarker : IXpsWatermarker
             watermarker.ApplyText(text);
         }
 
+        if (options.Image is ImageWatermark image)
+        {
+            watermarker.ApplyImage(image);
+        }
+
         return watermarker;
     }
 }

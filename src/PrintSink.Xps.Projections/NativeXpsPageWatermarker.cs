@@ -31,6 +31,23 @@ public sealed class NativeXpsPageWatermarker
     }
 
     /// <summary>
+    /// Applies image watermark options to the native watermarker.
+    /// </summary>
+    /// <param name="image">The image watermark options.</param>
+    public void ApplyImage(ImageWatermark image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        watermarker.ImagePath = image.ImagePath;
+        watermarker.ImageWidth = image.Width;
+        watermarker.ImageHeight = image.Height;
+        watermarker.ImageOpacity = image.Opacity;
+        watermarker.ImageRotationDegrees = image.RotationDegrees;
+        watermarker.ImageOffsetX = image.OffsetX;
+        watermarker.ImageOffsetY = image.OffsetY;
+    }
+
+    /// <summary>
     /// Applies the configured watermark to an XPS-family stream.
     /// </summary>
     /// <param name="source">The source XPS stream.</param>
