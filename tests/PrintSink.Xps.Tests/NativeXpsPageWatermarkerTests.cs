@@ -52,6 +52,29 @@ public sealed class NativeXpsPageWatermarkerTests
     }
 
     /// <summary>
+    /// Verifies that malformed XPS input reports a native package failure.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyAsync_throws_for_corrupt_xps_package()
+    {
+        NativeXpsPageWatermarker watermarker = new();
+        watermarker.ApplyText(new TextWatermark(WatermarkText, "Segoe UI", 48, 0.35, -30, 0, 0));
+
+        using MemoryStream source = new(Encoding.UTF8.GetBytes("not an xps package"));
+
+        try
+        {
+            await watermarker.ApplyAsync(source, TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        Assert.Fail("Expected malformed XPS input to fail.");
+    }
+
+    /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
