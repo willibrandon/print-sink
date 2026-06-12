@@ -1,10 +1,13 @@
 using System.Xml.Linq;
 using PrintSink.Core.Capabilities;
+using PrintSink.Core.Tickets;
 using Windows.ApplicationModel.Background;
 using Windows.ApplicationModel.Resources.Core;
 using Windows.Data.Xml.Dom;
 using Windows.Foundation.Metadata;
+using Windows.Graphics.Printing.PrintTicket;
 using Windows.Graphics.Printing.PrintSupport;
+using XmlException = System.Xml.XmlException;
 
 namespace PrintSink.Tasks;
 
@@ -56,11 +59,37 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         var deferral = args.GetDeferral();
         try
         {
-            state.Run(() => args.SetPrintTicketValidationStatus(WorkflowPrintTicketValidationStatus.Resolved));
+            state.Run(() =>
+            {
+                WorkflowPrintTicketValidationStatus status = ValidatePrintTicket(args.PrintTicket);
+                args.SetPrintTicketValidationStatus(status);
+            });
         }
         finally
         {
             deferral.Complete();
+        }
+    }
+
+    private static WorkflowPrintTicketValidationStatus ValidatePrintTicket(WorkflowPrintTicket printTicket)
+    {
+        ArgumentNullException.ThrowIfNull(printTicket);
+
+        try
+        {
+            XDocument document = XDocument.Parse(printTicket.XmlNode.GetXml(), LoadOptions.PreserveWhitespace);
+            IReadOnlyList<string> messages = PrintTicketValidator.Validate(document);
+            return messages.Count == 0
+                ? WorkflowPrintTicketValidationStatus.Resolved
+                : WorkflowPrintTicketValidationStatus.Conflicting;
+        }
+        catch (XmlException)
+        {
+            return WorkflowPrintTicketValidationStatus.Invalid;
+        }
+        catch (ArgumentException)
+        {
+            return WorkflowPrintTicketValidationStatus.Invalid;
         }
     }
 
