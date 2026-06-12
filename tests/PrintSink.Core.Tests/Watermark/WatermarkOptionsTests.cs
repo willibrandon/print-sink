@@ -29,4 +29,18 @@ public sealed class WatermarkOptionsTests
     {
         Assert.ThrowsExactly<ArgumentException>(() => new WatermarkOptions(true, null, null));
     }
+
+    /// <summary>
+    /// Verifies that enabled options can carry only an image watermark.
+    /// </summary>
+    [TestMethod]
+    public void Constructor_accepts_image_only_options()
+    {
+        ImageWatermark image = new("C:\\Watermarks\\logo.png", 144, 96, 0.4, 0, 0, 0);
+        WatermarkOptions options = new(true, null, image);
+
+        Assert.IsTrue(options.Enabled);
+        Assert.IsNull(options.Text);
+        Assert.AreSame(image, options.Image);
+    }
 }

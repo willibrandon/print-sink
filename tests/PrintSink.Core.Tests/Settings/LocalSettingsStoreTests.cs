@@ -75,6 +75,44 @@ public sealed class LocalSettingsStoreTests
     }
 
     /// <summary>
+    /// Verifies image watermark options round-trip through local JSON storage.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveWatermarkOptionsAsync_round_trips_image_watermark()
+    {
+        string directory = CreateTestDirectory();
+        LocalSettingsStore store = new(directory);
+        Uri printerUri = new("ipp://localhost/printsink/pdf");
+        WatermarkOptions expected = new(
+            true,
+            null,
+            new ImageWatermark("C:\\Watermarks\\logo.png", 144, 96, 0.4, 15, 10, 20));
+
+        try
+        {
+            await store
+                .SaveWatermarkOptionsAsync(printerUri, expected, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            WatermarkOptions actual = await store
+                .GetWatermarkOptionsAsync(printerUri, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(actual.Enabled);
+            Assert.IsNotNull(actual.Image);
+            Assert.AreEqual("C:\\Watermarks\\logo.png", actual.Image.ImagePath);
+            Assert.AreEqual(144, actual.Image.Width);
+            Assert.AreEqual(96, actual.Image.Height);
+            Assert.AreEqual(0.4, actual.Image.Opacity);
+            Assert.AreEqual(15, actual.Image.RotationDegrees);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies settings are partitioned by printer URI.
     /// </summary>
     [TestMethod]

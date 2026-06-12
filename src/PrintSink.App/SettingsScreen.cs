@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Watermark;
 using Windows.Graphics.Printing.PrintSupport;
+using Windows.Storage;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace PrintSink.App;
@@ -26,17 +27,55 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
         string launchKind = settingsArgs?.Session.LaunchKind.ToString() ?? "Unavailable";
         string ownerWindowId = settingsArgs?.OwnerWindowId.Value.ToString() ?? "Unavailable";
         var (selectedIndex, setSelectedIndex) = UseState(0);
-        var (enabled, setEnabled) = UseState(false);
+        var (textEnabled, setTextEnabled) = UseState(false);
         var (text, setText) = UseState("Confidential");
         var (fontSize, setFontSize) = UseState(48d);
         var (opacity, setOpacity) = UseState(0.28d);
         var (rotation, setRotation) = UseState(-30d);
+        var (imageEnabled, setImageEnabled) = UseState(false);
+        var (imagePath, setImagePath) = UseState(string.Empty);
+        var (imageWidth, setImageWidth) = UseState(144d);
+        var (imageHeight, setImageHeight) = UseState(144d);
+        var (imageOpacity, setImageOpacity) = UseState(0.28d);
+        var (imageRotation, setImageRotation) = UseState(0d);
         var (status, setStatus) = UseState("Ready.");
+        ReactorWindow? window = UseWindow();
         VirtualEndpoint selectedEndpoint = endpoints[selectedIndex];
+
+        async Task PickImageAsync()
+        {
+            if (window is null)
+            {
+                setStatus("Image picker is unavailable.");
+                return;
+            }
+
+            StorageFile? file = await WatermarkImagePicker
+                .PickAsync(window.NativeWindow)
+                .ConfigureAwait(true);
+            if (file is not null)
+            {
+                setImagePath(file.Path);
+                setImageEnabled(true);
+            }
+        }
 
         UseEffect(() =>
         {
-            _ = LoadWatermarkAsync(selectedEndpoint, setEnabled, setText, setFontSize, setOpacity, setRotation, setStatus);
+            _ = LoadWatermarkAsync(
+                selectedEndpoint,
+                setTextEnabled,
+                setText,
+                setFontSize,
+                setOpacity,
+                setRotation,
+                setImageEnabled,
+                setImagePath,
+                setImageWidth,
+                setImageHeight,
+                setImageOpacity,
+                setImageRotation,
+                setStatus);
             return static () => { };
         }, EmptyDependencies);
 
@@ -68,34 +107,87 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
                                 }
 
                                 setSelectedIndex(index);
-                                _ = LoadWatermarkAsync(endpoints[index], setEnabled, setText, setFontSize, setOpacity, setRotation, setStatus);
+                                _ = LoadWatermarkAsync(
+                                    endpoints[index],
+                                    setTextEnabled,
+                                    setText,
+                                    setFontSize,
+                                    setOpacity,
+                                    setRotation,
+                                    setImageEnabled,
+                                    setImagePath,
+                                    setImageWidth,
+                                    setImageHeight,
+                                    setImageOpacity,
+                                    setImageRotation,
+                                    setStatus);
                             })
                             .AutomationName("Endpoint"),
-                        ToggleSwitch(enabled, setEnabled, "On", "Off", "Text watermark"),
+                        ToggleSwitch(textEnabled, setTextEnabled, "On", "Off", "Text watermark"),
                         TextBox(text, setText, "Text", "Watermark text")
-                            .AutomationName("Watermark text"),
+                            .AutomationName("Watermark text")
+                            .IsEnabled(textEnabled),
                         Grid(
                             columns: [GridSize.Star(), GridSize.Star(), GridSize.Star()],
                             rows: [GridSize.Auto],
                             NumberBox(fontSize, value => setFontSize(Clamp(value, 8, 200)), "Font size")
                                 .AutomationName("Font size")
+                                .IsEnabled(textEnabled)
                                 .Grid(row: 0, column: 0),
                             NumberBox(opacity, value => setOpacity(Clamp(value, 0.05, 1)), "Opacity")
                                 .AutomationName("Opacity")
+                                .IsEnabled(textEnabled)
                                 .Grid(row: 0, column: 1),
                             NumberBox(rotation, value => setRotation(Clamp(value, -180, 180)), "Rotation")
                                 .AutomationName("Rotation")
+                                .IsEnabled(textEnabled)
                                 .Grid(row: 0, column: 2)),
+                        ToggleSwitch(imageEnabled, setImageEnabled, "On", "Off", "Image watermark"),
+                        Grid(
+                            columns: [GridSize.Star(), GridSize.Auto],
+                            rows: [GridSize.Auto],
+                            TextBox(imagePath, setImagePath, "Path", "Image path")
+                                .AutomationName("Image path")
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 0),
+                            Button("Browse", () => _ = PickImageAsync())
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 1)),
+                        Grid(
+                            columns: [GridSize.Star(), GridSize.Star(), GridSize.Star(), GridSize.Star()],
+                            rows: [GridSize.Auto],
+                            NumberBox(imageWidth, value => setImageWidth(Clamp(value, 1, 4096)), "Width")
+                                .AutomationName("Image width")
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 0),
+                            NumberBox(imageHeight, value => setImageHeight(Clamp(value, 1, 4096)), "Height")
+                                .AutomationName("Image height")
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 1),
+                            NumberBox(imageOpacity, value => setImageOpacity(Clamp(value, 0.05, 1)), "Opacity")
+                                .AutomationName("Image opacity")
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 2),
+                            NumberBox(imageRotation, value => setImageRotation(Clamp(value, -180, 180)), "Rotation")
+                                .AutomationName("Image rotation")
+                                .IsEnabled(imageEnabled)
+                                .Grid(row: 0, column: 3)),
                         HStack(12,
                             Button(
                                 "Save",
                                 () => _ = SaveWatermarkAsync(
                                     selectedEndpoint,
-                                    enabled,
+                                    textEnabled,
                                     text,
                                     fontSize,
                                     opacity,
                                     rotation,
+                                    imageEnabled,
+                                    imagePath,
+                                    imageWidth,
+                                    imageHeight,
+                                    imageOpacity,
+                                    imageRotation,
                                     setStatus)),
                             Button("Close", Microsoft.UI.Xaml.Application.Current.Exit)),
                         TextBlock(status)
@@ -144,11 +236,17 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
 
     private static async Task LoadWatermarkAsync(
         VirtualEndpoint endpoint,
-        Action<bool> setEnabled,
+        Action<bool> setTextEnabled,
         Action<string> setText,
         Action<double> setFontSize,
         Action<double> setOpacity,
         Action<double> setRotation,
+        Action<bool> setImageEnabled,
+        Action<string> setImagePath,
+        Action<double> setImageWidth,
+        Action<double> setImageHeight,
+        Action<double> setImageOpacity,
+        Action<double> setImageRotation,
         Action<string> setStatus)
     {
         try
@@ -160,11 +258,17 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
 
             UiDispatch.Post(() =>
             {
-                setEnabled(options.Enabled);
+                setTextEnabled(options.Text is not null);
                 setText(options.Text?.Text ?? "Confidential");
                 setFontSize(options.Text?.FontSize ?? 48);
                 setOpacity(options.Text?.Opacity ?? 0.28);
                 setRotation(options.Text?.RotationDegrees ?? -30);
+                setImageEnabled(options.Image is not null);
+                setImagePath(options.Image?.ImagePath ?? string.Empty);
+                setImageWidth(options.Image?.Width ?? 144);
+                setImageHeight(options.Image?.Height ?? 144);
+                setImageOpacity(options.Image?.Opacity ?? 0.28);
+                setImageRotation(options.Image?.RotationDegrees ?? 0);
                 setStatus($"Loaded settings for {endpoint.QueueName}.");
             });
         }
@@ -176,32 +280,54 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
 
     private static async Task SaveWatermarkAsync(
         VirtualEndpoint endpoint,
-        bool enabled,
+        bool textEnabled,
         string text,
         double fontSize,
         double opacity,
         double rotation,
+        bool imageEnabled,
+        string imagePath,
+        double imageWidth,
+        double imageHeight,
+        double imageOpacity,
+        double imageRotation,
         Action<string> setStatus)
     {
-        if (enabled && string.IsNullOrWhiteSpace(text))
+        if (textEnabled && string.IsNullOrWhiteSpace(text))
         {
             setStatus("Watermark text is required when watermarking is on.");
             return;
         }
 
-        WatermarkOptions options = enabled
-            ? new WatermarkOptions(
-                true,
-                new TextWatermark(
-                    text.Trim(),
-                    "Segoe UI",
-                    Clamp(fontSize, 8, 200),
-                    Clamp(opacity, 0.05, 1),
-                    Clamp(rotation, -180, 180),
-                    0,
-                    0),
-                null)
-            : WatermarkOptions.Disabled;
+        if (imageEnabled && string.IsNullOrWhiteSpace(imagePath))
+        {
+            setStatus("Image path is required when image watermarking is on.");
+            return;
+        }
+
+        TextWatermark? textWatermark = textEnabled
+            ? new TextWatermark(
+                text.Trim(),
+                "Segoe UI",
+                Clamp(fontSize, 8, 200),
+                Clamp(opacity, 0.05, 1),
+                Clamp(rotation, -180, 180),
+                0,
+                0)
+            : null;
+        ImageWatermark? imageWatermark = imageEnabled
+            ? new ImageWatermark(
+                imagePath.Trim(),
+                Clamp(imageWidth, 1, 4096),
+                Clamp(imageHeight, 1, 4096),
+                Clamp(imageOpacity, 0.05, 1),
+                Clamp(imageRotation, -180, 180),
+                0,
+                0)
+            : null;
+        WatermarkOptions options = textWatermark is null && imageWatermark is null
+            ? WatermarkOptions.Disabled
+            : new WatermarkOptions(true, textWatermark, imageWatermark);
 
         try
         {
