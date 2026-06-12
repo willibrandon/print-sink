@@ -64,6 +64,75 @@ public sealed class AppPackageTests
     }
 
     /// <summary>
+    /// Verifies headless activation argument parsing ignores missing or whitespace-only payloads.
+    /// </summary>
+    [TestMethod]
+    public void SplitArguments_handles_empty_activation_payloads()
+    {
+        string[] nullActual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(null);
+        string[] whitespaceActual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments("   ");
+
+        CollectionAssert.AreEqual(Array.Empty<string>(), nullActual);
+        CollectionAssert.AreEqual(Array.Empty<string>(), whitespaceActual);
+    }
+
+    /// <summary>
+    /// Verifies headless activation argument parsing preserves quoted values.
+    /// </summary>
+    [TestMethod]
+    public void SplitArguments_preserves_quoted_activation_values()
+    {
+        string arguments = "--install-virtual-printers --log \"C:\\Temp\\Print Sink\\headless.log\"";
+        string[] expected =
+        [
+            "--install-virtual-printers",
+            "--log",
+            "C:\\Temp\\Print Sink\\headless.log",
+        ];
+
+        string[] actual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(arguments);
+
+        CollectionAssert.AreEqual(expected, actual);
+    }
+
+    /// <summary>
+    /// Verifies headless activation argument parsing follows Windows quote escaping rules.
+    /// </summary>
+    [TestMethod]
+    public void SplitArguments_preserves_escaped_quotes_and_empty_values()
+    {
+        string arguments = "--name \"Print \\\"Sink\\\"\" \"\"";
+        string[] expected =
+        [
+            "--name",
+            "Print \"Sink\"",
+            string.Empty,
+        ];
+
+        string[] actual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(arguments);
+
+        CollectionAssert.AreEqual(expected, actual);
+    }
+
+    /// <summary>
+    /// Verifies headless activation argument parsing preserves doubled trailing backslashes.
+    /// </summary>
+    [TestMethod]
+    public void SplitArguments_preserves_trailing_backslashes_before_closing_quotes()
+    {
+        string arguments = "--path \"C:\\Temp\\Print Sink\\\\\"";
+        string[] expected =
+        [
+            "--path",
+            "C:\\Temp\\Print Sink\\",
+        ];
+
+        string[] actual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(arguments);
+
+        CollectionAssert.AreEqual(expected, actual);
+    }
+
+    /// <summary>
     /// Verifies foreground job options are visible through package-backed local settings and consumed once.
     /// </summary>
     [TestMethod]

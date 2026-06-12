@@ -1,4 +1,5 @@
 using Microsoft.Windows.AppLifecycle;
+using System.Text;
 using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
 
@@ -72,14 +73,80 @@ internal static class VirtualPrinterCommandLine
         };
     }
 
-    private static string[] SplitArguments(string? arguments)
+    internal static string[] SplitArguments(string? arguments)
     {
         if (string.IsNullOrWhiteSpace(arguments))
         {
             return [];
         }
 
-        return arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        List<string> result = [];
+        StringBuilder current = new();
+        bool inQuotes = false;
+        bool argumentStarted = false;
+        int backslashCount = 0;
+
+        foreach (char character in arguments)
+        {
+            if (character == '\\')
+            {
+                backslashCount++;
+                continue;
+            }
+
+            if (character == '"')
+            {
+                current.Append('\\', backslashCount / 2);
+                if (backslashCount % 2 == 0)
+                {
+                    inQuotes = !inQuotes;
+                    argumentStarted = true;
+                }
+                else
+                {
+                    current.Append('"');
+                    argumentStarted = true;
+                }
+
+                backslashCount = 0;
+                continue;
+            }
+
+            if (backslashCount > 0)
+            {
+                current.Append('\\', backslashCount);
+                backslashCount = 0;
+            }
+
+            if (char.IsWhiteSpace(character) && !inQuotes)
+            {
+                AddArgument(result, current, ref argumentStarted);
+                continue;
+            }
+
+            current.Append(character);
+            argumentStarted = true;
+        }
+
+        if (backslashCount > 0)
+        {
+            current.Append('\\', backslashCount);
+        }
+
+        AddArgument(result, current, ref argumentStarted);
+        return [.. result];
+    }
+
+    private static void AddArgument(List<string> result, StringBuilder current, ref bool argumentStarted)
+    {
+        if (!argumentStarted)
+        {
+            return;
+        }
+
+        result.Add(current.ToString());
+        current.Clear();
+        argumentStarted = false;
     }
 
     private static void SetCommandLineExitCode(AppActivationArguments activationArguments, int? exitCode)
