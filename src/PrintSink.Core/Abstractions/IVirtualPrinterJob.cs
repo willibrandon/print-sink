@@ -18,6 +18,11 @@ public interface IVirtualPrinterJob
     VirtualEndpoint Endpoint { get; }
 
     /// <summary>
+    /// Gets the print job name when available.
+    /// </summary>
+    string? JobName { get; }
+
+    /// <summary>
     /// Opens the source PDL stream.
     /// </summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>

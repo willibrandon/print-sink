@@ -42,5 +42,5 @@ C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin
 
 - `global.json` pins SDK `10.0.301` with feature roll-forward.
 - `Directory.Packages.props` uses Central Package Management.
-- The WinUI CLI template is not currently visible to `dotnet new list winui` in this shell. Visual Studio can still be used for WinUI work; CLI template availability will be revisited when the app project is scaffolded.
+- The WinUI CLI templates are installed. `dotnet new list winui` shows the WinUI Blank App, NavigationView App, TabView App, class library, and unit test templates.
 - Full native/package validation will become available after the `PrintSink.App`, `PrintSink.Tasks`, `PrintSink.Xps`, and MSIX manifest projects are added.

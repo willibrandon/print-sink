@@ -11,6 +11,11 @@ namespace PrintSink.Core.Tests.Endpoints;
 public sealed class SinkTests
 {
     /// <summary>
+    /// Gets or sets the MSTest context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Verifies <see cref="FileSink"/> copies source bytes to the target stream.
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
@@ -22,7 +27,7 @@ public sealed class SinkTests
         FileSink sink = new(target, leaveOpen: true);
         SinkWriteContext context = new(EndpointCatalog.Pdf, PdlFormatInfo.PdfContentType, "test");
 
-        await sink.WriteAsync(source, context);
+        await sink.WriteAsync(source, context, TestContext.CancellationToken);
 
         CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("%PDF-1.7"), target.ToArray());
     }
@@ -39,7 +44,7 @@ public sealed class SinkTests
         await using MemoryStream source = new(Encoding.UTF8.GetBytes("cloud"));
         SinkWriteContext context = new(EndpointCatalog.Cloud, PdlFormatInfo.PdfContentType, "cloud-job");
 
-        await sink.WriteAsync(source, context);
+        await sink.WriteAsync(source, context, TestContext.CancellationToken);
 
         Assert.AreEqual("cloud-job", client.JobName);
         CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("cloud"), client.Bytes);

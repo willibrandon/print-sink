@@ -10,6 +10,11 @@ namespace PrintSink.Core.Tests.Settings;
 public sealed class WatermarkSettingsServiceTests
 {
     /// <summary>
+    /// Gets or sets the MSTest context for the current test.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Verifies enabled watermark options round-trip through the settings store.
     /// </summary>
     /// <returns>A task representing the asynchronous test.</returns>
@@ -24,8 +29,8 @@ public sealed class WatermarkSettingsServiceTests
             isImageEnabled: true,
             image: new ImageWatermark("Assets/watermark.png", 96, 96, 128, 64, 0.5));
 
-        await service.SaveAsync(expected);
-        WatermarkOptions actual = await service.LoadAsync();
+        await service.SaveAsync(expected, TestContext.CancellationToken);
+        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(actual.IsEnabled);
         Assert.IsNotNull(actual.Text);
@@ -44,8 +49,8 @@ public sealed class WatermarkSettingsServiceTests
         InMemorySettingsStore store = new();
         WatermarkSettingsService service = new(store);
 
-        await service.SaveAsync(WatermarkOptions.Disabled);
-        WatermarkOptions actual = await service.LoadAsync();
+        await service.SaveAsync(WatermarkOptions.Disabled, TestContext.CancellationToken);
+        WatermarkOptions actual = await service.LoadAsync(TestContext.CancellationToken);
 
         Assert.IsFalse(actual.IsEnabled);
     }
