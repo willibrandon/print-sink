@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>$(PrintSinkLibraryTargetFramework)</TargetFramework>
+    <EnableMSTestRunner>true</EnableMSTestRunner>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>

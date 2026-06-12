@@ -8,16 +8,19 @@ Run this before committing:
 
 ```powershell
 .\build.ps1 -Configuration Debug -Platform x64
-dotnet test .\PrintSink.slnx --no-build -p:Platform=x64
+.\test.ps1 -Configuration Debug -Platform x64 -NoBuild
+.\test-coverage.ps1 -Configuration Debug -Platform x64
 ```
 
 The build treats warnings as errors. Do not disable analyzers to pass the gate; fix the source issue.
 Use the build script for the full gate because `PrintSink.Xps` is a native C++/WinRT project and
-requires MSBuild or Visual Studio.
+requires MSBuild or Visual Studio. The test script runs the MSTest projects through the .NET 10
+Microsoft.Testing.Platform runner; it does not call `dotnet test` on the solution file because the
+solution also contains the native `PrintSink.Xps` project.
 
 ## Continuous Integration
 
-`.github\workflows\windows-ci.yml` runs the same MSBuild/test gate on GitHub-hosted Windows runners:
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners:
 
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`

@@ -679,7 +679,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 
 ### 9.2 Test tooling
 
-- `Directory.Packages.props` pins: `MSTest`, `Microsoft.Testing.Platform`,
+- `global.json` opts `dotnet test` into the .NET 10 `Microsoft.Testing.Platform` runner.
+- `Directory.Packages.props` pins: `MSTest` (including MTP),
   `Microsoft.Testing.Extensions.CodeCoverage`, `Microsoft.Windows.CsWinRT`, `Microsoft.WindowsAppSDK`,
   `Microsoft.UI.Reactor`, `System.CommandLine`, and `Hex1b`.
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that

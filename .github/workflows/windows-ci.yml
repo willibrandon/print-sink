@@ -58,12 +58,24 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: dotnet test .\PrintSink.slnx --no-build -p:Platform=${{ matrix.platform }} --logger "trx;LogFileName=tests-${{ matrix.platform }}.trx"
+        run: .\test.ps1 -Configuration Debug -Platform ${{ matrix.platform }} -NoBuild
+
+      - name: Core coverage
+        shell: pwsh
+        run: .\test-coverage.ps1 -Configuration Debug -Platform ${{ matrix.platform }}
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: test-results-${{ matrix.platform }}
-          path: '**/TestResults/*.trx'
+          path: artifacts/test-results/${{ matrix.platform }}/*.trx
+          if-no-files-found: ignore
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-${{ matrix.platform }}
+          path: artifacts/coverage/core.${{ matrix.platform }}.cobertura.xml
           if-no-files-found: ignore
