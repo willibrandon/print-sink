@@ -8,7 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hex1b" />
     <PackageReference Include="MSTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PrintSink.Cli\PrintSink.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

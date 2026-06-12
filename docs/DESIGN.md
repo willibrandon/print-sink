@@ -599,7 +599,10 @@ support calls, and in CI checks that should not start a WinUI process.
   - fixture-driven route and sink test runner.
 
 The CLI/TUI uses `PrintSink.Core` abstractions and OS/package tooling. It does not try to instantiate
-live PSA event objects; those stay behind the activation adapters.
+live PSA event objects; those stay behind the activation adapters. The TUI is a Hex1b app workload:
+console presentation for normal use, headless presentation for tests and automation. The `hex1b` tool
+and Hex1b MCP server are acceptable support tooling for inspecting widget tree/focus/state, sending
+keys or mouse input, capturing terminal output, and scripting assertions.
 
 ---
 
@@ -647,7 +650,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      PDC files).
 2. **CLI tests — `PrintSink.Cli.Tests`** (MSTest / MTP, plain .NET): cover command parsing, exit codes,
    output formatting, manifest/PDC validation commands, and Hex1b state transitions without requiring a
-   real terminal session.
+   real terminal session. Hex1b tests use a headless terminal, input sequences or an automator, and
+   terminal snapshots so assertions are made against the rendered surface.
 3. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64): drive the C++/WinRT component through
    its C# projection with a small fixture OXPS document; assert the watermarked stream is non-empty,
    parses as valid XPS, and contains the watermark glyph run / image part. `XpsGenerationFailed` path
