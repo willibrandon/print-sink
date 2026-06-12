@@ -3,8 +3,29 @@
   <data name="Dpi600" xml:space="preserve">
     <value>600 dpi</value>
   </data>
+  <data name="Dpi1200" xml:space="preserve">
+    <value>1200 dpi</value>
+  </data>
+  <data name="Receipt80Millimeter" xml:space="preserve">
+    <value>80 mm receipt</value>
+  </data>
   <data name="ArchivePaper" xml:space="preserve">
     <value>Archive paper</value>
+  </data>
+  <data name="ThermalReceiptMedia" xml:space="preserve">
+    <value>Thermal receipt paper</value>
+  </data>
+  <data name="AutomationInputBin" xml:space="preserve">
+    <value>Automation input</value>
+  </data>
+  <data name="AutomationOutputBin" xml:space="preserve">
+    <value>Automation output</value>
+  </data>
+  <data name="StapleUpperLeft" xml:space="preserve">
+    <value>Staple upper left</value>
+  </data>
+  <data name="OddPagesThenEvenPages" xml:space="preserve">
+    <value>Odd pages, then even pages</value>
   </data>
   <data name="WatermarkMode" xml:space="preserve">
     <value>Watermark</value>

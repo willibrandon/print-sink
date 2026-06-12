@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root>
     <data name="schemas.printsink.dev/printing/keywords/Dpi600"><value>600 dpi</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/Dpi1200"><value>1200 dpi</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/Receipt80Millimeter"><value>80 mm receipt</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/ThermalReceiptMedia"><value>Thermal receipt paper</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/AutomationInputBin"><value>Automation input</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/AutomationOutputBin"><value>Automation output</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/StapleUpperLeft"><value>Staple upper left</value></data>
+    <data name="schemas.printsink.dev/printing/keywords/OddPagesThenEvenPages"><value>Odd pages, then even pages</value></data>
     <data name="schemas.printsink.dev/printing/keywords/ArchivePaper"><value>Archive paper</value></data>
     <data name="schemas.printsink.dev/printing/keywords/WatermarkMode"><value>Watermark</value></data>
     <data name="schemas.printsink.dev/printing/keywords/WatermarkOff"><value>Off</value></data>

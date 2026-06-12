@@ -50,6 +50,11 @@
       <psk:MediaSizeHeight psf2:psftype="ScoredProperty" xsi:type="xsd:integer">279400</psk:MediaSizeHeight>
       <psk:MediaSizeWidth psf2:psftype="ScoredProperty" xsi:type="xsd:integer">215900</psk:MediaSizeWidth>
     </psk:NorthAmericaLetter>
+    <printsink:Receipt80Millimeter psf2:psftype="Option">
+      <psk:MediaSizeWidth psf2:psftype="ScoredProperty" xsi:type="xsd:integer">80000</psk:MediaSizeWidth>
+      <psk:MediaSizeHeight psf2:psftype="ScoredProperty" xsi:type="xsd:integer">200000</psk:MediaSizeHeight>
+      <psk12:PortraitImageableSize psf2:psftype="Property" xsi:type="psf2:ImageableAreaType">0,0,80000,200000</psk12:PortraitImageableSize>
+    </printsink:Receipt80Millimeter>
   </psk:PageMediaSize>
   <psk:PageOrientation psf2:psftype="Feature">
     <psk:Landscape psf2:psftype="Option" />
@@ -57,7 +62,20 @@
   </psk:PageOrientation>
   <psk:PageMediaType psf2:psftype="Feature">
     <printsink:ArchivePaper psf2:psftype="Option" />
+    <printsink:ThermalReceiptMedia psf2:psftype="Option" />
   </psk:PageMediaType>
+  <psk:JobInputBin psf2:psftype="Feature">
+    <printsink:AutomationInputBin psf2:psftype="Option" />
+  </psk:JobInputBin>
+  <psk:JobOutputBin psf2:psftype="Feature">
+    <printsink:AutomationOutputBin psf2:psftype="Option" />
+  </psk:JobOutputBin>
+  <psk:JobStapleAllDocuments psf2:psftype="Feature">
+    <printsink:StapleUpperLeft psf2:psftype="Option" />
+  </psk:JobStapleAllDocuments>
+  <psk:JobPageOrder psf2:psftype="Feature">
+    <printsink:OddPagesThenEvenPages psf2:psftype="Option" />
+  </psk:JobPageOrder>
   <printsink:WatermarkMode psf2:psftype="Feature">
     <printsink:WatermarkOff psf2:psftype="Option" psf2:default="true" />
     <printsink:WatermarkText psf2:psftype="Option" />
@@ -68,6 +86,10 @@
       <psk:ResolutionX psf2:psftype="ScoredProperty" xsi:type="xsd:integer">600</psk:ResolutionX>
       <psk:ResolutionY psf2:psftype="ScoredProperty" xsi:type="xsd:integer">600</psk:ResolutionY>
     </printsink:Dpi600>
+    <printsink:Dpi1200 psf2:psftype="Option">
+      <psk:ResolutionX psf2:psftype="ScoredProperty" xsi:type="xsd:integer">1200</psk:ResolutionX>
+      <psk:ResolutionY psf2:psftype="ScoredProperty" xsi:type="xsd:integer">1200</psk:ResolutionY>
+    </printsink:Dpi1200>
   </psk:PageResolution>
   <psk:PageOutputColor psf2:psftype="Feature">
     <psk:Color psf2:psftype="Option" psf2:default="true">

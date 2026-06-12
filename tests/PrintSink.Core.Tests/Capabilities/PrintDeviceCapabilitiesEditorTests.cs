@@ -122,15 +122,38 @@ public sealed class PrintDeviceCapabilitiesEditorTests
 
         XDocument result = editor.Apply(document, PrintSinkCapabilityFeatures.BuiltIn);
 
+        XElement pageMediaSize = result.Root!.Element(Psk + "PageMediaSize")!;
+        XElement receipt80Millimeter = pageMediaSize.Element(PrintSink + "Receipt80Millimeter")!;
+        Assert.IsNotNull(receipt80Millimeter);
+        Assert.AreEqual("80000", receipt80Millimeter.Element(Psk + "MediaSizeWidth")?.Value);
+        Assert.AreEqual("200000", receipt80Millimeter.Element(Psk + "MediaSizeHeight")?.Value);
+
         XElement pageResolution = result.Root!.Element(Psk + "PageResolution")!;
         XElement dpi600 = pageResolution.Element(PrintSink + "Dpi600")!;
         Assert.IsNotNull(dpi600);
         Assert.AreEqual("true", dpi600.Attribute(Psf2 + "default")?.Value);
         Assert.AreEqual("600", dpi600.Element(Psk + "ResolutionX")?.Value);
         Assert.AreEqual("600", dpi600.Element(Psk + "ResolutionY")?.Value);
+        XElement dpi1200 = pageResolution.Element(PrintSink + "Dpi1200")!;
+        Assert.IsNotNull(dpi1200);
+        Assert.AreEqual("1200", dpi1200.Element(Psk + "ResolutionX")?.Value);
+        Assert.AreEqual("1200", dpi1200.Element(Psk + "ResolutionY")?.Value);
 
         XElement pageMediaType = result.Root.Element(Psk + "PageMediaType")!;
         Assert.IsNotNull(pageMediaType.Element(PrintSink + "ArchivePaper"));
+        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ThermalReceiptMedia"));
+
+        XElement jobInputBin = result.Root.Element(Psk + "JobInputBin")!;
+        Assert.IsNotNull(jobInputBin.Element(PrintSink + "AutomationInputBin"));
+
+        XElement jobOutputBin = result.Root.Element(Psk + "JobOutputBin")!;
+        Assert.IsNotNull(jobOutputBin.Element(PrintSink + "AutomationOutputBin"));
+
+        XElement jobStaple = result.Root.Element(Psk + "JobStapleAllDocuments")!;
+        Assert.IsNotNull(jobStaple.Element(PrintSink + "StapleUpperLeft"));
+
+        XElement jobPageOrder = result.Root.Element(Psk + "JobPageOrder")!;
+        Assert.IsNotNull(jobPageOrder.Element(PrintSink + "OddPagesThenEvenPages"));
 
         XElement watermarkMode = result.Root.Element(PrintSink + "WatermarkMode")!;
         Assert.IsNotNull(watermarkMode.Element(PrintSink + "WatermarkOff"));
