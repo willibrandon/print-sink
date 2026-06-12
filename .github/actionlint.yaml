@@ -1,0 +1,4 @@
+paths:
+  .github/workflows/windows-ci.yml:
+    ignore:
+      - 'label "windows-11-vs2026-arm" is unknown'

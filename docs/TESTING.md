@@ -15,6 +15,13 @@ The build treats warnings as errors. Do not disable analyzers to pass the gate; 
 Use the build script for the full gate because `PrintSink.Xps` is a native C++/WinRT project and
 requires MSBuild or Visual Studio.
 
+## Continuous Integration
+
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test gate on GitHub-hosted Windows runners:
+
+- `x64` on `windows-2025-vs2026`
+- `ARM64` on `windows-11-vs2026-arm`
+
 ## CLI Validation
 
 Run the shipped validators against the package assets:
