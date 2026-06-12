@@ -31,6 +31,11 @@
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|X86" Project="X86" />
     </Project>
+    <Project Path="src/PrintSink.Xps/PrintSink.Xps.vcxproj">
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|X86" Project="Win32" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests/e2e/Invoke-PrintSinkE2E.ps1" />

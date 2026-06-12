@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="Build">
+    <Message Importance="high" Text="Skipping PrintSink.Xps because VC targets are unavailable. Use MSBuild.exe or Visual Studio for the full native solution build." />
+  </Target>
+
+  <Target Name="Rebuild" DependsOnTargets="Build" />
+  <Target Name="Clean" />
+  <Target Name="VSTest" />
+</Project>

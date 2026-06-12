@@ -1,0 +1,15 @@
+namespace PrintSink.Xps
+{
+    runtimeclass XpsPageWatermarker
+    {
+        XpsPageWatermarker();
+
+        String Text;
+        String FontFamily;
+        Double FontSize;
+        Double Opacity;
+        Double RotationDegrees;
+        Double OffsetX;
+        Double OffsetY;
+    }
+}

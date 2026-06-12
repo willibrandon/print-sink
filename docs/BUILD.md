@@ -6,15 +6,13 @@ This project is MSIX-shaped. Keep the package manifest, launch profiles, assets,
 
 - Windows 11 24H2, build 26100 or later.
 - .NET SDK 10 from `global.json`.
-- Visual Studio 2026 with the Windows App SDK and single-project MSIX workload pieces.
+- Visual Studio 2026 with the Windows App SDK, C++ desktop build tools, and single-project MSIX workload pieces.
 - `msbuild` available on `PATH`.
-
-The current checkpoint is managed code and can build with `dotnet`. The full design includes a native C++/WinRT XPS component; once that project is added, use Visual Studio or MSBuild for the full solution build.
 
 ## Restore
 
 ```powershell
-dotnet restore PrintSink.slnx
+msbuild PrintSink.slnx /t:Restore /p:Platform=x64
 ```
 
 Central Package Management is enabled. Package versions belong in `Directory.Packages.props`, not in individual project references.
@@ -22,10 +20,10 @@ Central Package Management is enabled. Package versions belong in `Directory.Pac
 ## Debug Build
 
 ```powershell
-dotnet build PrintSink.slnx --no-restore -p:Platform=x64
+msbuild PrintSink.slnx /p:Configuration=Debug /p:Platform=x64
 ```
 
-Use an explicit platform for WinUI and CsWinRT projects. Local x64 is the default development target.
+Use an explicit platform for WinUI, CsWinRT, and C++/WinRT projects. Local x64 is the default development target.
 
 ## Visual Studio
 

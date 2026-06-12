@@ -93,11 +93,18 @@
         <PackageReference Include="Microsoft.UI.Reactor" />
         <ProjectReference Include="..\PrintSink.Core\PrintSink.Core.csproj" />
         <ProjectReference Include="..\PrintSink.Tasks\PrintSink.Tasks.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\PrintSink.Xps\PrintSink.Xps.vcxproj" ReferenceOutputAssembly="false" Condition="'$(MSBuildRuntimeType)' != 'Core'" />
     </ItemGroup>
 
     <ItemGroup>
         <AppxPackagePayload Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd">
             <TargetPath>PrintSink.Tasks.winmd</TargetPath>
+        </AppxPackagePayload>
+        <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.dll">
+            <TargetPath>PrintSink.Xps.dll</TargetPath>
+        </AppxPackagePayload>
+        <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd">
+            <TargetPath>PrintSink.Xps.winmd</TargetPath>
         </AppxPackagePayload>
     </ItemGroup>
 
@@ -121,6 +128,23 @@
             DestinationFolder="$(OutputPath)AppX"
             SkipUnchangedFiles="true"
             Condition="Exists('$(OutputPath)AppX') And Exists('%(_PrintSinkTasksActivationAsset.Identity)')" />
+    </Target>
+
+    <Target Name="IncludePrintSinkXpsAssets" AfterTargets="Build">
+        <ItemGroup>
+            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.dll" />
+            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd" />
+        </ItemGroup>
+        <Copy
+            SourceFiles="@(_PrintSinkXpsAsset)"
+            DestinationFolder="$(OutputPath)"
+            SkipUnchangedFiles="true"
+            Condition="Exists('%(_PrintSinkXpsAsset.Identity)')" />
+        <Copy
+            SourceFiles="@(_PrintSinkXpsAsset)"
+            DestinationFolder="$(OutputPath)AppX"
+            SkipUnchangedFiles="true"
+            Condition="Exists('$(OutputPath)AppX') And Exists('%(_PrintSinkXpsAsset.Identity)')" />
     </Target>
 
     <Target
