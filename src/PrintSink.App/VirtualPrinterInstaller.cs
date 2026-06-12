@@ -69,13 +69,15 @@ internal static class VirtualPrinterInstaller
 
         if (endpoint.RequiresTargetFile)
         {
-            string extension = endpoint.DefaultExtension?.TrimStart('.') ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(extension))
+            if (endpoint.OutputExtensions.Count == 0)
             {
-                throw new InvalidOperationException($"Endpoint '{endpoint.QueueName}' requires an output extension.");
+                throw new InvalidOperationException($"Endpoint '{endpoint.QueueName}' requires at least one output extension.");
             }
 
-            parameters.OutputFileExtensions.Add(extension);
+            foreach (string extension in endpoint.OutputExtensions)
+            {
+                parameters.OutputFileExtensions.Add(extension.TrimStart('.'));
+            }
         }
 
         foreach (PdlFormat passthroughFormat in endpoint.PassthroughFormats)

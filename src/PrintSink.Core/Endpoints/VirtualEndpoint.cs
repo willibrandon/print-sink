@@ -20,6 +20,7 @@ public sealed class VirtualEndpoint
     /// <param name="passthroughFormats">The source formats accepted without conversion.</param>
     /// <param name="requiresTargetFile">A value indicating whether the endpoint writes to an OS-selected target file.</param>
     /// <param name="defaultExtension">The default output extension, or <see langword="null"/> for non-file sinks.</param>
+    /// <param name="outputExtensions">The output extensions accepted by the OS Save-As broker.</param>
     public VirtualEndpoint(
         EndpointKind kind,
         string queueName,
@@ -28,11 +29,26 @@ public sealed class VirtualEndpoint
         PdlFormat targetFormat,
         IEnumerable<PdlFormat> passthroughFormats,
         bool requiresTargetFile,
-        string? defaultExtension)
+        string? defaultExtension,
+        IEnumerable<string>? outputExtensions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
         ArgumentNullException.ThrowIfNull(printerUri);
         ArgumentNullException.ThrowIfNull(passthroughFormats);
+
+        string? normalizedDefaultExtension = string.IsNullOrWhiteSpace(defaultExtension)
+            ? null
+            : NormalizeExtension(defaultExtension);
+        string[] normalizedOutputExtensions = NormalizeOutputExtensions(normalizedDefaultExtension, outputExtensions);
+        if (requiresTargetFile && normalizedOutputExtensions.Length == 0)
+        {
+            throw new ArgumentException("File-backed endpoints must declare at least one output extension.", nameof(outputExtensions));
+        }
+
+        if (!requiresTargetFile && normalizedOutputExtensions.Length > 0)
+        {
+            throw new ArgumentException("Application sinks must not declare output extensions.", nameof(outputExtensions));
+        }
 
         Kind = kind;
         QueueName = queueName;
@@ -42,7 +58,8 @@ public sealed class VirtualEndpoint
         this.passthroughFormats = [.. passthroughFormats];
         PassthroughFormats = [.. this.passthroughFormats];
         RequiresTargetFile = requiresTargetFile;
-        DefaultExtension = defaultExtension;
+        DefaultExtension = normalizedDefaultExtension;
+        OutputExtensions = normalizedOutputExtensions;
     }
 
     /// <summary>
@@ -86,6 +103,11 @@ public sealed class VirtualEndpoint
     public string? DefaultExtension { get; }
 
     /// <summary>
+    /// Gets the output extensions accepted by the OS Save-As broker.
+    /// </summary>
+    public IReadOnlyList<string> OutputExtensions { get; }
+
+    /// <summary>
     /// Returns whether the endpoint accepts a source format without conversion.
     /// </summary>
     /// <param name="format">The source format.</param>
@@ -93,5 +115,22 @@ public sealed class VirtualEndpoint
     public bool SupportsPassthrough(PdlFormat format)
     {
         return passthroughFormats.Contains(format);
+    }
+
+    private static string[] NormalizeOutputExtensions(string? defaultExtension, IEnumerable<string>? outputExtensions)
+    {
+        IEnumerable<string> source = outputExtensions ?? (defaultExtension is null ? [] : [defaultExtension]);
+        return [.. source
+            .Where(extension => !string.IsNullOrWhiteSpace(extension))
+            .Select(NormalizeExtension)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static string NormalizeExtension(string extension)
+    {
+        string trimmedExtension = extension.Trim();
+        return trimmedExtension.StartsWith(".", StringComparison.Ordinal)
+            ? trimmedExtension
+            : string.Concat(".", trimmedExtension);
     }
 }

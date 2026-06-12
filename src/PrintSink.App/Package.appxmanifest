@@ -76,7 +76,7 @@
             DisplayName="ms-resource:XpsPrintDisplayName"
             PrinterUri="printsink:print-to-xps"
             PreferredInputFormat="application/oxps"
-            OutputFileTypes="oxps"
+            OutputFileTypes="xps;oxps"
             PdcFile="Config\PrinterXps.pdc.xml"
             PdrFile="Config\PrinterXps.pdr.xml">
             <printsupport2:SupportedFormats>

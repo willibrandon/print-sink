@@ -26,7 +26,8 @@ public static class EndpointCatalog
             PdlFormat.Oxps,
             [PdlFormat.Oxps, PdlFormat.Xps],
             true,
-            ".oxps"),
+            ".oxps",
+            [".xps", ".oxps"]),
         new(
             EndpointKind.PostScript,
             "PrintSink - PostScript",

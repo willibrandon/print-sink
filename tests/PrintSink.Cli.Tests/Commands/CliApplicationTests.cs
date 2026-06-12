@@ -194,6 +194,32 @@ public sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies manifest linting rejects an XPS endpoint that does not expose every expected file extension.
+    /// </summary>
+    [TestMethod]
+    public async Task Manifest_lint_rejects_xps_endpoint_missing_output_extension()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            "OutputFileTypes=\"xps;oxps\"",
+            "OutputFileTypes=\"oxps\"",
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("OutputFileTypes must include 'xps'", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies manifest linting rejects file output on the cloud endpoint.
     /// </summary>
     [TestMethod]
@@ -382,7 +408,7 @@ public sealed class CliApplicationTests
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="xps;oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/oxps" />
                       <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />
@@ -446,7 +472,7 @@ public sealed class CliApplicationTests
                   </printsupport2:PrintSupportVirtualPrinter>
                 </printsupport2:Extension>
                 <printsupport2:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
-                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
+                  <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:XpsPrintDisplayName" PrinterUri="printsink:print-to-xps" PreferredInputFormat="application/oxps" OutputFileTypes="xps;oxps" PdcFile="Config\PrinterXps.pdc.xml" PdrFile="Config\PrinterXps.pdr.xml">
                     <printsupport2:SupportedFormats>
                       <printsupport2:SupportedFormat Type="application/oxps" />
                       <printsupport2:SupportedFormat Type="application/vnd.ms-xpsdocument" />

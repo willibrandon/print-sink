@@ -62,7 +62,21 @@ public sealed class EndpointCatalogTests
         {
             Assert.IsTrue(endpoint.RequiresTargetFile);
             Assert.IsFalse(string.IsNullOrWhiteSpace(endpoint.DefaultExtension));
+            Assert.IsNotEmpty(endpoint.OutputExtensions);
         }
+    }
+
+    /// <summary>
+    /// Verifies the XPS endpoint exposes both classic XPS and OpenXPS file extensions.
+    /// </summary>
+    [TestMethod]
+    public void Xps_endpoint_declares_xps_and_oxps_output_extensions()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Xps);
+
+        CollectionAssert.AreEquivalent(
+            new[] { ".xps", ".oxps" },
+            endpoint.OutputExtensions.ToArray());
     }
 
     /// <summary>

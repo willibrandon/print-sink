@@ -116,7 +116,7 @@ internal sealed class ManagementScreen : Component
             ("Target", FormatPdl(endpoint.TargetFormat)),
             ("Preferred input", FormatPdl(endpoint.PreferredInputFormat)),
             ("Passthrough", FormatPassthrough(endpoint)),
-            ("Sink", endpoint.RequiresTargetFile ? $"Save-As file ({endpoint.DefaultExtension})" : "Application sink"),
+            ("Sink", endpoint.RequiresTargetFile ? $"Save-As file ({FormatOutputExtensions(endpoint)})" : "Application sink"),
             ("Route", $"{route.ActionKind}: {route.Reason}"),
         ];
 
@@ -249,6 +249,13 @@ internal sealed class ManagementScreen : Component
         return endpoint.PassthroughFormats.Count == 0
             ? "None"
             : string.Join(", ", endpoint.PassthroughFormats.Select(FormatPdl));
+    }
+
+    private static string FormatOutputExtensions(VirtualEndpoint endpoint)
+    {
+        return endpoint.OutputExtensions.Count == 0
+            ? endpoint.DefaultExtension ?? "file"
+            : string.Join(", ", endpoint.OutputExtensions);
     }
 
     private static string FormatPdl(PdlFormat format)

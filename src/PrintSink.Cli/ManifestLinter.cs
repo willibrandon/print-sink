@@ -230,14 +230,17 @@ internal static class ManifestLinter
             return;
         }
 
-        string expectedExtension = endpoint.DefaultExtension?.TrimStart('.') ?? string.Empty;
         HashSet<string> declaredExtensions = SplitDelimitedValues(outputFileTypes)
             .Select(extension => extension.TrimStart('.'))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (!declaredExtensions.Contains(expectedExtension))
+        foreach (string outputExtension in endpoint.OutputExtensions)
         {
-            messages.Add($"error: '{endpoint.QueueName}' OutputFileTypes must include '{expectedExtension}'.");
+            string expectedExtension = outputExtension.TrimStart('.');
+            if (!declaredExtensions.Contains(expectedExtension))
+            {
+                messages.Add($"error: '{endpoint.QueueName}' OutputFileTypes must include '{expectedExtension}'.");
+            }
         }
     }
 
