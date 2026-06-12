@@ -21,8 +21,11 @@ internal sealed class ManagementScreen : Component
         IReadOnlyList<VirtualEndpoint> endpoints = EndpointCatalog.All;
         var (selectedKind, setSelectedKind) = UseState(EndpointKind.Pdf);
         var (statusText, setStatusText) = UseState("Ready.");
+        var (installedPrinters, setInstalledPrinters) =
+            UseState<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>>(InstalledVirtualPrinterReader.ReadAll());
 
         VirtualEndpoint selectedEndpoint = EndpointCatalog.GetByKind(selectedKind);
+        InstalledVirtualPrinterSnapshot selectedSnapshot = GetSnapshot(installedPrinters, selectedEndpoint);
         var router = new PdlRouter();
         PdlPlan route = router.Resolve(
             PdlFormatInfo.GetContentType(selectedEndpoint.PreferredInputFormat),
@@ -31,18 +34,18 @@ internal sealed class ManagementScreen : Component
         return ScrollView(
             VStack(20,
                 Header(),
-                Overview(endpoints),
+                Overview(endpoints, installedPrinters),
                 Grid(
                     columns: [GridSize.Star(1.35), GridSize.Star()],
                     rows: [GridSize.Auto],
-                    QueuesPanel(endpoints, selectedKind, setSelectedKind)
+                    QueuesPanel(endpoints, installedPrinters, selectedKind, setSelectedKind)
                         .Grid(row: 0, column: 0),
-                    EndpointPanel(selectedEndpoint, route)
+                    EndpointPanel(selectedEndpoint, selectedSnapshot, route)
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
-                    setStatusText($"Endpoint catalog refreshed: {endpoints.Count} queues defined."),
+                    RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
                     () =>
-                    setStatusText("Diagnostics are local until the print activation tasks are added."))))
+                    RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText))))
             .Padding(32)
             .MaxWidth(1180)
             .HAlign(HorizontalAlignment.Center);
@@ -59,12 +62,14 @@ internal sealed class ManagementScreen : Component
                 .Set(text => text.TextWrapping = TextWrapping.Wrap));
     }
 
-    private static GridElement Overview(IReadOnlyList<VirtualEndpoint> endpoints)
+    private static GridElement Overview(
+        IReadOnlyList<VirtualEndpoint> endpoints,
+        IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters)
     {
         return Grid(
             columns: [GridSize.Star(), GridSize.Star(), GridSize.Star(), GridSize.Star()],
             rows: [GridSize.Auto],
-            SummaryCard("Queues", endpoints.Count.ToString(), "PDF, XPS, PS, Cloud, PWG")
+            SummaryCard("Queues", $"{CountInstalled(installedPrinters)} / {endpoints.Count}", "Installed PrintSink virtual printers")
                 .Grid(row: 0, column: 0),
             SummaryCard("Package", "MSIX", "Windows App SDK package identity")
                 .Grid(row: 0, column: 1),
@@ -76,6 +81,7 @@ internal sealed class ManagementScreen : Component
 
     private static BorderElement QueuesPanel(
         IReadOnlyList<VirtualEndpoint> endpoints,
+        IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters,
         EndpointKind selectedKind,
         Action<EndpointKind> setSelectedKind)
     {
@@ -87,24 +93,44 @@ internal sealed class ManagementScreen : Component
                 VStack(8,
                     ForEach(
                         endpoints,
-                        endpoint => QueueRow(endpoint, endpoint.Kind == selectedKind, setSelectedKind)
+                        endpoint => QueueRow(
+                            endpoint,
+                            GetSnapshot(installedPrinters, endpoint),
+                            endpoint.Kind == selectedKind,
+                            setSelectedKind)
                     ))));
     }
 
-    private static BorderElement EndpointPanel(VirtualEndpoint endpoint, PdlPlan route)
+    private static BorderElement EndpointPanel(
+        VirtualEndpoint endpoint,
+        InstalledVirtualPrinterSnapshot snapshot,
+        PdlPlan route)
     {
+        List<(string Label, string Value)> detailRows =
+        [
+            ("Queue", endpoint.QueueName),
+            ("Installed", snapshot.Status),
+            ("Printer URI", snapshot.PrinterUri ?? endpoint.PrinterUri.ToString()),
+            ("Device kind", snapshot.DeviceKind ?? "Unavailable"),
+            ("Default ticket", FormatDefaultTicket(snapshot.CanModifyUserDefaultPrintTicket)),
+            ("Target", FormatPdl(endpoint.TargetFormat)),
+            ("Preferred input", FormatPdl(endpoint.PreferredInputFormat)),
+            ("Passthrough", FormatPassthrough(endpoint)),
+            ("Sink", endpoint.RequiresTargetFile ? $"Save-As file ({endpoint.DefaultExtension})" : "Application sink"),
+            ("Route", $"{route.ActionKind}: {route.Reason}"),
+        ];
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Error))
+        {
+            detailRows.Add(("Stack detail", snapshot.Error));
+        }
+
         return CardSurface(
             VStack(16,
                 TextBlock("Endpoint")
                     .ApplyStyle("SubtitleTextBlockStyle")
                     .Bold(),
-                DetailGrid(
-                    ("Queue", endpoint.QueueName),
-                    ("Target", FormatPdl(endpoint.TargetFormat)),
-                    ("Preferred input", FormatPdl(endpoint.PreferredInputFormat)),
-                    ("Passthrough", FormatPassthrough(endpoint)),
-                    ("Sink", endpoint.RequiresTargetFile ? $"Save-As file ({endpoint.DefaultExtension})" : "Application sink"),
-                    ("Route", $"{route.ActionKind}: {route.Reason}")),
+                DetailGrid(detailRows.ToArray()),
                 Pipeline()));
     }
 
@@ -115,12 +141,12 @@ internal sealed class ManagementScreen : Component
                 TextBlock("Validation")
                     .ApplyStyle("SubtitleTextBlockStyle")
                     .Bold(),
-                TextBlock("The foreground app reads the same endpoint catalog and route planner used by the CLI and tests. OS print activation wiring lands behind the same Core contracts.")
+                TextBlock("The foreground app reads the package's installed virtual printers and the same endpoint catalog used by the CLI and tests.")
                     .Foreground(Theme.SecondaryText)
                     .Set(text => text.TextWrapping = TextWrapping.Wrap),
                 HStack(12,
                     Button("Refresh queues", refreshQueues),
-                    Button("Open diagnostics", openDiagnostics)),
+                    Button("Refresh capabilities", openDiagnostics)),
                 TextBlock(statusText)
                     .Foreground(Theme.SecondaryText)));
     }
@@ -145,6 +171,7 @@ internal sealed class ManagementScreen : Component
 
     private static ButtonElement QueueRow(
         VirtualEndpoint endpoint,
+        InstalledVirtualPrinterSnapshot snapshot,
         bool isSelected,
         Action<EndpointKind> setSelectedKind)
     {
@@ -159,7 +186,7 @@ internal sealed class ManagementScreen : Component
                 button.Padding = new Thickness(12, 10, 12, 10);
                 button.RequestedTheme = isSelected ? ElementTheme.Dark : ElementTheme.Default;
             })
-            .ToolTip($"{FormatPdl(endpoint.PreferredInputFormat)} to {FormatPdl(endpoint.TargetFormat)}");
+            .ToolTip($"{snapshot.Status}: {snapshot.PrinterUri ?? endpoint.PrinterUri.ToString()}");
     }
 
     private static GridElement DetailGrid(params (string Label, string Value)[] rows)
@@ -236,5 +263,62 @@ internal sealed class ManagementScreen : Component
             PdlFormat.Pclm => "PCLm",
             _ => format.ToString(),
         };
+    }
+
+    private static int CountInstalled(IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters)
+    {
+        return installedPrinters.Values.Count(snapshot => snapshot.IsInstalled);
+    }
+
+    private static InstalledVirtualPrinterSnapshot GetSnapshot(
+        IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters,
+        VirtualEndpoint endpoint)
+    {
+        return installedPrinters.TryGetValue(endpoint.Kind, out InstalledVirtualPrinterSnapshot? snapshot)
+            ? snapshot
+            : new InstalledVirtualPrinterSnapshot(
+                endpoint.Kind,
+                false,
+                "Unknown",
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static string FormatDefaultTicket(bool? canModifyUserDefaultPrintTicket)
+    {
+        return canModifyUserDefaultPrintTicket switch
+        {
+            true => "Mutable",
+            false => "Read-only",
+            null => "Unavailable",
+        };
+    }
+
+    private static void RefreshInstalledPrinters(
+        Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
+        Action<string> setStatusText)
+    {
+        IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+        setInstalledPrinters(snapshots);
+        setStatusText($"Installed queues refreshed: {CountInstalled(snapshots)} found.");
+    }
+
+    private static void RefreshCapabilities(
+        EndpointKind selectedKind,
+        Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
+        Action<string> setStatusText)
+    {
+        try
+        {
+            string status = InstalledVirtualPrinterReader.RefreshCapabilities(selectedKind);
+            setInstalledPrinters(InstalledVirtualPrinterReader.ReadAll());
+            setStatusText(status);
+        }
+        catch (Exception ex)
+        {
+            setStatusText($"Capability refresh failed: {ex.Message}");
+        }
     }
 }
