@@ -48,6 +48,62 @@ jobs:
           dotnet --info
           msbuild -version
 
+      - name: Ensure packaged app test runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            $command = Get-Command vswhere.exe -ErrorAction SilentlyContinue
+            if ($command) {
+              $vswhere = $command.Source
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw 'Could not find vswhere.exe.'
+          }
+
+          $installationPath = & $vswhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $installationPath) {
+            throw 'Could not find a Visual Studio installation with MSBuild.'
+          }
+
+          $testPlatformPath = Join-Path $installationPath 'Common7\IDE\Extensions\TestPlatform'
+          $vstest = Join-Path $testPlatformPath 'vstest.console.exe'
+          $uwpProvider = Join-Path $testPlatformPath 'Microsoft.VisualStudio.UwpTestHostRuntimeProvider.Deployment.dll'
+
+          if (-not ((Test-Path -LiteralPath $vstest) -and (Test-Path -LiteralPath $uwpProvider))) {
+            $setup = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\setup.exe'
+            if (-not (Test-Path -LiteralPath $setup)) {
+              throw 'Could not find Visual Studio Installer setup.exe.'
+            }
+
+            & $setup modify `
+              --installPath $installationPath `
+              --add Microsoft.VisualStudio.Component.TestTools.BuildTools `
+              --add Microsoft.VisualStudio.ComponentGroup.UWP.Support `
+              --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
+              --quiet `
+              --norestart `
+              --nocache
+
+            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+              throw "Visual Studio Installer failed with exit code $LASTEXITCODE."
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $vstest)) {
+            throw "Could not find vstest.console.exe at $vstest."
+          }
+
+          if (-not (Test-Path -LiteralPath $uwpProvider)) {
+            throw "Could not find packaged app test provider at $uwpProvider."
+          }
+
+          "VSTEST_CONSOLE=$vstest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Restore
         shell: pwsh
         run: msbuild .\PrintSink.slnx /t:Restore /p:Configuration=Debug /p:Platform=${{ matrix.platform }} /nologo /v:minimal

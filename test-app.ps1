@@ -35,8 +35,8 @@ function Find-VSTestConsole {
 
     foreach ($installationPath in ($installationPaths | Select-Object -Unique)) {
         $candidates = @(
-            (Join-Path $installationPath 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'),
-            (Join-Path $installationPath 'Common7\IDE\Extensions\TestPlatform\vstest.console.exe')
+            (Join-Path $installationPath 'Common7\IDE\Extensions\TestPlatform\vstest.console.exe'),
+            (Join-Path $installationPath 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe')
         )
 
         foreach ($candidate in $candidates) {
@@ -46,7 +46,7 @@ function Find-VSTestConsole {
         }
     }
 
-    throw 'Could not find vstest.console.exe. Install Visual Studio Test Platform or set VSTEST_CONSOLE.'
+    throw 'Could not find vstest.console.exe. Install Visual Studio Test Platform V2 CLI or set VSTEST_CONSOLE.'
 }
 
 $runtimeIdentifier = switch ($Platform) {
