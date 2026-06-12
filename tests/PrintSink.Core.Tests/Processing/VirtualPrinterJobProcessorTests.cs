@@ -65,6 +65,134 @@ public sealed class VirtualPrinterJobProcessorTests
     }
 
     /// <summary>
+    /// Verifies transformed XPS bytes are passed to the converter before sink writes.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_transforms_job_before_conversion()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        byte[] sourceBytes = Encoding.UTF8.GetBytes("xps");
+        byte[] transformedBytes = Encoding.UTF8.GetBytes("watermarked xps");
+        byte[] convertedBytes = Encoding.UTF8.GetBytes("%PDF-1.7 converted");
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            sourceBytes,
+            false);
+        TestPdlTransformer transformer = new(transformedBytes);
+        TestPdlConverter converter = new(convertedBytes);
+        CapturingSink sink = new();
+        WatermarkOptions watermarkOptions = new(
+            true,
+            new TextWatermark("Draft", "Segoe UI", 48, 0.35, -30, 0, 0),
+            null);
+        VirtualPrinterJobProcessor processor = CreateProcessor(
+            sink,
+            converter,
+            transformer,
+            null,
+            new JobProcessingOptions(watermarkOptions));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
+        Assert.AreEqual(1, transformer.CallCount);
+        CollectionAssert.AreEqual(sourceBytes, transformer.LastSourceBytes);
+        Assert.AreSame(watermarkOptions, transformer.LastWatermarkOptions);
+        CollectionAssert.AreEqual(transformedBytes, converter.LastSourceBytes);
+        CollectionAssert.AreEqual(convertedBytes, sink.Bytes);
+    }
+
+    /// <summary>
+    /// Verifies transformed passthrough bytes are written directly to the target stream.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_writes_transformed_passthrough_job_to_target_stream()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Xps);
+        byte[] sourceBytes = Encoding.UTF8.GetBytes("xps");
+        byte[] transformedBytes = Encoding.UTF8.GetBytes("watermarked xps");
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            sourceBytes,
+            true);
+        TestPdlTransformer transformer = new(transformedBytes);
+        TestPdlConverter converter = new(Encoding.UTF8.GetBytes("converted"));
+        VirtualPrinterJobProcessor processor = CreateProcessor(
+            new TargetStreamSink(),
+            converter,
+            transformer,
+            null,
+            new JobProcessingOptions(WatermarkOptions.Disabled));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
+        Assert.AreEqual(1, transformer.CallCount);
+        Assert.AreEqual(0, converter.CallCount);
+        CollectionAssert.AreEqual(sourceBytes, transformer.LastSourceBytes);
+        Assert.AreSame(WatermarkOptions.Disabled, transformer.LastWatermarkOptions);
+        CollectionAssert.AreEqual(transformedBytes, job.TargetBytes);
+    }
+
+    /// <summary>
+    /// Verifies transform failures complete the job as failed.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_marks_job_failed_when_transform_throws()
+    {
+        InvalidOperationException expected = new("transform failed");
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("xps"),
+            false);
+        TestPdlTransformer transformer = new([], expected);
+        VirtualPrinterJobProcessor processor = CreateProcessor(
+            new CapturingSink(),
+            new TestPdlConverter([]),
+            transformer,
+            null,
+            new JobProcessingOptions(WatermarkOptions.Disabled));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
+        Assert.AreSame(expected, result.Exception);
+    }
+
+    /// <summary>
+    /// Verifies transform cancellation completes the job as canceled.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_marks_job_canceled_when_transform_cancels()
+    {
+        OperationCanceledException expected = new("transform canceled");
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("xps"),
+            false);
+        TestPdlTransformer transformer = new([], expected);
+        VirtualPrinterJobProcessor processor = CreateProcessor(
+            new CapturingSink(),
+            new TestPdlConverter([]),
+            transformer,
+            null,
+            new JobProcessingOptions(WatermarkOptions.Disabled));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Canceled, result.Status);
+        Assert.AreEqual(VirtualPrinterJobStatus.Canceled, job.CompletedStatus);
+        Assert.AreSame(expected, result.Exception);
+    }
+
+    /// <summary>
     /// Verifies rejected jobs complete as failed without opening streams.
     /// </summary>
     [TestMethod]
@@ -192,6 +320,26 @@ public sealed class VirtualPrinterJobProcessorTests
             }));
     }
 
+    private static VirtualPrinterJobProcessor CreateProcessor(
+        ISink sink,
+        IPdlConverter converter,
+        IPdlTransformer transformer,
+        ISettingsStore? settingsStore,
+        JobProcessingOptions? jobProcessingOptions)
+    {
+        return new VirtualPrinterJobProcessor(
+            new PdlRouter(),
+            converter,
+            new EndpointSinkResolver(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = sink,
+                [EndpointKind.Xps] = sink,
+            }),
+            settingsStore,
+            jobProcessingOptions,
+            transformer);
+    }
+
     private sealed class InMemorySettingsStore : ISettingsStore
     {
         private readonly Dictionary<Uri, WatermarkOptions> watermarkOptions = [];
@@ -240,5 +388,6 @@ public sealed class VirtualPrinterJobProcessorTests
     /// <summary>
     /// Gets or sets the current MSTest context.
     /// </summary>
-    public TestContext TestContext { get; set; }
+    /// <value>The current MSTest context.</value>
+    public TestContext TestContext { get; set; } = null!;
 }

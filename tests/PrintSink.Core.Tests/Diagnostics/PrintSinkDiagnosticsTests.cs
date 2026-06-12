@@ -111,5 +111,6 @@ public sealed class PrintSinkDiagnosticsTests
     /// <summary>
     /// Gets or sets the current MSTest context.
     /// </summary>
-    public TestContext TestContext { get; set; }
+    /// <value>The current MSTest context.</value>
+    public TestContext TestContext { get; set; } = null!;
 }

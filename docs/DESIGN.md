@@ -475,8 +475,8 @@ On `VirtualPrinterDataAvailable(args)`:
 6. `finally` → `args.CompleteJob(status)`; complete the deferral.
 
 The handler is a thin adapter; all branching/decision logic lives in `PrintSink.Core` behind
-`IVirtualPrinterJob` / `IPdlRouter` so it is unit-testable. The task class itself only marshals WinRT
-objects into and out of the core.
+`IVirtualPrinterJob`, `IPdlRouter`, and `IPdlTransformer` so it is unit-testable. The task class itself
+only marshals WinRT objects into and out of the core.
 
 **Conversion type mapping** (`PrintSink.Core.Pdl.PdlRouter`):
 
@@ -570,6 +570,7 @@ Pure .NET. No `Windows.Graphics.Printing.*` event types leak in; instead thin **
 ```
 IVirtualPrinterJob   { ContentType, EndpointUri, GetInput(), GetTarget(), GetPrintTicket(), Complete(status) }
 IPdlRouter           { PdlPlan Resolve(string contentType, VirtualEndpoint endpoint) }
+IPdlTransformer      { TransformAsync(Stream pdl, VirtualEndpoint endpoint, PdlPlan plan, WatermarkOptions options) }
 IPrintDeviceCapabilitiesEditor { XmlDocument Apply(XmlDocument pdc, IReadOnlyList<CustomFeature> features) }
 IIppAttributeMapper  { IDictionary<string,IppAttributeValue> FromPrintTicket(...); ... Remove(...); }
 ISettingsStore       { read/write watermark + job options }

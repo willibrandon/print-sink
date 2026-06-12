@@ -15,6 +15,7 @@ public sealed class VirtualPrinterJobProcessor
 {
     private readonly IPdlRouter router;
     private readonly IPdlConverter converter;
+    private readonly IPdlTransformer transformer;
     private readonly IEndpointSinkResolver sinkResolver;
     private readonly ISettingsStore? settingsStore;
     private readonly JobProcessingOptions? jobProcessingOptions;
@@ -60,13 +61,41 @@ public sealed class VirtualPrinterJobProcessor
         IEndpointSinkResolver sinkResolver,
         ISettingsStore? settingsStore,
         JobProcessingOptions? jobProcessingOptions)
+        : this(
+            router,
+            converter,
+            sinkResolver,
+            settingsStore,
+            jobProcessingOptions,
+            PassThroughPdlTransformer.Instance)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="VirtualPrinterJobProcessor"/> class.
+    /// </summary>
+    /// <param name="router">The PDL router.</param>
+    /// <param name="converter">The PDL converter.</param>
+    /// <param name="sinkResolver">The endpoint sink resolver.</param>
+    /// <param name="settingsStore">The settings store used to load endpoint options.</param>
+    /// <param name="jobProcessingOptions">The foreground job options, when job UI collected any.</param>
+    /// <param name="transformer">The PDL transformer applied before conversion or sink writes.</param>
+    public VirtualPrinterJobProcessor(
+        IPdlRouter router,
+        IPdlConverter converter,
+        IEndpointSinkResolver sinkResolver,
+        ISettingsStore? settingsStore,
+        JobProcessingOptions? jobProcessingOptions,
+        IPdlTransformer transformer)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(converter);
         ArgumentNullException.ThrowIfNull(sinkResolver);
+        ArgumentNullException.ThrowIfNull(transformer);
 
         this.router = router;
         this.converter = converter;
+        this.transformer = transformer;
         this.sinkResolver = sinkResolver;
         this.settingsStore = settingsStore;
         this.jobProcessingOptions = jobProcessingOptions;
@@ -146,7 +175,14 @@ public sealed class VirtualPrinterJobProcessor
         await using Stream source = await job.OpenSourceAsync(cancellationToken).ConfigureAwait(false);
         await using Stream? target = await job.OpenTargetAsync(cancellationToken).ConfigureAwait(false);
 
-        Stream output = source;
+        WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
+            .ConfigureAwait(false);
+        Stream transformed = await transformer
+            .TransformAsync(source, job.Endpoint, plan, watermarkOptions, cancellationToken)
+            .ConfigureAwait(false);
+        RewindIfSeekable(transformed);
+        Stream output = transformed;
+        Stream? transformedToDispose = ReferenceEquals(source, transformed) ? null : transformed;
         Stream? converted = null;
 
         try
@@ -158,7 +194,8 @@ public sealed class VirtualPrinterJobProcessor
 
                 long conversionStarted = Stopwatch.GetTimestamp();
                 PrintSinkDiagnostics.Log.PdlConversionStarted(job.Endpoint.QueueName, conversionKind.ToString());
-                converted = await converter.ConvertAsync(source, conversionKind, cancellationToken).ConfigureAwait(false);
+                converted = await converter.ConvertAsync(output, conversionKind, cancellationToken).ConfigureAwait(false);
+                RewindIfSeekable(converted);
                 PrintSinkDiagnostics.Log.PdlConversionCompleted(
                     job.Endpoint.QueueName,
                     conversionKind.ToString(),
@@ -167,8 +204,6 @@ public sealed class VirtualPrinterJobProcessor
             }
 
             ISink sink = sinkResolver.Resolve(job.Endpoint);
-            WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
-                .ConfigureAwait(false);
             SinkWriteContext context = new(
                 job.Endpoint,
                 PdlFormatInfo.GetContentType(plan.TargetFormat),
@@ -180,6 +215,11 @@ public sealed class VirtualPrinterJobProcessor
         }
         finally
         {
+            if (transformedToDispose is not null)
+            {
+                await transformedToDispose.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (converted is not null)
             {
                 await converted.DisposeAsync().ConfigureAwait(false);
@@ -190,6 +230,14 @@ public sealed class VirtualPrinterJobProcessor
     private static long GetElapsedMilliseconds(long started)
     {
         return (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+    }
+
+    private static void RewindIfSeekable(Stream stream)
+    {
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
+        }
     }
 
     private async Task<WatermarkOptions> GetWatermarkOptionsAsync(

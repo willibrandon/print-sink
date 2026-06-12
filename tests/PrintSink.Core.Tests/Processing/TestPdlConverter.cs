@@ -18,8 +18,10 @@ internal sealed class TestPdlConverter : IPdlConverter
 
     internal PdlConversionKind? LastConversionKind { get; private set; }
 
+    internal byte[] LastSourceBytes { get; private set; } = [];
+
     /// <inheritdoc />
-    public Task<Stream> ConvertAsync(
+    public async Task<Stream> ConvertAsync(
         Stream source,
         PdlConversionKind conversionKind,
         CancellationToken cancellationToken = default)
@@ -29,7 +31,10 @@ internal sealed class TestPdlConverter : IPdlConverter
 
         CallCount++;
         LastConversionKind = conversionKind;
+        using MemoryStream sourceBuffer = new();
+        await source.CopyToAsync(sourceBuffer, cancellationToken).ConfigureAwait(false);
+        LastSourceBytes = sourceBuffer.ToArray();
 
-        return Task.FromResult<Stream>(new MemoryStream(convertedBytes));
+        return new MemoryStream(convertedBytes);
     }
 }
