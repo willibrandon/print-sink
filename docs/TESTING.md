@@ -137,7 +137,8 @@ The required E2E suite proves the current installed-package behavior:
    queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
    `GetPrinterAttributes` traffic, the real `PrintSupportExtensionBackgroundTask` validates print
    tickets for that IPP queue, and a real print job records `PrintSupportWorkflowBackgroundTask`
-   pass-through. Document-output assertions are made through the PrintSink virtual queues.
+   start/compression-state and pass-through diagnostics. Document-output assertions are made through
+   the PrintSink virtual queues.
 10. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
@@ -194,7 +195,8 @@ Real output assertions:
   document-format values for the real installed virtual queue.
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
   with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, submit a
-  real print job that activates workflow pass-through, and produce local IPP request evidence.
+  real print job that activates workflow start and pass-through, record IPP compression state while
+  leaving system rendering enabled, and produce local IPP request evidence.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows

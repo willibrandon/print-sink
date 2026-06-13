@@ -1632,6 +1632,15 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
             throw "IPP workflow print process for $PrinterName exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
         }
 
+        $workflowStart = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Workflow job starting' `
+            -StartedUtc $startedUtc `
+            -DetailContains @(
+                'skipSystemRendering=default',
+                'ippCompression=') `
+            -TimeoutSeconds 60
         $workflow = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $PrinterName `
@@ -1641,6 +1650,7 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
             -TimeoutSeconds 60
         return [ordered]@{
             printer = $PrinterName
+            workflowStart = $workflowStart
             workflow = $workflow
         }
     }
@@ -3400,6 +3410,7 @@ function Assert-PrintSinkFeatureEvidenceComplete {
     $supportedNumbers += 23
     $supportedNumbers += 24
     $supportedNumbers += 25
+    $supportedNumbers += 27
 
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ObjectPropertyValue -Object $_ -Name 'number') })
     $missingNumbers = @($supportedNumbers | Where-Object { $_ -notin $actualNumbers })
@@ -3761,6 +3772,17 @@ function New-PrintSinkFeatureEvidence {
             manifestNames = New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters
             installedQueues = $provisionedQueues
         })
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 27 `
+        -Feature 'IPP compression compatibility handling' `
+        -Passed (
+            [string]$IppAssociation.workflowActivationPrint.workflowStart.message -eq 'Workflow job starting' `
+                -and [string]$IppAssociation.workflowActivationPrint.workflowStart.detail -like '*skipSystemRendering=default*' `
+                -and [string]$IppAssociation.workflowActivationPrint.workflowStart.detail -like '*ippCompression=*') `
+        -Evidence 'A real IPP workflow activation entered JobStarting and recorded the platform compression state while leaving system rendering enabled.' `
+        -Artifact $IppAssociation.workflowActivationPrint.workflowStart
 
     Assert-PrintSinkFeatureEvidenceComplete -FeatureEvidence @($featureEvidence)
 

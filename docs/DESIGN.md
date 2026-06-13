@@ -173,7 +173,7 @@ operator workflows; it references the same core library but is not an OS print a
 
 ## 4. Feature Completeness Matrix
 
-Rows 1-21 and 23-25 are supported PrintSink capabilities. Each supported row is implemented and covered
+Rows 1-21, 23-25, and 27 are supported PrintSink capabilities. Each supported row is implemented and covered
 by CI. The E2E run writes `featureEvidence` for the print-stack rows it proves. Pure model behavior is
 covered by unit tests. Rows 22 and 26 are tracked separately as deferred compatibility hooks until
 Windows can deliver them through deterministic E2E paths. The physical IPP path is limited to PSA
@@ -207,6 +207,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 24 | Job password option model | `JobPasswordOptions` settings model | Core + Job UI | Job UI capture is tested; virtual file output records metadata as not applicable without exposing the secret; no physical target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 | 26 | IPP communication-error timeout recovery | `PrintSupportExtensionSession.CommunicationErrorDetected`, `PrintSupportIppCommunicationConfiguration` | `PrintSupportExtensionBackgroundTask` | Tracked only. Defensive handler configures IPP timeouts when Windows reports a timeout; not a supported feature claim until a deterministic real-device E2E can trigger the event. |
+| 27 | IPP compression compatibility handling | `PrintWorkflowJobStartingEventArgs.IsIppCompressionEnabled`, `DisableIppCompressionForJob()` | `PrintSupportWorkflowBackgroundTask` + E2E | Real IPP workflow activation records the platform compression state and keeps system rendering enabled. |
 
 ---
 
@@ -721,8 +722,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect a local
      Microsoft IPP Class Driver queue to the in-process E2E IPP printer, assert the installed PSA AUMID
      device property, prove the extension task validates real print tickets for that queue, and submit a
-     real print job that records physical workflow pass-through. Document-output assertions run through
-     the PrintSink virtual queues.
+     real print job that records physical workflow start/compression state and pass-through.
+     Document-output assertions run through the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with XPS content types, parseable fixed pages, interleaved piece support, and `foo`; PS
      starts with `%!PS` and has resolved page count, bounding box, page trailer, trailer, and EOF markers;
