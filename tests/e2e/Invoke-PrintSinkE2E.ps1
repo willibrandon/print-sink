@@ -15,6 +15,8 @@ if (-not $isWindowsPlatform) {
     throw 'PrintSink E2E tests require Windows.'
 }
 
+$OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+
 $expectedQueues = @(
     'PrintSink - PDF',
     'PrintSink - XPS',
@@ -1239,16 +1241,23 @@ function Start-PrintSinkWin32PrintProcess {
         [int] $PageCount = 1
     )
 
-    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$([Guid]::NewGuid()).ps1"
+    $id = [Guid]::NewGuid()
+    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$id.ps1"
+    $stdoutPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$id.out.log"
+    $stderrPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$id.err.log"
     $escapedPrinterName = $PrinterName.Replace("'", "''")
     $escapedDocumentName = $DocumentName.Replace("'", "''")
     $escapedText = $Text.Replace("'", "''")
     $printScript = @"
+`$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 `$document = [System.Drawing.Printing.PrintDocument]::new()
 `$document.DocumentName = '$escapedDocumentName'
 `$document.PrinterSettings.PrinterName = '$escapedPrinterName'
 `$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
+if (-not `$document.PrinterSettings.IsValid) {
+    throw "Printer '$escapedPrinterName' is not valid."
+}
 `$pageIndex = 0
 `$pageCount = $PageCount
 `$document.add_PrintPage({
@@ -1264,16 +1273,54 @@ Add-Type -AssemblyName System.Drawing
         `$font.Dispose()
     }
 })
-`$document.Print()
+try {
+    `$document.Print()
+}
+finally {
+    `$document.Dispose()
+}
 "@
 
     Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+    $process = Start-Process `
+        -FilePath powershell.exe `
+        -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath `
+        -PassThru
 
     return [ordered]@{
         process = $process
         scriptPath = $scriptPath
+        stdoutPath = $stdoutPath
+        stderrPath = $stderrPath
     }
+}
+
+function Get-PrintSinkProcessOutput {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintProcess
+    )
+
+    $parts = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in @(
+        [ordered]@{ name = 'stdout'; path = $PrintProcess.stdoutPath },
+        [ordered]@{ name = 'stderr'; path = $PrintProcess.stderrPath })) {
+        if ([string]::IsNullOrWhiteSpace([string]$entry.path) -or -not (Test-Path -LiteralPath $entry.path)) {
+            continue
+        }
+
+        $content = Get-Content -LiteralPath $entry.path -Raw
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+            $parts.Add("$($entry.name): $content")
+        }
+    }
+
+    if ($parts.Count -eq 0) {
+        return 'No print-process stdout/stderr was written.'
+    }
+
+    return $parts -join [Environment]::NewLine
 }
 
 function Test-CurrentProcessIsElevated {
@@ -1696,11 +1743,11 @@ function Invoke-PrintSinkRealPrint {
         }
 
         if (-not $process.WaitForExit(30000)) {
-            throw "Print process did not exit for $printerName."
+            throw "Print process did not exit for $printerName. $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
         }
 
         if ($process.ExitCode -ne 0) {
-            throw "Print process for $printerName exited with $($process.ExitCode)."
+            throw "Print process for $printerName exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
         }
 
         if ($PrintCase.requiresSaveAs) {
@@ -1758,6 +1805,8 @@ function Invoke-PrintSinkRealPrint {
 
         Close-SavePrintOutputDialogs
         Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
     }
 }
 
@@ -1813,6 +1862,8 @@ function Invoke-PrintSinkConcurrentPrints {
                 outputPath = $outputPath
                 process = $printProcess.process
                 scriptPath = $printProcess.scriptPath
+                stdoutPath = $printProcess.stdoutPath
+                stderrPath = $printProcess.stderrPath
             })
 
             $dialog = Wait-ForAutomationElement `
@@ -1834,11 +1885,11 @@ function Invoke-PrintSinkConcurrentPrints {
             $outputPath = $job.outputPath
 
             if (-not $process.WaitForExit(45000)) {
-                throw "Concurrent print process did not exit for $($printCase.queue)."
+                throw "Concurrent print process did not exit for $($printCase.queue). $(Get-PrintSinkProcessOutput -PrintProcess $job)"
             }
 
             if ($process.ExitCode -ne 0) {
-                throw "Concurrent print process for $($printCase.queue) exited with $($process.ExitCode)."
+                throw "Concurrent print process for $($printCase.queue) exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $job)"
             }
 
             $diagnostic = Wait-ForPrintSinkJobCompleted `
@@ -1862,6 +1913,12 @@ function Invoke-PrintSinkConcurrentPrints {
 
         $first = $results[0].diagnostic
         $second = $results[1].diagnostic
+        $missingStartTiming = [string]::IsNullOrWhiteSpace([string]$first.routeTimestamp) `
+            -or [string]::IsNullOrWhiteSpace([string]$second.routeTimestamp)
+        if ($missingStartTiming) {
+            throw "Concurrent print diagnostics did not include start timing. First: $(ConvertTo-Json $first -Compress); Second: $(ConvertTo-Json $second -Compress)"
+        }
+
         $firstRouteUtc = [DateTimeOffset]::Parse($first.routeTimestamp)
         $firstCompletedUtc = [DateTimeOffset]::Parse($first.timestamp)
         $secondRouteUtc = [DateTimeOffset]::Parse($second.routeTimestamp)
@@ -1885,6 +1942,8 @@ function Invoke-PrintSinkConcurrentPrints {
             }
 
             Remove-Item -LiteralPath $job.scriptPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $job.stdoutPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $job.stderrPath -ErrorAction SilentlyContinue
         }
 
         Close-SavePrintOutputDialogs
@@ -3013,6 +3072,29 @@ function Read-PrintSinkDiagnosticEvents {
     return $events
 }
 
+function Get-PrintSinkRouteTimestamp {
+    param(
+        [object] $Route,
+        [object] $Completion
+    )
+
+    if ($null -ne $Route -and -not [string]::IsNullOrWhiteSpace([string]$Route.timestamp)) {
+        return [string]$Route.timestamp
+    }
+
+    $completedUtc = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse([string]$Completion.timestamp, [ref]$completedUtc)) {
+        return $null
+    }
+
+    $detail = [string]$Completion.detail
+    if ($detail -notmatch ';\s*(?<elapsed>\d+)\s*ms;') {
+        return $null
+    }
+
+    return $completedUtc.AddMilliseconds(-[int64]$Matches.elapsed).ToString('O')
+}
+
 function Wait-ForPrintSinkJobCompleted {
     param(
         [string] $PackageFamilyName,
@@ -3068,7 +3150,7 @@ function Wait-ForPrintSinkJobCompleted {
                     timestamp = $match.timestamp
                     message = $match.message
                     detail = $match.detail
-                    routeTimestamp = if ($null -eq $route) { $null } else { $route.timestamp }
+                    routeTimestamp = Get-PrintSinkRouteTimestamp -Route $route -Completion $match
                     route = if ($null -eq $route) { $ExpectedRouteDetail } else { $route.detail }
                 }
             }
@@ -3141,10 +3223,11 @@ function Wait-ForPrintSinkJobFailed {
                 }
 
                 if ($null -eq $route) {
-                    throw "PrintSink route diagnostic was not recorded for failed $Endpoint job."
+                    if ([string]$failure.detail -notlike "*route=$ExpectedRouteDetail*") {
+                        throw "PrintSink route diagnostic was not recorded for failed $Endpoint job."
+                    }
                 }
-
-                if ($route.detail -ne $ExpectedRouteDetail) {
+                elseif ($route.detail -ne $ExpectedRouteDetail) {
                     throw "PrintSink route diagnostic differed for failed ${Endpoint}. Expected '$ExpectedRouteDetail'; actual '$($route.detail)'."
                 }
 
@@ -3152,7 +3235,7 @@ function Wait-ForPrintSinkJobFailed {
                     timestamp = $failure.timestamp
                     message = $failure.message
                     detail = $failure.detail
-                    route = $route.detail
+                    route = if ($null -eq $route) { $ExpectedRouteDetail } else { $route.detail }
                 }
             }
 

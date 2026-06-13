@@ -55,6 +55,10 @@ internal sealed class IppPrinterEvidenceWriter
                 timestamp = request.Timestamp,
                 operation = request.Operation,
                 operationAttributes = request.OperationAttributes.Order(StringComparer.OrdinalIgnoreCase),
+                operationAttributeValues = request.OperationAttributeValues.ToDictionary(
+                    static pair => pair.Key,
+                    static pair => pair.Value.Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase),
                 jobAttributes = request.JobAttributes.Order(StringComparer.OrdinalIgnoreCase),
             }),
         };

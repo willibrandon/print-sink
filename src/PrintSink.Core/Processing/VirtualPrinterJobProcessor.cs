@@ -217,7 +217,7 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job canceled",
                     job.Endpoint.QueueName,
-                    exceptionDetail),
+                    $"{exceptionDetail}; route={routeDetail}"),
                 CancellationToken.None)
                 .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Canceled, ex);
@@ -239,7 +239,7 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job failed",
                     job.Endpoint.QueueName,
-                    exceptionDetail),
+                    $"{exceptionDetail}; route={routeDetail}"),
                 CancellationToken.None)
                 .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, ex);

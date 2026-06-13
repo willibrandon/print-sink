@@ -226,6 +226,7 @@ public sealed class VirtualPrinterJobProcessorTests
         Assert.AreSame(expected, result.Exception);
         Assert.Contains(nameof(InvalidOperationException), detail);
         Assert.Contains("0x", detail);
+        Assert.Contains("route=application/oxps -> Pdf; Convert; Convert XPS to PDF.", detail);
     }
 
     /// <summary>

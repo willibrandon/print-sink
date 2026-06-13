@@ -59,6 +59,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         var deferral = args.GetDeferral();
         try
         {
+            Exception? handlerException = null;
             bool succeeded = state.Run(() =>
             {
                 LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
@@ -82,11 +83,14 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 
                 targetStream.CompleteStreamSubmission(PrintWorkflowSubmittedStatus.Succeeded);
                 AppendDiagnostic("Workflow job completed", GetPrinterName(args), $"target={plan.TargetContentType}");
-            });
+            }, exception => handlerException = exception);
 
             if (!succeeded)
             {
-                AppendDiagnostic("Workflow job failed", GetPrinterName(args), "Background handler was already busy.");
+                string detail = handlerException is null
+                    ? "Background handler was already busy."
+                    : handlerException.ToString();
+                AppendDiagnostic("Workflow job failed", GetPrinterName(args), detail);
                 args.Configuration.AbortPrintFlow(PrintWorkflowJobAbortReason.JobFailed);
             }
         }

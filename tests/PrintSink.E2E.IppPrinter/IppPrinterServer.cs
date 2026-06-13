@@ -415,6 +415,7 @@ internal sealed class IppPrinterServer
                     DateTimeOffset.UtcNow,
                     rawRequest.IppOperation.ToString(),
                     AttributeNames(rawRequest.OperationAttributes),
+                    AttributeValues(rawRequest.OperationAttributes),
                     AttributeNames(rawRequest.JobAttributes)));
             WriteEvidenceUnsafe();
         }
@@ -432,6 +433,42 @@ internal sealed class IppPrinterServer
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> AttributeValues(IEnumerable<IppAttribute> attributes)
+    {
+        Dictionary<string, List<string>> values = new(StringComparer.OrdinalIgnoreCase);
+        foreach (IppAttribute attribute in attributes)
+        {
+            if (string.IsNullOrWhiteSpace(attribute.Name))
+            {
+                continue;
+            }
+
+            if (!values.TryGetValue(attribute.Name, out List<string>? attributeValues))
+            {
+                attributeValues = [];
+                values[attribute.Name] = attributeValues;
+            }
+
+            attributeValues.Add(FormatAttributeValue(attribute.Value));
+        }
+
+        return values.ToDictionary(
+            static pair => pair.Key,
+            static pair => (IReadOnlyList<string>)[.. pair.Value],
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string FormatAttributeValue(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            byte[] bytes => Convert.ToBase64String(bytes),
+            Array array => string.Join(",", array.Cast<object>().Select(FormatAttributeValue)),
+            _ => value.ToString() ?? string.Empty,
+        };
     }
 
     private static void AddDistinct(List<string> target, IEnumerable<string> values)

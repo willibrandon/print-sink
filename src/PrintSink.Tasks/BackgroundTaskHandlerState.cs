@@ -30,6 +30,11 @@ internal sealed class BackgroundTaskHandlerState
 
     internal bool Run(Action action)
     {
+        return Run(action, null);
+    }
+
+    internal bool Run(Action action, Action<Exception>? onException)
+    {
         ArgumentNullException.ThrowIfNull(action);
 
         if (!TryEnterHandler())
@@ -42,8 +47,9 @@ internal sealed class BackgroundTaskHandlerState
             action();
             return true;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            onException?.Invoke(exception);
             // In-process print background tasks must not let IPC teardown or handler
             // failures escape into the app process.
             return false;
