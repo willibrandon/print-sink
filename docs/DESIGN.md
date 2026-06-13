@@ -199,7 +199,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 | 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` | Manifest | |
 | 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | |
-| 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | |
+| 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Encrypted job password (operation attrs) | `msft-operation-attribute-col`, `job-password` / `job-password-encryption` | Workflow task + Core | Parity path |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 
@@ -716,6 +716,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Settings/defaults: set package-local endpoint text and image watermarks, call
      `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real jobs with Job UI disabled, and assert
      the default watermarks appear in the outputs.
+   - Failure path: configure a corrupt package-local image watermark, print a real PDF job with Job UI
+     disabled, and assert `Job failed` with exception/HRESULT detail, no output, and queue persistence.
    - Job UI: assert watermark changes are applied, and assert cancel aborts the real print flow while
      leaving the selected target empty and recording `Job canceled`.
    - Queue persistence: after provisioning, extension refresh, default-ticket edits, every real print

@@ -1892,6 +1892,122 @@ function Invoke-PrintSinkSettingsImageWatermarkPrint {
     }
 }
 
+function Invoke-PrintSinkFailedImageWatermarkPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $corruptImagePath = Join-Path $OutputDirectory 'PrintSink-Corrupt-Watermark.png'
+    Set-Content -LiteralPath $corruptImagePath -Value 'This is not a PNG image.' -Encoding UTF8
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @(
+            '--set-image-watermark',
+            '--endpoint',
+            'Pdf',
+            '--image',
+            $corruptImagePath,
+            '--refresh-capabilities') `
+        -Description 'Setting corrupt default PDF image watermark and refreshing capabilities'
+
+    try {
+        $printerName = 'PrintSink - PDF'
+        $startedUtc = [DateTimeOffset]::UtcNow
+        $outputPath = Join-Path $OutputDirectory 'PrintSink-Failed-Image-Watermark.pdf'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
+        Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+        $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.FailedImageWatermark.$([Guid]::NewGuid()).ps1"
+        $printScript = @"
+Add-Type -AssemblyName System.Drawing
+`$document = [System.Drawing.Printing.PrintDocument]::new()
+`$document.DocumentName = 'PrintSink E2E Failed Image Watermark'
+`$document.PrinterSettings.PrinterName = 'PrintSink - PDF'
+`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
+`$document.add_PrintPage({
+    param(`$sender, `$eventArgs)
+    `$font = [System.Drawing.Font]::new('Consolas', 16)
+    try {
+        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
+        `$eventArgs.HasMorePages = `$false
+    }
+    finally {
+        `$font.Dispose()
+    }
+})
+`$document.Print()
+"@
+
+        Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
+        $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+
+        try {
+            $dialog = Wait-ForAutomationElement `
+                -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+                -Scope ([System.Windows.Automation.TreeScope]::Children) `
+                -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::NameProperty,
+                    'Save Print Output As')) `
+                -TimeoutSeconds 30 `
+                -Description 'the Save Print Output As dialog for failed image watermark'
+
+            Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
+
+            if (-not $process.WaitForExit(30000)) {
+                throw 'Failed image watermark print process did not exit.'
+            }
+
+            if ($process.ExitCode -ne 0) {
+                throw "Failed image watermark print process exited with $($process.ExitCode)."
+            }
+
+            $failure = Wait-ForPrintSinkJobFailed `
+                -PackageFamilyName $PackageFamilyName `
+                -Endpoint $printerName `
+                -StartedUtc $startedUtc `
+                -ExpectedRouteDetail 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+
+            $outputExists = Test-Path -LiteralPath $outputPath
+            $bytes = if ($outputExists) {
+                (Get-Item -LiteralPath $outputPath).Length
+            }
+            else {
+                0
+            }
+
+            if ($bytes -gt 0) {
+                throw "Failed image watermark job produced non-empty output: $outputPath ($bytes byte(s))."
+            }
+
+            return [ordered]@{
+                queue = $printerName
+                format = 'pdf'
+                outputPath = $outputPath
+                outputExists = $outputExists
+                bytes = $bytes
+                mode = 'failed-image-watermark'
+                diagnostic = $failure
+            }
+        }
+        finally {
+            if ($process -and -not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+            }
+
+            Close-SavePrintOutputDialogs
+            Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+        }
+    }
+    finally {
+        Invoke-PrintSinkAppCommand `
+            -Arguments @('--clear-watermark', '--endpoint', 'Pdf', '--refresh-capabilities') `
+            -Description 'Clearing corrupt default PDF image watermark and refreshing capabilities'
+    }
+}
+
 function Invoke-PrintSinkJobUiWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -2425,6 +2541,100 @@ function Wait-ForPrintSinkJobCompleted {
     throw "Timed out waiting for PrintSink job completion diagnostic for $Endpoint."
 }
 
+function Wait-ForPrintSinkJobFailed {
+    param(
+        [string] $PackageFamilyName,
+        [string] $Endpoint,
+        [DateTimeOffset] $StartedUtc,
+        [string] $ExpectedRouteDetail
+    )
+
+    $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
+    do {
+        if (Test-Path -LiteralPath $diagnosticPath) {
+            try {
+                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            }
+            catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+
+            $route = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Route resolved' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+
+            $failure = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Job failed' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $failure) {
+                if ([string]::IsNullOrWhiteSpace([string]$failure.detail)) {
+                    throw "PrintSink failure diagnostic was empty for $Endpoint."
+                }
+
+                if ([string]$failure.detail -notlike '*0x*') {
+                    throw "PrintSink failure diagnostic did not include an HRESULT for ${Endpoint}: $($failure.detail)"
+                }
+
+                if ($null -eq $route) {
+                    throw "PrintSink route diagnostic was not recorded for failed $Endpoint job."
+                }
+
+                if ($route.detail -ne $ExpectedRouteDetail) {
+                    throw "PrintSink route diagnostic differed for failed ${Endpoint}. Expected '$ExpectedRouteDetail'; actual '$($route.detail)'."
+                }
+
+                return [ordered]@{
+                    timestamp = $failure.timestamp
+                    message = $failure.message
+                    detail = $failure.detail
+                    route = $route.detail
+                }
+            }
+
+            $completion = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Job completed' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $completion) {
+                throw "PrintSink job completed instead of failing for ${Endpoint}: $($completion.detail)"
+            }
+
+            $cancellation = $events |
+                Where-Object {
+                    ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace([string]$_.endpoint)) `
+                        -and $_.message -eq 'Job canceled' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+            if ($null -ne $cancellation) {
+                throw "PrintSink job canceled instead of failing for ${Endpoint}: $($cancellation.detail)"
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for PrintSink job failure diagnostic for $Endpoint."
+}
+
 function Wait-ForPrintSinkDiagnostic {
     param(
         [string] $PackageFamilyName,
@@ -2692,6 +2902,16 @@ try {
             -Context 'after settings image watermark print'
     })
 
+    $failedImageWatermarkResult = Invoke-PrintSinkFailedImageWatermarkPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after failed image watermark print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after failed image watermark print'
+    })
+
     Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Enabling foreground job UI for the Job UI E2E path'
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
@@ -2737,6 +2957,7 @@ try {
         settingsUiOwner = $settingsUiOwnerResult
         settingsWatermark = $settingsWatermarkResult
         settingsImageWatermark = $settingsImageWatermarkResult
+        failedImageWatermark = $failedImageWatermarkResult
         jobUiWatermark = $jobUiResult
         jobUiCancel = $jobUiCancelResult
     }

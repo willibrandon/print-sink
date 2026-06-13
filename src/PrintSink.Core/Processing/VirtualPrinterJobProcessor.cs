@@ -201,11 +201,13 @@ public sealed class VirtualPrinterJobProcessor
         }
         catch (OperationCanceledException ex)
         {
+            string exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+            string exceptionDetail = FormatExceptionDetail(ex);
             await job.CompleteAsync(VirtualPrinterJobStatus.Canceled, CancellationToken.None).ConfigureAwait(false);
             PrintSinkDiagnostics.Log.JobFailed(
                 job.Endpoint.QueueName,
-                ex.GetType().FullName ?? ex.GetType().Name,
-                ex.Message,
+                exceptionType,
+                exceptionDetail,
                 GetElapsedMilliseconds(started));
             await RecordDiagnosticEventAsync(
                 new DiagnosticEventRecord(
@@ -214,18 +216,20 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job canceled",
                     job.Endpoint.QueueName,
-                    ex.Message),
+                    exceptionDetail),
                 CancellationToken.None)
                 .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Canceled, ex);
         }
         catch (Exception ex)
         {
+            string exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+            string exceptionDetail = FormatExceptionDetail(ex);
             await job.CompleteAsync(VirtualPrinterJobStatus.Failed, CancellationToken.None).ConfigureAwait(false);
             PrintSinkDiagnostics.Log.JobFailed(
                 job.Endpoint.QueueName,
-                ex.GetType().FullName ?? ex.GetType().Name,
-                ex.Message,
+                exceptionType,
+                exceptionDetail,
                 GetElapsedMilliseconds(started));
             await RecordDiagnosticEventAsync(
                 new DiagnosticEventRecord(
@@ -234,7 +238,7 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job failed",
                     job.Endpoint.QueueName,
-                    ex.Message),
+                    exceptionDetail),
                 CancellationToken.None)
                 .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Failed, ex);
@@ -318,6 +322,15 @@ public sealed class VirtualPrinterJobProcessor
     private static long GetElapsedMilliseconds(long started)
     {
         return (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+    }
+
+    private static string FormatExceptionDetail(Exception exception)
+    {
+        string exceptionType = exception.GetType().FullName ?? exception.GetType().Name;
+        string hresult = $"0x{exception.HResult:X8}";
+        return string.IsNullOrWhiteSpace(exception.Message)
+            ? $"{exceptionType} ({hresult})"
+            : $"{exceptionType} ({hresult}): {exception.Message}";
     }
 
     private static void RewindIfSeekable(Stream stream)

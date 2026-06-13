@@ -1,5 +1,6 @@
 using System.Text;
 using PrintSink.Core.Abstractions;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Processing;
@@ -184,6 +185,47 @@ public sealed class VirtualPrinterJobProcessorTests
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
         Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
         Assert.AreSame(expected, result.Exception);
+    }
+
+    /// <summary>
+    /// Verifies failure diagnostics include exception identity when the exception message is empty.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_records_exception_identity_when_failure_message_is_empty()
+    {
+        string diagnosticDirectory = Path.Combine(TestContext.TestRunResultsDirectory!, Guid.NewGuid().ToString("N"));
+        LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
+        InvalidOperationException expected = new(string.Empty);
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.OxpsContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("xps"),
+            false);
+        TestPdlTransformer transformer = new([], expected);
+        VirtualPrinterJobProcessor processor = new(
+            new PdlRouter(),
+            new TestPdlConverter([]),
+            new EndpointSinkResolver(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = new CapturingSink(),
+            }),
+            null,
+            new JobProcessingOptions(WatermarkOptions.Disabled),
+            transformer,
+            diagnosticEventStore);
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<DiagnosticEventRecord> events = await diagnosticEventStore
+            .ReadRecentAsync(8, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        DiagnosticEventRecord failure = events.Single(entry => entry.Message == "Job failed");
+        string detail = failure.Detail ?? string.Empty;
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
+        Assert.AreSame(expected, result.Exception);
+        Assert.Contains(nameof(InvalidOperationException), detail);
+        Assert.Contains("0x", detail);
     }
 
     /// <summary>

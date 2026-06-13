@@ -134,15 +134,18 @@ The required E2E suite proves the current installed-package behavior:
 11. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-12. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-13. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-14. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+12. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
+    assert the background task reports `Job failed` with exception/HRESULT detail, without producing
+    output or removing queues.
+13. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+14. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+15. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
-15. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+16. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-16. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
-    every real print path, Settings UI, Job UI complete, and Job UI cancel.
-17. Assert all six queues are removed when `-Cleanup` is used.
+17. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+    every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
+18. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change.
@@ -170,6 +173,8 @@ Real output assertions:
   owner while open, and restore the owner when closed.
 - Package-local default text watermark settings appear in a real PDF after a capability refresh.
 - Package-local default image watermark settings add PDF image content after a capability refresh.
+- A corrupt image watermark causes a real background-task failure, records `Job failed` with an
+  exception/HRESULT detail, and leaves the target file empty or absent.
 - Watermark text appears on rendered pages when enabled.
 - Job UI cancel leaves the selected target empty and records `Job canceled` before aborting the real print flow.
 - Queue persistence is checked against the real Windows printer list after every major E2E step; a job
