@@ -2,7 +2,6 @@
   <Configurations>
     <Platform Name="ARM64" />
     <Platform Name="x64" />
-    <Platform Name="X86" />
   </Configurations>
   <Folder Name="/docs/">
     <File Path="docs/BUILD.md" />
@@ -22,24 +21,20 @@
     <Project Path="src/PrintSink.App/PrintSink.App.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="X86" />
     </Project>
     <Project Path="src/PrintSink.Cli/PrintSink.Cli.csproj" />
     <Project Path="src/PrintSink.Core/PrintSink.Core.csproj" />
     <Project Path="src/PrintSink.Tasks/PrintSink.Tasks.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="X86" />
     </Project>
     <Project Path="src/PrintSink.Xps.Projections/PrintSink.Xps.Projections.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="X86" />
     </Project>
     <Project Path="src/PrintSink.Xps/PrintSink.Xps.vcxproj" Id="d9b962fb-4096-47ec-8c97-ce41e9d68df7">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="Win32" />
     </Project>
   </Folder>
   <Folder Name="/tests/">
@@ -48,7 +43,6 @@
     <Project Path="tests/PrintSink.App.Tests/PrintSink.App.Tests.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="X86" />
     </Project>
     <Project Path="tests/PrintSink.Cli.Tests/PrintSink.Cli.Tests.csproj" />
     <Project Path="tests/PrintSink.Core.Tests/PrintSink.Core.Tests.csproj" />
@@ -57,7 +51,6 @@
     <Project Path="tests/PrintSink.Xps.Tests/PrintSink.Xps.Tests.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|X86" Project="X86" />
     </Project>
   </Folder>
 </Solution>

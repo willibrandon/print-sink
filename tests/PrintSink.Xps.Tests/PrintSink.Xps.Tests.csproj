@@ -5,16 +5,15 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Platforms>x64;ARM64;X86</Platforms>
+    <Platforms>x64;ARM64</Platforms>
     <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
-    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <EnableMSTestRunner>true</EnableMSTestRunner>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <PropertyGroup>
     <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
-    <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
     <PrintSinkXpsOutput>..\..\src\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)</PrintSinkXpsOutput>
   </PropertyGroup>
 

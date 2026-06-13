@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>$(PrintSinkWindowsTargetFramework)</TargetFramework>
     <RootNamespace>PrintSink.Xps.Projections</RootNamespace>
-    <Platforms>x64;ARM64;X86</Platforms>
+    <Platforms>x64;ARM64</Platforms>
     <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
-    <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
     <CsWinRTPrivateProjection>true</CsWinRTPrivateProjection>
     <CsWinRTIncludesPrivate>
@@ -20,7 +20,6 @@
 
   <PropertyGroup>
     <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
-    <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
     <PrintSinkXpsWinmd>..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.winmd</PrintSinkXpsWinmd>
   </PropertyGroup>
 

@@ -8,13 +8,11 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <!--
             x64 first so an unqualified `dotnet build` / F5 picks the right default on the
-            majority of dev machines. ARM64 second for Snapdragon X. X86 is retained for
-            32-bit package coverage on x64 Windows runners.
+            majority of dev machines. ARM64 second for Snapdragon X.
         -->
-        <Platforms>x64;ARM64;X86</Platforms>
+        <Platforms>x64;ARM64</Platforms>
         <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
         <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
-        <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
         <UseWinUI>true</UseWinUI>
         <WindowsPackageType>MSIX</WindowsPackageType>
         <!--
@@ -35,7 +33,7 @@
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
         <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
         <SupportedOSPlatformVersion>10.0.26100.0</SupportedOSPlatformVersion>
-        <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+        <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
         <WinUISDKReferences>false</WinUISDKReferences>
         <EnableMsixTooling>true</EnableMsixTooling>
         <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>

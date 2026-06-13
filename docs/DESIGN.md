@@ -291,8 +291,8 @@ etc. Assembly name = project name; the root namespace token is always `PrintSink
   <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
   <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
   <RootNamespace>PrintSink</RootNamespace>
-  <Platforms>x64;ARM64;x86</Platforms>
-  <RuntimeIdentifiers>win-x64;win-arm64;win-x86</RuntimeIdentifiers>
+  <Platforms>x64;ARM64</Platforms>
+  <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   <UseWinUI>true</UseWinUI>
   <EnableMsixTooling>true</EnableMsixTooling>
   <WindowsPackageType>MSIX</WindowsPackageType>
@@ -687,7 +687,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    output formatting, manifest/PDC validation commands, and Hex1b state transitions without requiring a
    real terminal session. Hex1b tests use a headless terminal, input sequences or an automator, and
    terminal snapshots so assertions are made against the rendered surface.
-3. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64/x86): drive the C++/WinRT component through
+3. **Component tests — `PrintSink.Xps.Tests`** (MTP, x64/ARM64): drive the C++/WinRT component through
    its C# projection with a small fixture OXPS document; assert the watermarked stream is non-empty,
    parses as valid XPS, and contains the watermark glyph run / image part. `XpsGenerationFailed` path
    asserted with a corrupt fixture.
@@ -750,7 +750,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
   `Microsoft.UI.Reactor`, `System.CommandLine`, and `Hex1b`.
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
-- CI runs unit + Xps + packaged-app tests on Windows runners (MSBuild, x64, x86, and ARM64), then builds a
+- CI runs unit + Xps + packaged-app tests on Windows runners (MSBuild, x64 and ARM64), then builds a
   signed MSIX and runs the scripted real print-stack E2E suite against the installed package.
 
 ---
@@ -770,7 +770,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
   `WindowsAppSDKSelfContained=true`). Requires the **Single-project MSIX Packaging Tools** VS extension.
 - **Signing:** package signed with a trusted cert (`AppxPackageSigningEnabled=true`,
   `PackageCertificateThumbprint`). For lab installs, enable test-signing and trust the dev cert.
-- **Architectures:** x64, ARM64, x86.
+- **Architectures:** x64 and ARM64.
 - **Install / test:** Add-AppxPackage the signed `.msix`, then run
   `printsink-app.exe --install-virtual-printers` from the app execution alias. Loose development
   registration is useful for F5, but the alias/provisioning path is verified against the signed MSIX.
@@ -830,7 +830,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
 | M4 | `PrintSink.App`: Reactor activation router, Settings UI (modal), Job UI/preview, Management UI; `PrintSink.Cli tui` Hex1b dashboard. |
 | M5 | Manifest (6 queues + 3 contracts + activation hosts), PDC/PDR/`.resw`, single-project MSIX, signing. |
-| M6 | Packaged-app tests + E2E automation; CI on Windows runners (x64/x86/ARM64). |
+| M6 | Packaged-app tests + E2E automation; CI on Windows runners (x64/ARM64). |
 | M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the

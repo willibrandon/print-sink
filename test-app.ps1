@@ -2,7 +2,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Debug',
 
-    [ValidateSet('x64', 'ARM64', 'X86')]
+    [ValidateSet('x64', 'ARM64')]
     [string] $Platform = 'x64',
 
     [switch] $NoBuild
@@ -52,7 +52,6 @@ function Find-VSTestConsole {
 $runtimeIdentifier = switch ($Platform) {
     'x64' { 'win-x64' }
     'ARM64' { 'win-arm64' }
-    'X86' { 'win-x86' }
 }
 
 $projectPath = Join-Path $PSScriptRoot 'tests\PrintSink.App.Tests\PrintSink.App.Tests.csproj'

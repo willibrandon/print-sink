@@ -2,7 +2,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Debug',
 
-    [ValidateSet('x64', 'ARM64', 'X86')]
+    [ValidateSet('x64', 'ARM64')]
     [string] $Platform = 'x64',
 
     [string] $Target = 'Build',
