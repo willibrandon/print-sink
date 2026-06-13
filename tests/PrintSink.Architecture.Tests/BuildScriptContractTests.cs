@@ -25,4 +25,25 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("exit $LASTEXITCODE", script);
         Assert.DoesNotContain("dotnet build", script);
     }
+
+    /// <summary>
+    /// Verifies the root E2E script builds and runs the signed package print-stack harness.
+    /// </summary>
+    [TestMethod]
+    public void RootE2eScriptUsesSignedPackageHarness()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string scriptPath = Path.Combine(repositoryRoot, "test-e2e.ps1");
+        string script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("tests\\e2e\\Invoke-PrintSinkE2E.ps1", script);
+        Assert.Contains("GenerateAppxPackageOnBuild=true", script);
+        Assert.Contains("AppxPackageSigningEnabled=true", script);
+        Assert.Contains("PackageCertificateThumbprint", script);
+        Assert.Contains("TrustedPeople", script);
+        Assert.Contains("$KeepQueues", script);
+        Assert.Contains("Cleanup = $true", script);
+        Assert.Contains("$LASTEXITCODE -ne 0", script);
+        Assert.DoesNotContain("StoreName]::Root", script);
+    }
 }

@@ -68,9 +68,22 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 ## Print-Stack E2E Automation
 
 Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Run the E2E script from elevated PowerShell 7
-(`pwsh`): it installs a temporary signed extension INF for the local IPP association check. Build a signed
-MSIX, install it, provision the queues through `dotnet run --project src\PrintSink.Cli -- queues install` or
-the packaged app execution alias, and assert the queues through the scriptable print stack.
+(`pwsh`): it installs a temporary signed extension INF for the local IPP association check. The root wrapper
+builds a signed MSIX, installs it, runs the real print-stack assertions, and removes the queues by default:
+
+```powershell
+.\test-e2e.ps1 -BuildPackage -Platform x64
+```
+
+When the signed package is already installed:
+
+```powershell
+.\test-e2e.ps1 -SkipPackageInstall
+```
+
+Pass `-KeepQueues` only when you intentionally want to inspect the installed printers after a run.
+
+The lower-level harness accepts an explicit package path when the package was built elsewhere:
 
 ```powershell
 tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -OutputDirectory artifacts\e2e\x64
