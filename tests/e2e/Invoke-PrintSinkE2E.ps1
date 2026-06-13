@@ -2933,6 +2933,7 @@ try {
     })
     Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI after the Job UI E2E path'
 
+    $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
     $result = [ordered]@{
         windowsVersion = [Environment]::OSVersion.Version.ToString()
         architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
@@ -2946,6 +2947,7 @@ try {
         packageShape = $packageShape
         queues = @($expectedQueues)
         queueSnapshots = @($queueSnapshots)
+        resultPath = $resultPath
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
         extensionCapabilities = $extensionCapabilitiesResult
@@ -2962,7 +2964,9 @@ try {
         jobUiCancel = $jobUiCancelResult
     }
 
-    $result | ConvertTo-Json -Depth 8
+    $resultJson = $result | ConvertTo-Json -Depth 8
+    Set-Content -LiteralPath $resultPath -Value $resultJson -Encoding UTF8
+    $resultJson
     $completedSuccessfully = $true
 }
 finally {

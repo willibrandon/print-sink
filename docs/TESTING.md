@@ -181,4 +181,5 @@ Real output assertions:
   that removes, loses, or unregisters a PrintSink queue fails CI.
 
 The CI job records the package version, Windows build, architecture, source application, target queue,
-queue snapshots, and output result for each run.
+queue snapshots, and output result for each run. The E2E script writes the full run record to
+`e2e-result.json` in the output directory, and CI uploads that file with the generated documents.
