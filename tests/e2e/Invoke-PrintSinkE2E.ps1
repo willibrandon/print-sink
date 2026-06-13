@@ -31,6 +31,7 @@ $realPrintCases = @(
         extension = '.pdf'
         requiresSaveAs = $true
         expectedText = 'foo'
+        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
     },
     [ordered]@{
         queue = 'PrintSink - XPS'
@@ -38,6 +39,7 @@ $realPrintCases = @(
         extension = '.oxps'
         requiresSaveAs = $true
         expectedText = 'foo'
+        expectedRoute = 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.'
     },
     [ordered]@{
         queue = 'PrintSink - PostScript'
@@ -45,6 +47,7 @@ $realPrintCases = @(
         extension = '.ps'
         requiresSaveAs = $true
         expectedText = ''
+        expectedRoute = 'application/postscript -> PostScript; Copy; Endpoint supports passthrough.'
     },
     [ordered]@{
         queue = 'PrintSink - PWG Raster'
@@ -52,6 +55,7 @@ $realPrintCases = @(
         extension = '.pwg'
         requiresSaveAs = $true
         expectedText = ''
+        expectedRoute = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.'
     },
     [ordered]@{
         queue = 'PrintSink - PCLm'
@@ -59,6 +63,7 @@ $realPrintCases = @(
         extension = '.pclm'
         requiresSaveAs = $true
         expectedText = ''
+        expectedRoute = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'
     },
     [ordered]@{
         queue = 'PrintSink - Cloud'
@@ -66,6 +71,7 @@ $realPrintCases = @(
         extension = ''
         requiresSaveAs = $false
         expectedText = ''
+        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
     }
 )
 
@@ -752,7 +758,8 @@ Add-Type -AssemblyName System.Drawing
             $diagnostic = Wait-ForPrintSinkJobCompleted `
                 -PackageFamilyName $PackageFamilyName `
                 -Endpoint $printerName `
-                -StartedUtc $startedUtc
+                -StartedUtc $startedUtc `
+                -ExpectedRouteDetail $PrintCase.expectedRoute
 
             return [ordered]@{
                 queue = $printerName
@@ -766,7 +773,8 @@ Add-Type -AssemblyName System.Drawing
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $printerName `
-            -StartedUtc $startedUtc
+            -StartedUtc $startedUtc `
+            -ExpectedRouteDetail $PrintCase.expectedRoute
 
         return [ordered]@{
             queue = $printerName
@@ -809,6 +817,7 @@ function Invoke-PrintSinkSettingsWatermarkPrint {
             extension = '.pdf'
             requiresSaveAs = $true
             expectedText = $watermarkText
+            expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
             outputName = 'PrintSink-Settings-Watermark'
         }
 
@@ -838,6 +847,7 @@ function Invoke-PrintSinkJobUiWatermarkPrint {
         extension = '.pdf'
         requiresSaveAs = $true
         expectedText = 'CI WATERMARK'
+        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
     }
     $printerName = $printCase.queue
     $startedUtc = [DateTimeOffset]::UtcNow
@@ -906,7 +916,8 @@ Add-Type -AssemblyName System.Drawing
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $printerName `
-            -StartedUtc $startedUtc
+            -StartedUtc $startedUtc `
+            -ExpectedRouteDetail $printCase.expectedRoute
 
         $file = Get-Item -LiteralPath $outputPath
         return [ordered]@{
@@ -1178,7 +1189,8 @@ function Wait-ForPrintSinkJobCompleted {
     param(
         [string] $PackageFamilyName,
         [string] $Endpoint,
-        [DateTimeOffset] $StartedUtc
+        [DateTimeOffset] $StartedUtc,
+        [string] $ExpectedRouteDetail
     )
 
     $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
@@ -1186,6 +1198,14 @@ function Wait-ForPrintSinkJobCompleted {
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            $route = $events |
+                Where-Object {
+                    $_.endpoint -eq $Endpoint `
+                        -and $_.message -eq 'Route resolved' `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                } |
+                Select-Object -Last 1
+
             $match = $events |
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
@@ -1194,10 +1214,21 @@ function Wait-ForPrintSinkJobCompleted {
                 } |
                 Select-Object -Last 1
             if ($null -ne $match) {
+                if (-not [string]::IsNullOrWhiteSpace($ExpectedRouteDetail)) {
+                    if ($null -eq $route) {
+                        throw "PrintSink route diagnostic was not recorded for $Endpoint."
+                    }
+
+                    if ($route.detail -ne $ExpectedRouteDetail) {
+                        throw "PrintSink route diagnostic differed for ${Endpoint}. Expected '$ExpectedRouteDetail'; actual '$($route.detail)'."
+                    }
+                }
+
                 return [ordered]@{
                     timestamp = $match.timestamp
                     message = $match.message
                     detail = $match.detail
+                    route = $route.detail
                 }
             }
 

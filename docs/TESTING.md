@@ -112,12 +112,14 @@ The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
-3. Set a package-local default watermark, call `IppPrintDevice.RefreshPrintDeviceCapabilities`, print
+3. Assert the package-local route diagnostic for every real job: source content type, target format,
+   action, conversion kind, and route reason must match the expected endpoint behavior.
+4. Set a package-local default watermark, call `IppPrintDevice.RefreshPrintDeviceCapabilities`, print
    a real PDF with Job UI disabled, and assert the output reflects the default.
-4. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-5. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-6. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-7. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+5. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+6. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+7. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+8. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change. The next known gaps are WinRT source printing, explicit PDF passthrough, and visible
@@ -131,6 +133,7 @@ Real output assertions:
 - PWG Raster has a valid raster magic value and non-blank page body.
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output and must still report `Job completed` from the real background task.
+- Route diagnostics must prove the expected copy or conversion path for the source content type.
 - Package-local default watermark settings appear in a real PDF after a capability refresh.
 - Watermark text or image appears on rendered pages when enabled.
 - Job UI cancel leaves the selected target empty and records `Job canceled` before aborting the real print flow.

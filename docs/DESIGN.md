@@ -691,6 +691,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Build and install the signed MSIX, run `printsink-app.exe --install-virtual-printers`, and assert
      all six queues appear (`Get-Printer`).
    - Print from a real Win32 print harness to every endpoint.
+   - Assert route diagnostics for every real job, including source content type, target format, copy
+     versus conversion action, and route reason.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
