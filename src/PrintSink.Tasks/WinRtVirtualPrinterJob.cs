@@ -7,6 +7,9 @@ using Windows.Storage.Streams;
 
 namespace PrintSink.Tasks;
 
+/// <summary>
+/// Adapts a virtual-printer workflow activation to the core job contract.
+/// </summary>
 internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob
 {
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;

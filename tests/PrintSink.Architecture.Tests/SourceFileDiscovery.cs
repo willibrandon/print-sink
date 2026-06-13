@@ -24,7 +24,15 @@ internal static class SourceFileDiscovery
     {
         return [.. Directory
             .EnumerateFiles(repositoryRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(IsRepositorySourceFile)
+            .Where(path => IsRepositorySourceFile(repositoryRoot, path))
+            .Order(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    internal static string[] EnumerateRepositoryBuildFiles(string repositoryRoot)
+    {
+        return [.. Directory
+            .EnumerateFiles(repositoryRoot, "*.*", SearchOption.AllDirectories)
+            .Where(path => IsRepositoryBuildFile(repositoryRoot, path))
             .Order(StringComparer.OrdinalIgnoreCase)];
     }
 
@@ -51,12 +59,25 @@ internal static class SourceFileDiscovery
         return $"{rootNamespace}.{namespaceSuffix}";
     }
 
-    private static bool IsRepositorySourceFile(string path)
+    private static bool IsRepositorySourceFile(string repositoryRoot, string path)
     {
-        string normalizedPath = path.Replace(Path.DirectorySeparatorChar, '/');
-        bool isSourceRoot = normalizedPath.Contains("/src/", StringComparison.OrdinalIgnoreCase)
-            || normalizedPath.Contains("/tests/", StringComparison.OrdinalIgnoreCase);
+        string normalizedPath = RelativePath(repositoryRoot, path);
+        bool isSourceRoot = normalizedPath.StartsWith("src/", StringComparison.OrdinalIgnoreCase)
+            || normalizedPath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase);
         return isSourceRoot
+            && !normalizedPath.Contains("/bin/", StringComparison.OrdinalIgnoreCase)
+            && !normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase)
+            && !normalizedPath.Contains("/AppPackages/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRepositoryBuildFile(string repositoryRoot, string path)
+    {
+        string normalizedPath = RelativePath(repositoryRoot, path);
+        string extension = Path.GetExtension(path);
+        return (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".props", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".targets", StringComparison.OrdinalIgnoreCase))
+            && !normalizedPath.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase)
             && !normalizedPath.Contains("/bin/", StringComparison.OrdinalIgnoreCase)
             && !normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase)
             && !normalizedPath.Contains("/AppPackages/", StringComparison.OrdinalIgnoreCase);

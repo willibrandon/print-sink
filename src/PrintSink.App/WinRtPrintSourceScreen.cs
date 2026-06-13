@@ -7,6 +7,9 @@ using static Microsoft.UI.Reactor.Core.Theme;
 
 namespace PrintSink.App;
 
+/// <summary>
+/// Hosts the WinRT print-source harness used by real E2E print automation.
+/// </summary>
 internal sealed class WinRtPrintSourceScreen : Component<AppActivationRoute>
 {
     private static readonly object NoWindowDependency = new();

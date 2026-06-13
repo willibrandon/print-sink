@@ -3,6 +3,9 @@ using PrintSink.Core.Watermark;
 
 namespace PrintSink.Core.Tests.Processing;
 
+/// <summary>
+/// Provides in-memory settings for processor tests.
+/// </summary>
 internal sealed class InMemorySettingsStore : ISettingsStore
 {
     private readonly Dictionary<Uri, WatermarkOptions> watermarkOptions = [];

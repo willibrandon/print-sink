@@ -9,11 +9,11 @@
     <CsWinRTComponent>true</CsWinRTComponent>
     <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
     <!--
-      CsWinRT generates public ABI marshalling code for activatable classes during compilation.
-      That code is not project-authored API surface and cannot carry XML docs, so CS1591 is
-      excluded only for this WinRT component project.
+      CsWinRT generates public ABI marshalling code for activatable classes during compilation. Authored
+      XML comments remain enforced by architecture tests; csc XML output is disabled here so generated
+      ABI sources are not treated as project-authored documentation surface.
     -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

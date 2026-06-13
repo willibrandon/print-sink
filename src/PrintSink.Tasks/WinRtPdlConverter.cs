@@ -5,6 +5,9 @@ using Windows.Storage.Streams;
 
 namespace PrintSink.Tasks;
 
+/// <summary>
+/// Adapts Windows workflow PDL conversion to the core converter contract.
+/// </summary>
 internal sealed class WinRtPdlConverter : IPdlConverter
 {
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;
