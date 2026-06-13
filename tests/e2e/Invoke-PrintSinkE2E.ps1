@@ -4167,6 +4167,45 @@ function Test-AllQueuesInstalled {
     return $true
 }
 
+function Assert-PrintSinkQueuePersistence {
+    param(
+        [object[]] $QueueSnapshots,
+        [string[]] $ExpectedQueues
+    )
+
+    if ($QueueSnapshots.Count -eq 0) {
+        throw 'Queue persistence was not asserted because no queue snapshots were recorded.'
+    }
+
+    $contexts = [System.Collections.Generic.List[string]]::new()
+    foreach ($snapshot in $QueueSnapshots) {
+        $context = [string](Get-ObjectPropertyValue -Object $snapshot -Name 'context')
+        $queues = @(Get-ObjectPropertyValue -Object $snapshot -Name 'queues')
+        $missingQueues = [System.Collections.Generic.List[string]]::new()
+        foreach ($expectedQueue in $ExpectedQueues) {
+            $entry = $queues |
+                Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'name') -eq $expectedQueue } |
+                Select-Object -First 1
+
+            if ($null -eq $entry -or -not [bool](Get-ObjectPropertyValue -Object $entry -Name 'installed')) {
+                $missingQueues.Add($expectedQueue)
+            }
+        }
+
+        if ($missingQueues.Count -gt 0) {
+            throw "Queue persistence failed $context. Missing PrintSink queues: $($missingQueues -join ', ')"
+        }
+
+        $contexts.Add($context)
+    }
+
+    return [ordered]@{
+        snapshots = $QueueSnapshots.Count
+        queues = $ExpectedQueues
+        contexts = @($contexts)
+    }
+}
+
 function Get-ObjectPropertyValue {
     param(
         [object] $Object,
@@ -4360,6 +4399,7 @@ function New-PrintSinkFeatureEvidence {
         [object] $UserDefaultPrintTicket,
         [object] $VirtualAttributeRead,
         [object] $IppAssociation,
+        [object] $QueuePersistence,
         [object[]] $RealPrintResults,
         [object] $NotepadPrint,
         [object] $ConcurrentPrints,
@@ -4402,6 +4442,7 @@ function New-PrintSinkFeatureEvidence {
             virtualPrinters = $virtualPrinters.Count
             provisionedQueues = $provisionedQueues
             cliInstall = $CliQueueLifecycle.install
+            queuePersistence = $QueuePersistence
         })
 
     Add-PrintSinkFeatureEvidence `
@@ -5272,6 +5313,10 @@ try {
             -Context 'after IPP PSA association'
     })
 
+    $queuePersistenceResult = Assert-PrintSinkQueuePersistence `
+        -QueueSnapshots @($queueSnapshots) `
+        -ExpectedQueues $expectedQueues
+
     $featureEvidence = New-PrintSinkFeatureEvidence `
         -ExpectedQueues $expectedQueues `
         -PackageShape $packageShape `
@@ -5281,6 +5326,7 @@ try {
         -UserDefaultPrintTicket $userDefaultPrintTicketResult `
         -VirtualAttributeRead $virtualAttributeReadResult `
         -IppAssociation $ippAssociationResult `
+        -QueuePersistence $queuePersistenceResult `
         -RealPrintResults $realPrintResults `
         -NotepadPrint $notepadPrintResult `
         -ConcurrentPrints $concurrentPrintResult `
@@ -5308,6 +5354,7 @@ try {
         packageShape = $packageShape
         queues = @($expectedQueues)
         queueSnapshots = @($queueSnapshots)
+        queuePersistence = $queuePersistenceResult
         resultPath = $resultPath
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
