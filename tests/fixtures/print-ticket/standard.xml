@@ -1,0 +1,20 @@
+<psf:PrintTicket xmlns:psf="http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework"
+                 xmlns:psk="http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords"
+                 xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <psf:Feature name="psk:JobDuplexAllDocumentsContiguously">
+    <psf:Option name="psk:TwoSidedShortEdge" />
+  </psf:Feature>
+  <psf:Feature name="psk:JobOutputBin">
+    <psf:Option name="printsink:AutomationOutputBin" />
+  </psf:Feature>
+  <psf:Feature name="psk:JobPageOrder">
+    <psf:Option name="printsink:OddPagesThenEvenPages" />
+  </psf:Feature>
+  <psf:Feature name="psk:JobStapleAllDocuments">
+    <psf:Option name="printsink:StapleUpperLeft" />
+  </psf:Feature>
+  <psf:ParameterInit name="psk:JobCopiesAllDocuments">
+    <psf:Value xsi:type="xsd:integer">2</psf:Value>
+  </psf:ParameterInit>
+</psf:PrintTicket>

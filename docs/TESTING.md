@@ -51,7 +51,7 @@ Import-Certificate -FilePath "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer" -CertSto
 Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
 dotnet run --project src\PrintSink.Cli -- queues install
 dotnet run --project src\PrintSink.Cli -- queues
-dotnet run --project src\PrintSink.Cli -- ticket map --ticket <print-ticket.xml>
+dotnet run --project src\PrintSink.Cli -- ticket map --ticket tests\fixtures\print-ticket\standard.xml
 dotnet run --project src\PrintSink.Cli -- sink test --endpoint pdf --content-type application/oxps
 dotnet run --project src\PrintSink.Cli -- tui
 ```

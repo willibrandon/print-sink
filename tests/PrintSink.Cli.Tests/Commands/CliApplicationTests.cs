@@ -469,6 +469,28 @@ internal sealed class CliApplicationTests
         }
     }
 
+    /// <summary>
+    /// Verifies ticket mapping accepts the shipped operator fixture.
+    /// </summary>
+    [TestMethod]
+    public async Task TicketMapAcceptsShippedFixture()
+    {
+        string ticketPath = Path.Combine(
+            FindRepositoryRoot(),
+            "tests",
+            "fixtures",
+            "print-ticket",
+            "standard.xml");
+
+        (int exitCode, string output, string error) = await InvokeAsync("ticket", "map", "--ticket", ticketPath)
+            .ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.AreEqual(string.Empty, error);
+        Assert.Contains("IPP attributes: 5", output);
+        Assert.Contains("copies: 2", output);
+    }
+
     private async Task<(int ExitCode, string Output, string Error)> InvokeAsync(params string[] args)
     {
         using StringWriter output = new();
@@ -520,6 +542,22 @@ internal sealed class CliApplicationTests
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "PrintSink.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate PrintSink.slnx.");
     }
 
     private async Task<string> CreateManifestFixtureAsync(string manifest)
