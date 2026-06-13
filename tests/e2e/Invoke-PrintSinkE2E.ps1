@@ -70,9 +70,10 @@ $realPrintCases = @(
     [ordered]@{
         queue = 'PrintSink - Cloud'
         format = 'cloud'
+        sinkFormat = 'pdf'
         extension = ''
         requiresSaveAs = $false
-        expectedText = ''
+        expectedText = 'foo'
         expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
     }
 )
@@ -1887,11 +1888,29 @@ function Invoke-PrintSinkRealPrint {
             -StartedUtc $startedUtc `
             -DetailContains @('status=Resolved')
 
+        $sinkArtifact = $null
+        if ($PrintCase.Contains('sinkFormat')) {
+            $sinkDiagnostic = Wait-ForPrintSinkDiagnostic `
+                -PackageFamilyName $PackageFamilyName `
+                -Endpoint $printerName `
+                -Message 'Cloud sink artifact written' `
+                -StartedUtc $startedUtc `
+                -DetailContains @(
+                    'path=',
+                    'bytes=',
+                    'contentType=application/pdf')
+            $sinkArtifact = Assert-CloudSinkArtifact `
+                -Diagnostic $sinkDiagnostic `
+                -PrintCase $PrintCase `
+                -OutputDirectory $OutputDirectory
+        }
+
         return [ordered]@{
             queue = $printerName
             format = $PrintCase.format
             outputPath = $null
             bytes = 0
+            sinkArtifact = $sinkArtifact
             diagnostic = $diagnostic
             ticketValidation = $ticketValidation
         }
@@ -3143,6 +3162,60 @@ function Assert-DocumentOutput {
     }
 }
 
+function Assert-CloudSinkArtifact {
+    param(
+        [object] $Diagnostic,
+        [System.Collections.Specialized.OrderedDictionary] $PrintCase,
+        [string] $OutputDirectory
+    )
+
+    $detail = [string]$Diagnostic.detail
+    if ($detail -notmatch '^path=(?<path>.+);\s*bytes=(?<bytes>\d+);\s*contentType=(?<contentType>[^;]+)$') {
+        throw "Cloud sink artifact diagnostic had unexpected detail: $detail"
+    }
+
+    $artifactPath = $Matches.path
+    $reportedBytes = [int64]$Matches.bytes
+    $contentType = $Matches.contentType
+    if (-not (Test-Path -LiteralPath $artifactPath)) {
+        throw "Cloud sink artifact was not written: $artifactPath"
+    }
+
+    $artifact = Get-Item -LiteralPath $artifactPath
+    if ($artifact.Length -le 0) {
+        throw "Cloud sink artifact was empty: $artifactPath"
+    }
+
+    if ($artifact.Length -ne $reportedBytes) {
+        throw "Cloud sink artifact byte count differed. Reported $reportedBytes; actual $($artifact.Length)."
+    }
+
+    $extension = if ($PrintCase.Contains('sinkFormat') -and $PrintCase.sinkFormat -eq 'pdf') {
+        '.pdf'
+    }
+    else {
+        [System.IO.Path]::GetExtension($artifactPath)
+    }
+
+    $copyPath = Join-Path $OutputDirectory "PrintSink-Cloud-Sink$extension"
+    Copy-Item -LiteralPath $artifactPath -Destination $copyPath -Force
+
+    $assertionCase = [ordered]@{
+        queue = $PrintCase.queue
+        format = $PrintCase.sinkFormat
+        expectedText = $PrintCase.expectedText
+    }
+    Assert-DocumentOutput -PrintCase $assertionCase -OutputPath $copyPath
+
+    return [ordered]@{
+        path = $artifactPath
+        artifactCopyPath = $copyPath
+        bytes = $artifact.Length
+        contentType = $contentType
+        diagnostic = $Diagnostic
+    }
+}
+
 function Test-PrintSinkDiagnosticStartedAfter {
     param(
         [object] $Event,
@@ -3245,6 +3318,11 @@ function New-PrintResultSummary {
 
         if ($IncludeTicketValidation) {
             $summary.ticketValidation = Get-ObjectPropertyValue -Object $_ -Name 'ticketValidation'
+        }
+
+        $sinkArtifact = Get-ObjectPropertyValue -Object $_ -Name 'sinkArtifact'
+        if ($null -ne $sinkArtifact) {
+            $summary.sinkArtifact = $sinkArtifact
         }
 
         $summary
@@ -3440,16 +3518,24 @@ function New-PrintSinkFeatureEvidence {
         -Artifact (New-PrintResultSummary -Results $fileBackedPrints)
 
     $cloudPrint = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - Cloud'
+    $cloudArtifact = Get-ObjectPropertyValue -Object $cloudPrint -Name 'sinkArtifact'
+    $cloudArtifactBytes = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'bytes'
+    $cloudArtifactContentType = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'contentType'
+    $cloudArtifactCopyPath = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'artifactCopyPath'
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 6 `
         -Feature 'Non-file sinks' `
         -Passed (
             $null -ne $cloudPrint `
+                -and $null -ne $cloudArtifact `
                 -and [string]::IsNullOrWhiteSpace([string]$cloudPrint.outputPath) `
                 -and $cloudPrint.bytes -eq 0 `
+                -and ($cloudArtifactBytes -gt 0) `
+                -and [string]$cloudArtifactContentType -eq 'application/pdf' `
+                -and (Test-Path -LiteralPath $cloudArtifactCopyPath) `
                 -and [string]$cloudPrint.diagnostic.message -eq 'Job completed') `
-        -Evidence 'The cloud endpoint omits Save-As output and records a completed sink write from a real print job.' `
+        -Evidence 'The cloud endpoint omits Save-As output, writes a package-local sink artifact from a real print job, and validates that artifact as PDF output.' `
         -Artifact $cloudPrint
 
     Add-PrintSinkFeatureEvidence `

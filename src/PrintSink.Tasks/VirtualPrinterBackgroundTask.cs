@@ -196,7 +196,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             [EndpointKind.Pdf] = new TargetStreamSink(),
             [EndpointKind.Xps] = new TargetStreamSink(),
             [EndpointKind.PostScript] = new TargetStreamSink(),
-            [EndpointKind.Cloud] = new CloudSink(DrainCloudSinkAsync),
+            [EndpointKind.Cloud] = new CloudSink(PersistCloudSinkAsync),
             [EndpointKind.PwgRaster] = new TargetStreamSink(),
             [EndpointKind.Pclm] = new TargetStreamSink(),
         });
@@ -211,12 +211,55 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             diagnosticEventStore);
     }
 
-    private static async Task DrainCloudSinkAsync(
+    private static async Task PersistCloudSinkAsync(
         Stream pdl,
         SinkWriteContext context,
         CancellationToken cancellationToken)
     {
-        await pdl.CopyToAsync(Stream.Null, cancellationToken).ConfigureAwait(false);
+        string directory = Path.Combine(PackagedSettingsStoreFactory.GetRootDirectory(), "CloudSink");
+        Directory.CreateDirectory(directory);
+
+        string path = Path.Combine(
+            directory,
+            $"{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{GetSinkArtifactExtension(context.ContentType)}");
+        await using FileStream output = File.Create(path);
+        await pdl.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+        long bytes = output.Length;
+        if (bytes == 0)
+        {
+            throw new InvalidOperationException("The cloud sink received an empty PDL stream.");
+        }
+
+        await PackagedSettingsStoreFactory
+            .CreateDiagnosticEventStore()
+            .AppendAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(VirtualPrinterBackgroundTask),
+                    "Cloud sink artifact written",
+                    context.Endpoint.QueueName,
+                    $"path={path}; bytes={bytes}; contentType={context.ContentType}"),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static string GetSinkArtifactExtension(string contentType)
+    {
+        return PdlFormatInfo.TryParseContentType(contentType, out PdlFormat format)
+            ? format switch
+            {
+                PdlFormat.Pdf => ".pdf",
+                PdlFormat.Oxps => ".oxps",
+                PdlFormat.Xps => ".xps",
+                PdlFormat.PostScript => ".ps",
+                PdlFormat.PwgRaster => ".pwg",
+                PdlFormat.Pclm => ".pclm",
+                _ => ".pdl",
+            }
+            : ".pdl";
     }
 
     private static string GetPrinterName(PrintWorkflowVirtualPrinterSession session)

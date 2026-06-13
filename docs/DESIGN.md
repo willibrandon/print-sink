@@ -186,7 +186,7 @@ activation evidence; document output is a virtual-printer feature.
 | 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest | Per-queue |
 | 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router | e.g. Edge → PDF passthrough |
 | 5 | File-printer "Save As" target | `OutputFileTypes`, `args.GetTargetFileAsync()` → `StorageFile` | `VirtualPrinterBackgroundTask` | Omit attribute for cloud/app sinks |
-| 6 | Non-file sinks (cloud / OneNote-style) | (no `OutputFileTypes`); custom write in handler | `VirtualPrinterBackgroundTask` + `PrintSink.Core` sinks | |
+| 6 | Non-file sinks (cloud / OneNote-style) | (no `OutputFileTypes`); custom write in handler | `VirtualPrinterBackgroundTask` + `PrintSink.Core` sinks | E2E validates package-local sink artifact, not Save-As output |
 | 7 | OXPS → PDF / PWG-Raster / PCLm conversion | `args.GetPdlConverter(PrintWorkflowPdlConversionType.*)`, `ConvertPdlAsync` | `VirtualPrinterBackgroundTask` | |
 | 8 | XPS/OXPS passthrough (copy) | `RandomAccessStream.CopyAndCloseAsync` | `VirtualPrinterBackgroundTask` | |
 | 9 | Watermark (text + image) on XPS pages | XPS Object Model | `PrintSink.Xps` | Pre-conversion |
@@ -720,7 +720,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
-     raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
+     raster magic and non-blank page body; cloud has no Save-As output but writes a package-local sink
+     artifact that is validated as PDF output.
    - Send a real source PDF through Windows' PDL passthrough provider and assert the output is
      byte-for-byte identical to the input PDF.
    - Launch the packaged WinRT print-source harness, drive the real Windows print dialog to

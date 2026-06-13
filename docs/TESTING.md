@@ -176,7 +176,8 @@ Real output assertions:
 - PostScript starts with `%!PS` and declares pages.
 - PWG Raster has a valid raster magic value and non-blank page body.
 - PCLm opens with PDFPig and has at least one page.
-- Cloud produces no Save-As output and must still report `Job completed` from the real background task.
+- Cloud produces no Save-As output, must still report `Job completed` from the real background task,
+  and must write a package-local sink artifact that validates as PDF output.
 - Route diagnostics, or the route carried by `Job completed`, must prove the expected copy or conversion path for the source content type.
 - Concurrent output diagnostics must prove two real jobs overlapped by comparing route and completion
   timestamps for the two activated queues.
