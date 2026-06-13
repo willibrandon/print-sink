@@ -32,6 +32,7 @@ internal static class VirtualPrinterCommandLine
         bool setImageWatermark = Contains(commandArgs, "--set-image-watermark");
         bool clearWatermark = Contains(commandArgs, "--clear-watermark");
         bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
+        bool printPdfPassthrough = Contains(commandArgs, "--print-pdf-passthrough");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
         if (!install
             && !remove
@@ -41,6 +42,7 @@ internal static class VirtualPrinterCommandLine
             && !setImageWatermark
             && !clearWatermark
             && !refreshCapabilities
+            && !printPdfPassthrough
             && !help)
         {
             return null;
@@ -54,7 +56,8 @@ internal static class VirtualPrinterCommandLine
             && !setTextWatermark
             && !setImageWatermark
             && !clearWatermark
-            && !refreshCapabilities)
+            && !refreshCapabilities
+            && !printPdfPassthrough)
         {
             WriteHelp();
             SetCommandLineExitCode(activationArguments, Success);
@@ -72,7 +75,11 @@ internal static class VirtualPrinterCommandLine
         try
         {
             EndpointKind endpointKind = EndpointKind.Pdf;
-            bool needsEndpoint = setTextWatermark || setImageWatermark || clearWatermark || refreshCapabilities;
+            bool needsEndpoint = setTextWatermark
+                || setImageWatermark
+                || clearWatermark
+                || refreshCapabilities
+                || printPdfPassthrough;
             if (needsEndpoint)
             {
                 endpointKind = GetRequiredEndpointKind(commandArgs);
@@ -113,6 +120,17 @@ internal static class VirtualPrinterCommandLine
             if (refreshCapabilities)
             {
                 WriteDiagnostic(InstalledVirtualPrinterReader.RefreshCapabilities(endpointKind));
+            }
+
+            if (printPdfPassthrough)
+            {
+                int printJobId = await PdlPassthroughPrintCommand
+                    .PrintPdfAsync(
+                        endpointKind,
+                        GetRequiredOptionValue(commandArgs, "--source"),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                WriteDiagnostic($"PDF passthrough print job submitted: {printJobId}");
             }
 
             if (install)
@@ -320,10 +338,12 @@ internal static class VirtualPrinterCommandLine
             "  --set-image-watermark       Set a default image watermark for --endpoint.",
             "  --clear-watermark           Clear the default watermark for --endpoint.",
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
+            "  --print-pdf-passthrough     Send a PDF through IppPrintDevice PDL passthrough.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",
             "  --image <path>              Image file used with --set-image-watermark.",
+            "  --source <path>             Source file used with --print-pdf-passthrough.",
             "",
             "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
         Console.Out.WriteLine(help);

@@ -116,17 +116,20 @@ The required E2E suite proves the current installed-package behavior:
    the real Windows printer list.
 4. Assert the package-local route diagnostic for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior.
-5. Set package-local default text and image watermarks, call
+5. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+   target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
+   copy route.
+6. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-6. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-7. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-8. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-9. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+7. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+8. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+9. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+10. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
-same change. The next known gaps are WinRT source printing, explicit PDF passthrough, and visible
-Settings UI owner-window automation.
+same change. The next known gaps are WinRT source printing and visible Settings UI owner-window
+automation.
 
 Real output assertions:
 
@@ -137,6 +140,8 @@ Real output assertions:
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output and must still report `Job completed` from the real background task.
 - Route diagnostics must prove the expected copy or conversion path for the source content type.
+- PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
+  Windows' PDL passthrough provider.
 - Package-local default text watermark settings appear in a real PDF after a capability refresh.
 - Package-local default image watermark settings add PDF image content after a capability refresh.
 - Watermark text appears on rendered pages when enabled.

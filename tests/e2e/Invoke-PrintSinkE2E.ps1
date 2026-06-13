@@ -843,6 +843,64 @@ function Format-AutomationSnapshot {
     return $lines -join [Environment]::NewLine
 }
 
+function New-PrintSinkSourcePdf {
+    param(
+        [string] $Path,
+        [string] $Text
+    )
+
+    $encoding = [System.Text.Encoding]::ASCII
+    $escapedText = $Text.Replace('\', '\\').Replace('(', '\(').Replace(')', '\)')
+    $contentStream = "BT /F1 24 Tf 96 696 Td ($escapedText) Tj ET`n"
+    $objects = @(
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        "<< /Length $($encoding.GetByteCount($contentStream)) >>`nstream`n$contentStream`nendstream"
+    )
+    $builder = [System.Text.StringBuilder]::new()
+    [void] $builder.Append("%PDF-1.4`n")
+    $offsets = [System.Collections.Generic.List[int]]::new()
+
+    for ($index = 0; $index -lt $objects.Count; $index++) {
+        $offsets.Add($encoding.GetByteCount($builder.ToString()))
+        [void] $builder.Append("$($index + 1) 0 obj`n$($objects[$index])`nendobj`n")
+    }
+
+    $xrefOffset = $encoding.GetByteCount($builder.ToString())
+    [void] $builder.Append("xref`n0 $($objects.Count + 1)`n")
+    [void] $builder.Append("0000000000 65535 f `n")
+    foreach ($offset in $offsets) {
+        [void] $builder.Append($offset.ToString('0000000000') + " 00000 n `n")
+    }
+
+    [void] $builder.Append("trailer`n<< /Size $($objects.Count + 1) /Root 1 0 R >>`n")
+    [void] $builder.Append("startxref`n$xrefOffset`n%%EOF`n")
+
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+    [System.IO.File]::WriteAllBytes($Path, $encoding.GetBytes($builder.ToString()))
+}
+
+function Assert-FileBytesEqual {
+    param(
+        [string] $ExpectedPath,
+        [string] $ActualPath
+    )
+
+    $expected = [System.IO.File]::ReadAllBytes($ExpectedPath)
+    $actual = [System.IO.File]::ReadAllBytes($ActualPath)
+    if ($actual.Length -ne $expected.Length) {
+        throw "Output bytes differ. Expected $($expected.Length) byte(s) from '$ExpectedPath'; actual $($actual.Length) byte(s) from '$ActualPath'."
+    }
+
+    for ($index = 0; $index -lt $expected.Length; $index++) {
+        if ($expected[$index] -ne $actual[$index]) {
+            throw "Output bytes differ at offset $index."
+        }
+    }
+}
+
 function Invoke-PrintSinkRealPrint {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintCase,
@@ -979,6 +1037,83 @@ Add-Type -AssemblyName System.Drawing
 
         Close-SavePrintOutputDialogs
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-PrintSinkPdfPassthroughPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $sourcePath = Join-Path $OutputDirectory 'PrintSink-Pdf-Passthrough-Source.pdf'
+    $outputPath = Join-Path $OutputDirectory 'PrintSink-Pdf-Passthrough.pdf'
+    New-PrintSinkSourcePdf -Path $sourcePath -Text 'foo'
+    Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+    $printCase = [ordered]@{
+        queue = 'PrintSink - PDF'
+        format = 'pdf'
+        extension = '.pdf'
+        requiresSaveAs = $true
+        expectedText = 'foo'
+        expectedRoute = 'application/pdf -> Pdf; Copy; Endpoint supports passthrough.'
+    }
+    $startedUtc = [DateTimeOffset]::UtcNow
+    $process = Start-Process `
+        -FilePath 'printsink-app.exe' `
+        -ArgumentList @('--print-pdf-passthrough', '--endpoint', 'Pdf', '--source', $sourcePath) `
+        -PassThru
+
+    try {
+        $dialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As')) `
+            -TimeoutSeconds 30 `
+            -Description 'the Save Print Output As dialog for PDF passthrough'
+        Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
+
+        if (-not $process.WaitForExit(45000)) {
+            throw 'PDF passthrough command process did not exit.'
+        }
+
+        if ($process.ExitCode -ne 0) {
+            throw "PDF passthrough command process exited with $($process.ExitCode)."
+        }
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+        Assert-FileBytesEqual -ExpectedPath $sourcePath -ActualPath $outputPath
+
+        $diagnostic = Wait-ForPrintSinkJobCompleted `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printCase.queue `
+            -StartedUtc $startedUtc `
+            -ExpectedRouteDetail $printCase.expectedRoute
+
+        $file = Get-Item -LiteralPath $outputPath
+        return [ordered]@{
+            queue = $printCase.queue
+            format = $printCase.format
+            sourcePath = $sourcePath
+            outputPath = $outputPath
+            bytes = $file.Length
+            mode = 'pdl-passthrough'
+            diagnostic = $diagnostic
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+
+        Close-SavePrintOutputDialogs
+        Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
     }
 }
 
@@ -1598,6 +1733,10 @@ try {
             -PackageFamilyName $package.PackageFamilyName
     }
 
+    $pdfPassthroughResult = Invoke-PrintSinkPdfPassthroughPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+
     $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -1630,6 +1769,7 @@ try {
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
+        pdfPassthrough = $pdfPassthroughResult
         settingsWatermark = $settingsWatermarkResult
         settingsImageWatermark = $settingsImageWatermarkResult
         jobUiWatermark = $jobUiResult
