@@ -172,7 +172,8 @@ Tracked compatibility hooks that are not claimed as supported behavior are writt
 Real output assertions:
 
 - PDF opens with PDFPig, has at least one page, and extracted text contains `foo`.
-- XPS/OXPS is an OPC package, supports interleaved OXPS pieces, has at least one fixed page, and contains `foo`.
+- XPS/OXPS is an OPC package, supports interleaved OXPS pieces, declares XPS content types,
+  has at least one parseable fixed page, and contains `foo`.
 - PostScript starts with `%!PS` and has resolved page count, bounding box, page trailer, trailer, and EOF markers.
 - PWG Raster has a valid raster magic value, sane page header fields, and a non-blank page body.
 - PCLm has PDF/PCLm header markers, opens with PDFPig, has at least one page, and contains raster image content.

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using System.Xml.Linq;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
@@ -160,26 +161,33 @@ internal static class DocumentAssertions
     private static void AssertXps(string path, string? expectedText, string? forbiddenText)
     {
         using ZipArchive archive = ZipFile.OpenRead(path);
-        if (!HasPackagePart(archive, "[Content_Types].xml"))
+        string contentTypesXml = ReadPackagePartText(archive, "[Content_Types].xml");
+        XDocument contentTypes = XDocument.Parse(contentTypesXml, LoadOptions.None);
+        if (contentTypes.Root?.Name.LocalName != "Types")
         {
-            throw new InvalidDataException($"XPS package is missing [Content_Types].xml: {path}");
+            throw new InvalidDataException($"XPS package has invalid [Content_Types].xml: {path}");
         }
 
-        ZipArchiveEntry[] fixedPages = [.. archive.Entries
-            .Where(static entry =>
-                entry.FullName.EndsWith(".fpage", StringComparison.OrdinalIgnoreCase)
-                    || entry.FullName.Contains(".fpage/", StringComparison.OrdinalIgnoreCase))];
-        if (fixedPages.Length == 0)
+        AssertXpsContentType(contentTypes, "xps-fixeddocumentsequence+xml", path);
+        AssertXpsContentType(contentTypes, "xps-fixeddocument+xml", path);
+        AssertXpsContentType(contentTypes, "xps-fixedpage+xml", path);
+
+        string[] fixedPageNames = GetPackagePartNames(archive, ".fpage");
+        if (fixedPageNames.Length == 0)
         {
             throw new InvalidDataException($"XPS package contains no fixed pages: {path}");
         }
 
         bool foundExpectedText = false;
-        foreach (ZipArchiveEntry entry in fixedPages)
+        foreach (string fixedPageName in fixedPageNames)
         {
-            using Stream stream = entry.Open();
-            using StreamReader reader = new(stream, Encoding.UTF8, true);
-            string fixedPageXml = reader.ReadToEnd();
+            string fixedPageXml = ReadPackagePartText(archive, fixedPageName);
+            XDocument fixedPage = XDocument.Parse(fixedPageXml, LoadOptions.None);
+            if (fixedPage.Root?.Name.LocalName != "FixedPage")
+            {
+                throw new InvalidDataException($"XPS fixed page has invalid root element '{fixedPage.Root?.Name.LocalName}': {path}");
+            }
+
             if (!string.IsNullOrWhiteSpace(forbiddenText)
                 && fixedPageXml.Contains(forbiddenText, StringComparison.OrdinalIgnoreCase))
             {
@@ -201,10 +209,79 @@ internal static class DocumentAssertions
         throw new InvalidDataException($"XPS fixed pages did not contain '{expectedText}': {path}");
     }
 
-    private static bool HasPackagePart(ZipArchive archive, string partName)
+    private static void AssertXpsContentType(XDocument contentTypes, string requiredToken, string path)
     {
-        return archive.GetEntry(partName) is not null
-            || archive.Entries.Any(entry => entry.FullName.StartsWith($"{partName}/", StringComparison.OrdinalIgnoreCase));
+        bool hasContentType = contentTypes
+            .Descendants()
+            .Any(element =>
+                element.Attribute("ContentType")?.Value.Contains(requiredToken, StringComparison.OrdinalIgnoreCase) == true);
+        if (!hasContentType)
+        {
+            throw new InvalidDataException($"XPS package does not declare a {requiredToken} content type: {path}");
+        }
+    }
+
+    private static string[] GetPackagePartNames(ZipArchive archive, string extension)
+    {
+        SortedSet<string> partNames = new(StringComparer.OrdinalIgnoreCase);
+        string interleavedMarker = $"{extension}/";
+        foreach (ZipArchiveEntry entry in archive.Entries)
+        {
+            if (entry.FullName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                partNames.Add(entry.FullName);
+                continue;
+            }
+
+            int markerIndex = entry.FullName.IndexOf(interleavedMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0)
+            {
+                partNames.Add(entry.FullName[..(markerIndex + extension.Length)]);
+            }
+        }
+
+        return [.. partNames];
+    }
+
+    private static string ReadPackagePartText(ZipArchive archive, string partName)
+    {
+        ZipArchiveEntry? directEntry = archive.GetEntry(partName);
+        if (directEntry is not null)
+        {
+            using Stream directStream = directEntry.Open();
+            using StreamReader directReader = new(directStream, Encoding.UTF8, true);
+            return directReader.ReadToEnd();
+        }
+
+        ZipArchiveEntry[] pieceEntries = [.. archive.Entries
+            .Where(entry => entry.FullName.StartsWith($"{partName}/", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static entry => GetInterleavedPieceIndex(entry))];
+        if (pieceEntries.Length == 0)
+        {
+            throw new InvalidDataException($"XPS package part is missing: {partName}");
+        }
+
+        using MemoryStream buffer = new();
+        foreach (ZipArchiveEntry pieceEntry in pieceEntries)
+        {
+            using Stream pieceStream = pieceEntry.Open();
+            pieceStream.CopyTo(buffer);
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    private static int GetInterleavedPieceIndex(ZipArchiveEntry entry)
+    {
+        string name = entry.FullName[(entry.FullName.LastIndexOf('/') + 1)..];
+        int start = name.IndexOf('[', StringComparison.Ordinal);
+        int end = name.IndexOf(']', StringComparison.Ordinal);
+        if (start < 0 || end <= start)
+        {
+            throw new InvalidDataException($"XPS interleaved package piece has invalid name: {entry.FullName}");
+        }
+
+        return int.Parse(name[(start + 1)..end], System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static void AssertPostScript(string path, string? expectedText, string? forbiddenText)
