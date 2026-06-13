@@ -82,7 +82,7 @@ tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
 ```
 
 `-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
-The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue before the script validates the output file.
+The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue before the script validates the output file. The suite also prints a real text file through Notepad's `/p` entrypoint to `PrintSink - PDF`, restores the previous default printer, and validates the selected PDF so a normal desktop application path is covered.
 The harness drives the Save-As broker by setting the native filename control and accepting the dialog through window messages, so it does not rely on keyboard focus in CI.
 
 To remove the queues after assertion:
@@ -117,54 +117,56 @@ The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
-3. Submit two real Win32 jobs to different file-backed queues while the first job is still active,
+3. Print a real Notepad `/p` text document to `PrintSink - PDF`, then assert the selected PDF is
+   non-empty, opens with PDFPig, contains `foo`, and all queues remain installed.
+4. Submit two real Win32 jobs to different file-backed queues while the first job is still active,
    then assert both outputs and overlapping route/completion diagnostics.
-4. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
+5. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
    the real Windows printer list.
-5. Assert package-local route evidence for every real job: source content type, target format,
+6. Assert package-local route evidence for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior. The standalone
    `Route resolved` event is preferred; the `Job completed` event also carries the route so completion
    evidence remains self-contained.
-6. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
+7. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, and MXDC
    configuration, and printer selection records the adaptive-card/additional-field request.
-7. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
+8. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
-8. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
+9. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
    `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
    behavior for virtual printers.
-9. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
+10. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
    queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
    `GetPrinterAttributes` traffic, the real `PrintSupportExtensionBackgroundTask` validates print
    tickets for that IPP queue, and a real print job records `PrintSupportWorkflowBackgroundTask`
    start/compression-state and pass-through diagnostics. Document-output assertions are made through
    the PrintSink virtual queues.
-10. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+11. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
-11. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+12. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-12. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+13. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
    and assert the owner is restored when Settings closes.
-13. Set package-local default text and image watermarks, call
+14. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-14. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
+15. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-15. Launch Job UI, assert it receives virtual-printer PDL metadata for the real job, change watermark
+16. Launch Job UI, assert it receives virtual-printer PDL metadata for the real job, change watermark
     options, fill the job-password field, complete the job, assert the output reflects the watermark
     choice, assert the output does not contain the password, and assert diagnostics record the password
     metadata as not applicable to virtual file output.
-16. Launch Job UI, assert it receives virtual-printer PDL metadata, cancel the job, and assert the target
+17. Launch Job UI, assert it receives virtual-printer PDL metadata, cancel the job, and assert the target
     remains empty while package-local diagnostics record `Job canceled`.
-17. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+18. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
-18. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+19. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-19. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+20. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
-20. Assert all six queues are removed when `-Cleanup` is used.
+21. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change. The E2E script also writes `featureEvidence` into `e2e-result.json`; that section is built
@@ -177,6 +179,8 @@ Windows does not expose deterministic triggers for those events in the supported
 Real output assertions:
 
 - PDF opens with PDFPig, has at least one page, and extracted text contains `foo`.
+- The Notepad `/p` client print must produce a non-empty PDF containing `foo`; a zero-byte target selected
+  through the Save-As broker fails CI.
 - XPS/OXPS is an OPC package, supports interleaved OXPS pieces, declares XPS content types,
   has at least one parseable fixed page, and contains `foo`.
 - PostScript starts with `%!PS` and has resolved page count, bounding box, page trailer, trailer, and EOF markers.

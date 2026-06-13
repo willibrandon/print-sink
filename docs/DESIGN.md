@@ -707,7 +707,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      all six queues appear (`Get-Printer`).
    - Assert the signed manifest keeps `uap10:SupportsMultipleInstances="true"` and submit overlapping
      real print jobs so concurrent activations are proven by output files and diagnostics.
-   - Print from a real Win32 print harness to every endpoint.
+   - Print from a real Win32 print harness to every endpoint, and print a real Notepad `/p` text
+     document to `PrintSink - PDF`.
    - Assert route diagnostics for every real job, including source content type, target format, copy
      versus conversion action, and route reason. Output validation waits for the package-local
      `Job completed` event; the event carries route details so completion evidence is self-contained.
@@ -724,7 +725,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      device property, prove the extension task validates real print tickets for that queue, and submit a
      real print job that records physical workflow start/compression state and pass-through.
      Document-output assertions run through the PrintSink virtual queues.
-   - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
+   - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; the Notepad `/p`
+     PDF path is non-empty and contains `foo`; XPS/OXPS is an OPC
      package with XPS content types, parseable fixed pages, interleaved piece support, and `foo`; PS
      starts with `%!PS` and has resolved page count, bounding box, page trailer, trailer, and EOF markers;
      PWG Raster has valid raster magic, sane page header fields, and a non-blank page body; PCLm has

@@ -999,6 +999,62 @@ public static extern bool IsWindow(System.IntPtr hWnd);
 '@
 }
 
+function Get-DefaultWindowsPrinterName {
+    $printer = Get-CimInstance Win32_Printer |
+        Where-Object Default |
+        Select-Object -First 1
+
+    if ($null -eq $printer) {
+        return ''
+    }
+
+    return [string]$printer.Name
+}
+
+function Set-DefaultWindowsPrinter {
+    param(
+        [string] $PrinterName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PrinterName)) {
+        throw 'Printer name is required.'
+    }
+
+    $network = New-Object -ComObject WScript.Network
+    $network.SetDefaultPrinter($PrinterName)
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        if ((Get-DefaultWindowsPrinterName) -eq $PrinterName) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Timed out setting the default printer to '$PrinterName'."
+}
+
+function Stop-NotepadProcessesStartedAfter {
+    param(
+        [DateTimeOffset] $StartedUtc
+    )
+
+    Get-Process -Name Notepad -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                $_.StartTime.ToUniversalTime() -ge $StartedUtc.UtcDateTime.AddSeconds(-2)
+            }
+            catch {
+                $false
+            }
+        } |
+        ForEach-Object {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+}
+
 function Set-DialogEditText {
     param(
         [System.Windows.Automation.AutomationElement] $Dialog,
@@ -1937,6 +1993,115 @@ function Invoke-PrintSinkRealPrint {
     }
 }
 
+function Invoke-PrintSinkNotepadPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $printerName = 'PrintSink - PDF'
+    $sourcePath = Join-Path $OutputDirectory 'PrintSink-Notepad-Source.txt'
+    $outputPath = Join-Path $OutputDirectory 'PrintSink-Notepad-PDF.pdf'
+    Set-Content -LiteralPath $sourcePath -Value 'foo' -Encoding UTF8
+    Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+    $printCase = [ordered]@{
+        queue = $printerName
+        format = 'pdf'
+        extension = '.pdf'
+        requiresSaveAs = $true
+        expectedText = 'foo'
+        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+    }
+
+    $notepadPath = Join-Path $env:WINDIR 'System32\notepad.exe'
+    if (-not (Test-Path -LiteralPath $notepadPath -PathType Leaf)) {
+        throw "Notepad was not found at $notepadPath."
+    }
+
+    $previousDefaultPrinter = Get-DefaultWindowsPrinterName
+    $startedUtc = [DateTimeOffset]::MinValue
+    $starterProcess = $null
+    $notepadProcess = $null
+
+    try {
+        Set-DefaultWindowsPrinter -PrinterName $printerName
+        $startedUtc = [DateTimeOffset]::UtcNow
+
+        $starterProcess = Start-MediumIntegrityProcess `
+            -FilePath $notepadPath `
+            -ArgumentList @('/p', $sourcePath)
+
+        $saveDialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As')) `
+            -TimeoutSeconds 45 `
+            -Description 'the Save Print Output As dialog for the Notepad print'
+
+        $notepadProcess = Get-Process -Id $saveDialog.Current.ProcessId -ErrorAction SilentlyContinue
+        Set-FileDialogPath -Dialog $saveDialog -OutputPath $outputPath
+
+        $diagnostic = Wait-ForPrintSinkJobCompleted `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printCase.queue `
+            -StartedUtc $startedUtc `
+            -ExpectedRouteDetail $printCase.expectedRoute
+        $ticketValidation = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printCase.queue `
+            -Message 'Print ticket validated' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('status=Resolved')
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+
+        if ($notepadProcess -and -not $notepadProcess.HasExited) {
+            $notepadProcess.WaitForExit(30000) | Out-Null
+        }
+
+        if ($notepadProcess -and -not $notepadProcess.HasExited) {
+            throw 'Notepad print process did not exit after the print job completed.'
+        }
+
+        $file = Get-Item -LiteralPath $outputPath
+        return [ordered]@{
+            queue = $printCase.queue
+            format = $printCase.format
+            sourcePath = $sourcePath
+            outputPath = $outputPath
+            bytes = $file.Length
+            mode = 'notepad-command-line-print'
+            diagnostic = $diagnostic
+            ticketValidation = $ticketValidation
+        }
+    }
+    finally {
+        if (-not [string]::IsNullOrWhiteSpace($previousDefaultPrinter)) {
+            Set-DefaultWindowsPrinter -PrinterName $previousDefaultPrinter
+        }
+
+        if ($notepadProcess -and -not $notepadProcess.HasExited) {
+            Stop-Process -Id $notepadProcess.Id -Force
+        }
+
+        if ($starterProcess -and -not $starterProcess.HasExited) {
+            Stop-Process -Id $starterProcess.Id -Force
+        }
+
+        if ($startedUtc -ne [DateTimeOffset]::MinValue) {
+            Stop-NotepadProcessesStartedAfter -StartedUtc $startedUtc
+        }
+
+        Close-SavePrintOutputDialogs
+    }
+}
+
 function Invoke-PrintSinkConcurrentPrints {
     param(
         [string] $OutputDirectory,
@@ -1955,7 +2120,7 @@ function Invoke-PrintSinkConcurrentPrints {
             expectedRoute = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'
             outputName = 'PrintSink-Concurrent-PCLm'
             printText = 'foo concurrent pclm'
-            pageCount = 24
+            pageCount = 48
         },
         [ordered]@{
             queue = 'PrintSink - PDF'
@@ -1992,7 +2157,10 @@ function Invoke-PrintSinkConcurrentPrints {
                 stdoutPath = $printProcess.stdoutPath
                 stderrPath = $printProcess.stderrPath
             })
+        }
 
+        foreach ($job in $jobs) {
+            $printCase = $job.printCase
             $dialog = Wait-ForAutomationElement `
                 -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
                 -Scope ([System.Windows.Automation.TreeScope]::Children) `
@@ -2002,7 +2170,7 @@ function Invoke-PrintSinkConcurrentPrints {
                 -TimeoutSeconds 30 `
                 -Description "the Save Print Output As dialog for $($printCase.queue)"
 
-            Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
+            Set-FileDialogPath -Dialog $dialog -OutputPath $job.outputPath
         }
 
         $results = @()
@@ -3463,6 +3631,7 @@ function New-PrintSinkFeatureEvidence {
         [object] $VirtualAttributeRead,
         [object] $IppAssociation,
         [object[]] $RealPrintResults,
+        [object] $NotepadPrint,
         [object] $ConcurrentPrints,
         [object] $PdfPassthrough,
         [object] $WinRtSource,
@@ -3550,13 +3719,18 @@ function New-PrintSinkFeatureEvidence {
         -Number 5 `
         -Feature 'File-printer Save As target' `
         -Passed (
-            $fileBackedPrints.Count -eq 5 `
+                $fileBackedPrints.Count -eq 5 `
+                -and $NotepadPrint.bytes -gt 0 `
+                -and [string]$NotepadPrint.mode -eq 'notepad-command-line-print' `
                 -and (@($fileBackedPrints | Where-Object {
                     [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $_ -Name 'outputPath')) `
                         -or (Get-ObjectPropertyValue -Object $_ -Name 'bytes') -le 0
                 }).Count -eq 0)) `
-        -Evidence 'The live Save-As broker produced non-empty files for every file-backed queue.' `
-        -Artifact (New-PrintResultSummary -Results $fileBackedPrints)
+        -Evidence 'The live Save-As broker produced non-empty files for every file-backed queue, including a real Notepad /p text-document print to PDF.' `
+        -Artifact ([ordered]@{
+            harness = New-PrintResultSummary -Results $fileBackedPrints
+            notepad = $NotepadPrint
+        })
 
     $cloudPrint = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - Cloud'
     $cloudArtifact = Get-ObjectPropertyValue -Object $cloudPrint -Name 'sinkArtifact'
@@ -4239,6 +4413,17 @@ try {
         })
     }
 
+    Write-E2EProgress 'Printing Notepad text document to PrintSink - PDF'
+    $notepadPrintResult = Invoke-PrintSinkNotepadPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after Notepad PDF print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after Notepad PDF print'
+    })
+
     Write-E2EProgress 'Printing concurrent real documents'
     $concurrentPrintResult = Invoke-PrintSinkConcurrentPrints `
         -OutputDirectory $OutputDirectory `
@@ -4361,6 +4546,7 @@ try {
         -VirtualAttributeRead $virtualAttributeReadResult `
         -IppAssociation $ippAssociationResult `
         -RealPrintResults $realPrintResults `
+        -NotepadPrint $notepadPrintResult `
         -ConcurrentPrints $concurrentPrintResult `
         -PdfPassthrough $pdfPassthroughResult `
         -WinRtSource $winRtSourceResult `
@@ -4394,6 +4580,7 @@ try {
         virtualAttributeRead = $virtualAttributeReadResult
         ippAssociation = $ippAssociationResult
         realPrints = $realPrintResults
+        notepadPrint = $notepadPrintResult
         concurrentPrints = $concurrentPrintResult
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult
