@@ -16,7 +16,7 @@ try
         return exitCode;
     }
 
-    AppActivationState.SetRoute(AppActivationRouter.From(activationArguments));
+    AppActivationState.SetRoute(AppActivationRouter.From(args, activationArguments));
     AppInstance.GetCurrent().Activated += (_, args) =>
     {
         AppActivationState.SetRoute(AppActivationRouter.From(args));

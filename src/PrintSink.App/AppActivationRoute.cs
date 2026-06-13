@@ -10,6 +10,7 @@ internal sealed class AppActivationRoute
         AppActivationRouteKind kind,
         string title,
         string subtitle,
+        string? winRtSourceText,
         PrintSupportSettingsActivatedEventArgs? settingsArgs,
         PrintWorkflowJobActivatedEventArgs? jobArgs)
     {
@@ -17,6 +18,7 @@ internal sealed class AppActivationRoute
         Kind = kind;
         Title = title;
         Subtitle = subtitle;
+        WinRtSourceText = winRtSourceText;
         SettingsArgs = settingsArgs;
         JobArgs = jobArgs;
     }
@@ -28,6 +30,8 @@ internal sealed class AppActivationRoute
     internal string Title { get; }
 
     internal string Subtitle { get; }
+
+    internal string? WinRtSourceText { get; }
 
     internal PrintSupportSettingsActivatedEventArgs? SettingsArgs { get; }
 
@@ -41,6 +45,7 @@ internal sealed class AppActivationRoute
             "PrintSink",
             "Virtual printer management",
             null,
+            null,
             null);
     }
 
@@ -53,6 +58,7 @@ internal sealed class AppActivationRoute
             AppActivationRouteKind.Settings,
             "Print preferences",
             "Print Support Settings UI",
+            null,
             settingsArgs,
             null);
     }
@@ -67,6 +73,21 @@ internal sealed class AppActivationRoute
             "Job preview",
             "Print Support Job UI",
             null,
+            null,
             jobArgs);
+    }
+
+    internal static AppActivationRoute WinRtPrintSource(long activationId, string sourceText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceText);
+
+        return new AppActivationRoute(
+            activationId,
+            AppActivationRouteKind.WinRtPrintSource,
+            "WinRT print source",
+            "Windows print pipeline",
+            sourceText,
+            null,
+            null);
     }
 }

@@ -112,14 +112,16 @@ The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
-3. Assert the package-local route diagnostic for every real job: source content type, target format,
+3. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
+   the real Windows printer list.
+4. Assert the package-local route diagnostic for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior.
-4. Set a package-local default watermark, call `IppPrintDevice.RefreshPrintDeviceCapabilities`, print
+5. Set a package-local default watermark, call `IppPrintDevice.RefreshPrintDeviceCapabilities`, print
    a real PDF with Job UI disabled, and assert the output reflects the default.
-5. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-6. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-7. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-8. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+6. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+7. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+8. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+9. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change. The next known gaps are WinRT source printing, explicit PDF passthrough, and visible

@@ -53,6 +53,8 @@ internal sealed class AppRoot : Component
                 .WithKey(route.ActivationId.ToString(CultureInfo.InvariantCulture)),
             AppActivationRouteKind.JobPreview => Component<JobPreviewScreen, AppActivationRoute>(route)
                 .WithKey(route.ActivationId.ToString(CultureInfo.InvariantCulture)),
+            AppActivationRouteKind.WinRtPrintSource => Component<WinRtPrintSourceScreen, AppActivationRoute>(route)
+                .WithKey(route.ActivationId.ToString(CultureInfo.InvariantCulture)),
             _ => Component<ManagementScreen>(),
         };
     }

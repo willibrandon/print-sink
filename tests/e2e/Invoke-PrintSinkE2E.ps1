@@ -364,10 +364,23 @@ function Invoke-PrintSinkAppCommand {
     )
 
     $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
-    Remove-Item $headlessLog -ErrorAction SilentlyContinue
+    $isProvisioningCommand = $Arguments -contains '--install-virtual-printers' `
+        -or $Arguments -contains '--remove-virtual-printers'
+    $maxAttempts = if ($isProvisioningCommand) {
+        4
+    }
+    else {
+        1
+    }
 
-    & printsink-app.exe @Arguments
-    if ($LASTEXITCODE -ne 0) {
+    $diagnostic = 'No headless diagnostic log was written.'
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Remove-Item $headlessLog -ErrorAction SilentlyContinue
+        & printsink-app.exe @Arguments
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+
         $diagnostic = if (Test-Path $headlessLog) {
             Get-Content $headlessLog -Raw
         }
@@ -375,7 +388,141 @@ function Invoke-PrintSinkAppCommand {
             'No headless diagnostic log was written.'
         }
 
-        throw "$Description failed with exit code $LASTEXITCODE. $diagnostic"
+        if ($attempt -lt $maxAttempts) {
+            Start-Sleep -Seconds 5
+        }
+    }
+
+    throw "$Description failed after $maxAttempts attempt(s). $diagnostic"
+}
+
+function Invoke-PrintSinkCliCommand {
+    param(
+        [string[]] $Arguments,
+        [string] $Description
+    )
+
+    $projectPath = Join-Path $PSScriptRoot '..\..\src\PrintSink.Cli\PrintSink.Cli.csproj'
+    $output = & dotnet run --project $projectPath --configuration Debug -- @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE. $($output -join [Environment]::NewLine)"
+    }
+
+    return $output -join [Environment]::NewLine
+}
+
+function Assert-QueuesCliOutput {
+    param(
+        [string] $Output,
+        [string[]] $ExpectedQueues,
+        [bool] $ExpectedInstalled
+    )
+
+    $expectedStatus = if ($ExpectedInstalled) {
+        'yes'
+    }
+    else {
+        'no'
+    }
+
+    $lines = @($Output -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    foreach ($queue in $ExpectedQueues) {
+        $row = $lines |
+            Where-Object { $_.StartsWith($queue, [System.StringComparison]::Ordinal) } |
+            Select-Object -First 1
+        if ($null -eq $row) {
+            throw "CLI queues output did not contain '$queue'. Output:$([Environment]::NewLine)$Output"
+        }
+
+        $cells = @($row -split '\s{2,}' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($cells.Count -lt 5) {
+            throw "CLI queues row for '$queue' was not parseable: $row"
+        }
+
+        $actualStatus = $cells[$cells.Count - 1]
+        if ($actualStatus -ne $expectedStatus) {
+            throw "CLI queues row for '$queue' reported Installed '$actualStatus'; expected '$expectedStatus'."
+        }
+    }
+}
+
+function Wait-ForQueueInstalledState {
+    param(
+        [string[]] $ExpectedQueues,
+        [bool] $ExpectedInstalled,
+        [int] $TimeoutSeconds
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $installedNames = @(Get-Printer | ForEach-Object Name)
+        $matchesExpectedState = $true
+        foreach ($queue in $ExpectedQueues) {
+            if (($installedNames -contains $queue) -ne $ExpectedInstalled) {
+                $matchesExpectedState = $false
+                break
+            }
+        }
+
+        if ($matchesExpectedState) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    $expectedStatus = if ($ExpectedInstalled) {
+        'installed'
+    }
+    else {
+        'removed'
+    }
+
+    throw "Timed out waiting for PrintSink queues to be $expectedStatus."
+}
+
+function Invoke-PrintSinkCliQueueLifecycle {
+    param(
+        [string[]] $ExpectedQueues
+    )
+
+    $installOutput = Invoke-PrintSinkCliCommand `
+        -Arguments @('queues', 'install') `
+        -Description 'CLI queue installation'
+    Assert-QueuesCliOutput `
+        -Output $installOutput `
+        -ExpectedQueues $ExpectedQueues `
+        -ExpectedInstalled $true
+    Wait-ForQueueInstalledState `
+        -ExpectedQueues $ExpectedQueues `
+        -ExpectedInstalled $true `
+        -TimeoutSeconds 30
+
+    $listInstalledOutput = Invoke-PrintSinkCliCommand `
+        -Arguments @('queues') `
+        -Description 'CLI installed queue listing'
+    Assert-QueuesCliOutput `
+        -Output $listInstalledOutput `
+        -ExpectedQueues $ExpectedQueues `
+        -ExpectedInstalled $true
+
+    $removeOutput = Invoke-PrintSinkCliCommand `
+        -Arguments @('queues', 'remove') `
+        -Description 'CLI queue removal'
+    Assert-QueuesCliOutput `
+        -Output $removeOutput `
+        -ExpectedQueues $ExpectedQueues `
+        -ExpectedInstalled $false
+    Wait-ForQueueInstalledState `
+        -ExpectedQueues $ExpectedQueues `
+        -ExpectedInstalled $false `
+        -TimeoutSeconds 30
+
+    return [ordered]@{
+        install = $installOutput
+        listInstalled = $listInstalledOutput
+        remove = $removeOutput
     }
 }
 
@@ -1333,6 +1480,8 @@ if ($null -eq $alias) {
 
 Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
 try {
+    $cliQueueLifecycle = Invoke-PrintSinkCliQueueLifecycle -ExpectedQueues $expectedQueues
+
     Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
 
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -1379,6 +1528,7 @@ try {
         }
         packageShape = $packageShape
         queues = @($expectedQueues)
+        cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
         settingsWatermark = $settingsWatermarkResult

@@ -175,7 +175,7 @@ internal static class VirtualPrinterCommandLine
         throw new ArgumentException($"Missing required {option} value.");
     }
 
-    private static string[] GetActivationArguments(AppActivationArguments activationArguments)
+    internal static string[] GetActivationArguments(AppActivationArguments activationArguments)
     {
         return activationArguments.Data switch
         {
@@ -303,6 +303,7 @@ internal static class VirtualPrinterCommandLine
             "  --set-text-watermark        Set a default text watermark for --endpoint.",
             "  --clear-watermark           Clear the default watermark for --endpoint.",
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
+            "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",
             "",

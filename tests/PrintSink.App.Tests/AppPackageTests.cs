@@ -40,6 +40,24 @@ public sealed class AppPackageTests
     }
 
     /// <summary>
+    /// Verifies the WinRT source route carries the source text used by the print harness.
+    /// </summary>
+    [TestMethod]
+    public void WinRt_source_route_uses_print_source_metadata()
+    {
+        PrintSinkApp::PrintSink.App.AppActivationRoute route =
+            PrintSinkApp::PrintSink.App.AppActivationRoute.WinRtPrintSource(42, "foo");
+
+        Assert.AreEqual(42, route.ActivationId);
+        Assert.AreEqual(PrintSinkApp::PrintSink.App.AppActivationRouteKind.WinRtPrintSource, route.Kind);
+        Assert.AreEqual("WinRT print source", route.Title);
+        Assert.AreEqual("Windows print pipeline", route.Subtitle);
+        Assert.AreEqual("foo", route.WinRtSourceText);
+        Assert.IsNull(route.SettingsArgs);
+        Assert.IsNull(route.JobArgs);
+    }
+
+    /// <summary>
     /// Verifies the packaged test host owns a usable XAML UI thread.
     /// </summary>
     [UITestMethod]
