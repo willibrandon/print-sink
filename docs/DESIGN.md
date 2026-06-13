@@ -723,10 +723,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
      `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
      behavior for virtual printers.
-   - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect a local
-     Microsoft IPP Class Driver queue to the in-process E2E IPP printer, assert the installed PSA AUMID
-     device property, prove the extension task validates real print tickets for that queue, and submit a
-     real print job that records physical workflow start/compression state and pass-through.
+   - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect local
+     Microsoft IPP Class Driver queues to the in-process E2E IPP printer, assert the installed PSA AUMID
+     device property, prove stopped/rejecting IPP state traffic, prove the extension task validates
+     real print tickets for that queue, and submit a real print job that records physical workflow
+     start/compression state and pass-through.
      Document-output assertions run through the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; the Notepad `/p`
      PDF path is non-empty and contains `foo`; XPS/OXPS is an OPC

@@ -1580,6 +1580,7 @@ function Start-PrintSinkIppPrinterServer {
         [string] $PrinterName,
         [string] $HostName,
         [string] $OutputDirectory,
+        [int] $Port = 631,
         [string] $PrinterState = '',
         [string] $PrinterStateReason = '',
         [switch] $RejectJobs,
@@ -1609,7 +1610,7 @@ function Start-PrintSinkIppPrinterServer {
         '--printer-name',
         $PrinterName,
         '--port',
-        '631',
+        [string]$Port,
         '--host',
         $HostName,
         '--output',
@@ -2084,6 +2085,152 @@ function Get-PrintSinkIppPrinterDevice {
     return $null
 }
 
+function Wait-ForPrintSinkIppEvidenceRequest {
+    param(
+        [string] $EvidencePath,
+        [string] $Operation,
+        [int] $TimeoutSeconds = 30
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $EvidencePath) {
+            try {
+                $evidence = Get-Content -LiteralPath $EvidencePath -Raw | ConvertFrom-Json
+            }
+            catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+
+            $request = @($evidence.requests) |
+                Where-Object { [string]$_.operation -eq $Operation } |
+                Select-Object -Last 1
+            if ($null -ne $request) {
+                return $request
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for IPP evidence operation '$Operation' in $EvidencePath."
+}
+
+function Get-PrintSinkIppResponseAttributeValues {
+    param(
+        [object] $Request,
+        [string] $AttributeName
+    )
+
+    $attributeValues = Get-ObjectPropertyValue `
+        -Object $Request `
+        -Name 'responsePrinterAttributeValues'
+    if ($null -eq $attributeValues) {
+        return @()
+    }
+
+    $property = $attributeValues.PSObject.Properties |
+        Where-Object { [string]::Equals($_.Name, $AttributeName, [System.StringComparison]::OrdinalIgnoreCase) } |
+        Select-Object -First 1
+    if ($null -eq $property) {
+        return @()
+    }
+
+    return @($property.Value)
+}
+
+function Assert-PrintSinkIppResponseAttributeValue {
+    param(
+        [object] $Request,
+        [string] $AttributeName,
+        [string] $ExpectedValue
+    )
+
+    $values = @(Get-PrintSinkIppResponseAttributeValues `
+        -Request $Request `
+        -AttributeName $AttributeName)
+    if (@($values | Where-Object { [string]::Equals([string]$_, $ExpectedValue, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0) {
+        return
+    }
+
+    throw "IPP response attribute '$AttributeName' did not contain '$ExpectedValue'. Actual: $($values -join ', ')"
+}
+
+function Invoke-PrintSinkIppPrinterStateProbe {
+    param(
+        [string] $OutputDirectory,
+        [string] $IppHost
+    )
+
+    $probeId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $printerName = "PrintSink-E2E-IPP-State-$probeId"
+    $testDirectory = Join-Path $OutputDirectory 'ipp-state-probe'
+    $evidencePath = Join-Path $testDirectory 'ipp-jobs.json'
+    $serverProcess = $null
+
+    Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $testDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $testDirectory | Out-Null
+
+    try {
+        $serverProcess = Start-PrintSinkIppPrinterServer `
+            -PrinterName $printerName `
+            -HostName $IppHost `
+            -OutputDirectory $testDirectory `
+            -PrinterState Stopped `
+            -PrinterStateReason paused `
+            -RejectJobs
+
+        try {
+            Add-Printer -Name $printerName -IppURL "ipp://${IppHost}:631/ipp/printer/$printerName" -ErrorAction Stop
+        }
+        catch {
+            $createdPrinter = Get-Printer -Name $printerName -ErrorAction SilentlyContinue
+            if ($null -eq $createdPrinter) {
+                throw
+            }
+        }
+
+        $request = Wait-ForPrintSinkIppEvidenceRequest `
+            -EvidencePath $evidencePath `
+            -Operation 'GetPrinterAttributes'
+        Assert-PrintSinkIppResponseAttributeValue `
+            -Request $request `
+            -AttributeName 'printer-state' `
+            -ExpectedValue '5'
+        Assert-PrintSinkIppResponseAttributeValue `
+            -Request $request `
+            -AttributeName 'printer-state-reasons' `
+            -ExpectedValue 'paused'
+        Assert-PrintSinkIppResponseAttributeValue `
+            -Request $request `
+            -AttributeName 'printer-is-accepting-jobs' `
+            -ExpectedValue 'False'
+
+        $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+        return [ordered]@{
+            printer = $printerName
+            ippEvidencePath = $evidencePath
+            ippRequestCount = @($evidence.requests).Count
+            state = @(Get-PrintSinkIppResponseAttributeValues -Request $request -AttributeName 'printer-state')
+            stateReasons = @(Get-PrintSinkIppResponseAttributeValues -Request $request -AttributeName 'printer-state-reasons')
+            acceptingJobs = @(Get-PrintSinkIppResponseAttributeValues -Request $request -AttributeName 'printer-is-accepting-jobs')
+        }
+    }
+    finally {
+        Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
+        if ($serverProcess -and -not $serverProcess.HasExited) {
+            Stop-PrintSinkProcess -Process $serverProcess
+        }
+    }
+}
+
 function Invoke-PrintSinkIppWorkflowActivationPrint {
     param(
         [string] $PrinterName,
@@ -2156,6 +2303,7 @@ function Invoke-PrintSinkIppAssociation {
     $serverProcess = $null
     $publishedName = $null
     $certificateThumbprint = $null
+    $printerStateProbe = $null
 
     Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testDirectory -Recurse -Force -ErrorAction SilentlyContinue
@@ -2173,6 +2321,9 @@ function Invoke-PrintSinkIppAssociation {
             -CertificateSubject 'CN=PrintSink E2E Driver Signing'
         $publishedName = $installedInf.publishedName
         $certificateThumbprint = $installedInf.certificateThumbprint
+        $printerStateProbe = Invoke-PrintSinkIppPrinterStateProbe `
+            -OutputDirectory $testDirectory `
+            -IppHost $ippHost
 
         $serverProcess = Start-PrintSinkIppPrinterServer `
             -PrinterName $printerName `
@@ -2256,6 +2407,7 @@ function Invoke-PrintSinkIppAssociation {
             ippRequestCount = $requests.Count
             ippOperations = @($requests | ForEach-Object { $_.operation } | Select-Object -Unique)
             ippJobCount = @($evidence.jobs).Count
+            printerStateProbe = $printerStateProbe
             ticketValidation = $ticketValidation
             workflowActivationPrint = $workflowActivationPrint
         }
@@ -4443,9 +4595,13 @@ function New-PrintSinkFeatureEvidence {
         -Passed (
             -not [string]::IsNullOrWhiteSpace([string]$IppAssociation.aumid) `
                 -and $IppAssociation.ippRequestCount -gt 0 `
+                -and $IppAssociation.printerStateProbe.ippRequestCount -gt 0 `
+                -and (@($IppAssociation.printerStateProbe.state) -contains '5') `
+                -and (@($IppAssociation.printerStateProbe.stateReasons) -contains 'paused') `
+                -and (@($IppAssociation.printerStateProbe.acceptingJobs) -contains 'False') `
                 -and [string]$IppAssociation.ticketValidation.message -eq 'Print ticket validated' `
                 -and $null -ne $IppAssociation.workflowActivationPrint.workflow) `
-        -Evidence 'A temporary signed INF associated the package with a real Microsoft IPP Class Driver queue and triggered extension plus workflow diagnostics.' `
+        -Evidence 'A temporary signed INF associated the package with real Microsoft IPP Class Driver queues, proved stopped/rejecting IPP state traffic, and triggered extension plus workflow diagnostics.' `
         -Artifact $IppAssociation
 
     Add-PrintSinkFeatureEvidence `

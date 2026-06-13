@@ -136,12 +136,13 @@ The required E2E suite proves the current installed-package behavior:
 9. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
    `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
    behavior for virtual printers.
-10. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
-   queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
-   `GetPrinterAttributes` traffic, the real `PrintSupportExtensionBackgroundTask` validates print
-   tickets for that IPP queue, and a real print job records `PrintSupportWorkflowBackgroundTask`
-   start/compression-state and pass-through diagnostics. Document-output assertions are made through
-   the PrintSink virtual queues.
+10. Generate, sign, install, and remove a temporary PSA extension INF for local IPP class-driver
+   queues. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
+   `GetPrinterAttributes` traffic, a stopped/rejecting IPP probe reports `printer-state=stopped`,
+   `printer-state-reasons=paused`, and `printer-is-accepting-jobs=false`, the real
+   `PrintSupportExtensionBackgroundTask` validates print tickets for that IPP queue, and a real print
+   job records `PrintSupportWorkflowBackgroundTask` start/compression-state and pass-through
+   diagnostics. Document-output assertions are made through the PrintSink virtual queues.
 11. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
@@ -199,9 +200,10 @@ Real output assertions:
 - Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` exposes no usable
   document-format values for the real installed virtual queue.
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
-  with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, submit a
-  real print job that activates workflow start and pass-through, record IPP compression state while
-  leaving system rendering enabled, and produce local IPP request evidence.
+  with real Microsoft IPP Class Driver devices, observe stopped/rejecting printer state from the local
+  IPP device, trigger ticket validation for that queue, submit a real print job that activates
+  workflow start and pass-through, record IPP compression state while leaving system rendering enabled,
+  and produce local IPP request evidence.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows

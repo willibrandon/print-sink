@@ -177,6 +177,56 @@ internal sealed class LocalDiagnosticEventStoreTests
         }
     }
 
+    /// <summary>
+    /// Verifies appends survive a transient external reader holding the diagnostics file.
+    /// </summary>
+    [TestMethod]
+    public async Task AppendAsyncWaitsForTransientExternalReaderLock()
+    {
+        string directory = CreateTestDirectory();
+        using LocalDiagnosticEventStore store = new(directory);
+
+        try
+        {
+            await store
+                .AppendAsync(CreateRecord("Seed", DateTimeOffset.UtcNow.AddMinutes(-1)), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string path = Path.Combine(directory, "diagnostic-events.json");
+            FileStream? externalReader = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            Task appendTask;
+            try
+            {
+                appendTask = store.AppendAsync(
+                    CreateRecord("After external reader", DateTimeOffset.UtcNow),
+                    TestContext.CancellationToken);
+
+                await Task.Delay(250, TestContext.CancellationToken).ConfigureAwait(false);
+                await externalReader.DisposeAsync().ConfigureAwait(false);
+                externalReader = null;
+                await appendTask.ConfigureAwait(false);
+            }
+            finally
+            {
+                if (externalReader is not null)
+                {
+                    await externalReader.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+
+            IReadOnlyList<DiagnosticEventRecord> records = await store
+                .ReadRecentAsync(4, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            string[] messages = [.. records.Select(static record => record.Message)];
+
+            Assert.Contains("After external reader", messages);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static DiagnosticEventRecord CreateRecord(string message, DateTimeOffset timestamp)
     {
         return new DiagnosticEventRecord(

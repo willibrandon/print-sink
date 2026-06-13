@@ -432,6 +432,17 @@ internal sealed class IppPrinterServer
         return GetQueuedJobCount() > 0 ? PrinterState.Processing : PrinterState.Idle;
     }
 
+    private static int GetPrinterStateValue(PrinterState state)
+    {
+        return state switch
+        {
+            PrinterState.Idle => 3,
+            PrinterState.Processing => 4,
+            PrinterState.Stopped => 5,
+            _ => (int)state,
+        };
+    }
+
     private int GetQueuedJobCount()
     {
         lock (gate)
@@ -546,13 +557,14 @@ internal sealed class IppPrinterServer
             new IppAttribute(Tag.TextWithoutLanguage, "printer-make-and-model", "PrintSink E2E IPP Printer"));
         AddMissingAttribute(
             attributes,
-            new IppAttribute(Tag.Enum, "printer-state", 3));
+            new IppAttribute(Tag.Enum, "printer-state", GetPrinterStateValue(GetPrinterState())));
+        AddMissingKeywordAttributes(
+            attributes,
+            "printer-state-reasons",
+            [.. options.PrinterStateReasons.Select(static reason => reason.Value)]);
         AddMissingAttribute(
             attributes,
-            new IppAttribute(Tag.Keyword, "printer-state-reasons", "none"));
-        AddMissingAttribute(
-            attributes,
-            new IppAttribute(Tag.Boolean, "printer-is-accepting-jobs", true));
+            new IppAttribute(Tag.Boolean, "printer-is-accepting-jobs", !options.RejectJobs));
         AddMissingAttribute(
             attributes,
             new IppAttribute(Tag.MimeMediaType, "document-format-preferred", options.DocumentFormat));

@@ -55,6 +55,26 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the physical IPP E2E path proves non-default printer state traffic.
+    /// </summary>
+    [TestMethod]
+    public void E2eIppAssociationExercisesStoppedRejectingPrinterState()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+
+        Assert.Contains("function Invoke-PrintSinkIppPrinterStateProbe", e2eScript);
+        Assert.Contains("-PrinterState Stopped", e2eScript);
+        Assert.Contains("-PrinterStateReason paused", e2eScript);
+        Assert.Contains("-RejectJobs", e2eScript);
+        Assert.Contains("printer-state", e2eScript);
+        Assert.Contains("printer-state-reasons", e2eScript);
+        Assert.Contains("printer-is-accepting-jobs", e2eScript);
+        Assert.Contains("printerStateProbe", e2eScript);
+    }
+
+    /// <summary>
     /// Verifies the local E2E installer trusts the package-adjacent test certificate.
     /// </summary>
     [TestMethod]
