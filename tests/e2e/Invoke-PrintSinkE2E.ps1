@@ -3293,15 +3293,15 @@ function Assert-PrintSinkFeatureEvidenceComplete {
         [object[]] $FeatureEvidence
     )
 
-    $expectedNumbers = @()
-    $expectedNumbers += 1..21
-    $expectedNumbers += 23
-    $expectedNumbers += 24
-    $expectedNumbers += 25
+    $supportedNumbers = @()
+    $supportedNumbers += 1..21
+    $supportedNumbers += 23
+    $supportedNumbers += 24
+    $supportedNumbers += 25
 
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ObjectPropertyValue -Object $_ -Name 'number') })
-    $missingNumbers = @($expectedNumbers | Where-Object { $_ -notin $actualNumbers })
-    $unexpectedNumbers = @($actualNumbers | Where-Object { $_ -notin $expectedNumbers })
+    $missingNumbers = @($supportedNumbers | Where-Object { $_ -notin $actualNumbers })
+    $unexpectedNumbers = @($actualNumbers | Where-Object { $_ -notin $supportedNumbers })
     $duplicateNumbers = @(
         $actualNumbers |
             Group-Object |
@@ -3320,6 +3320,17 @@ function Assert-PrintSinkFeatureEvidenceComplete {
     if ($duplicateNumbers.Count -gt 0) {
         throw "Feature evidence contains duplicate feature number(s): $($duplicateNumbers -join ', ')."
     }
+}
+
+function New-PrintSinkDeferredFeatureEvidence {
+    return @(
+        [ordered]@{
+            number = 22
+            feature = 'Job notification compatibility hook'
+            status = 'deferred'
+            evidence = 'Windows did not deliver a deterministic PrintWorkflowJobUISession.JobNotification activation in the supported virtual-printer E2E flow. The handler records diagnostics if the OS activates it, but PrintSink does not claim this as a supported feature until a real E2E can trigger it.'
+        }
+    )
 }
 
 function New-PrintSinkFeatureEvidence {
@@ -4215,6 +4226,7 @@ try {
         -FailedImageWatermark $failedImageWatermarkResult `
         -JobUiWatermark $jobUiResult `
         -JobUiCancel $jobUiCancelResult
+    $deferredFeatureEvidence = New-PrintSinkDeferredFeatureEvidence
 
     $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
     $result = [ordered]@{
@@ -4248,6 +4260,7 @@ try {
         jobUiWatermark = $jobUiResult
         jobUiCancel = $jobUiCancelResult
         featureEvidence = $featureEvidence
+        deferredFeatureEvidence = $deferredFeatureEvidence
     }
 
     $resultJson = $result | ConvertTo-Json -Depth 8

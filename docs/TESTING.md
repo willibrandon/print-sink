@@ -165,6 +165,8 @@ The required E2E suite proves the current installed-package behavior:
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change. The E2E script also writes `featureEvidence` into `e2e-result.json`; that section is built
 from the live assertions above and fails the run if a supported print-stack feature lacks evidence.
+Tracked compatibility hooks that are not claimed as supported behavior are written separately as
+`deferredFeatureEvidence` and must not be used to satisfy supported feature coverage.
 
 Real output assertions:
 
