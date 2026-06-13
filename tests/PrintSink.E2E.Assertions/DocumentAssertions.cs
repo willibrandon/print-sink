@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using UglyToad.PdfPig;
@@ -67,7 +68,7 @@ internal static class DocumentAssertions
                 AssertPwgRaster(path);
                 break;
             case "pclm":
-                AssertPdf(path, null, forbiddenText, false, false);
+                AssertPclm(path, forbiddenText);
                 break;
             default:
                 throw new ArgumentException($"Unsupported document format '{format}'.");
@@ -141,6 +142,19 @@ internal static class DocumentAssertions
         string pdfSource = File.ReadAllText(path, Encoding.Latin1);
         return pdfSource.Contains("/Subtype/Image", StringComparison.Ordinal)
             || pdfSource.Contains("/Subtype /Image", StringComparison.Ordinal);
+    }
+
+    private static void AssertPclm(string path, string? forbiddenText)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        string header = Encoding.Latin1.GetString(bytes, 0, Math.Min(bytes.Length, 64));
+        if (!header.StartsWith("%PDF-", StringComparison.Ordinal)
+            || !header.Contains("%PCLm 1.0", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"PCLm output is missing the PDF/PCLm header markers: {path}");
+        }
+
+        AssertPdf(path, null, forbiddenText, false, true);
     }
 
     private static void AssertXps(string path, string? expectedText, string? forbiddenText)
@@ -255,18 +269,57 @@ internal static class DocumentAssertions
     private static void AssertPwgRaster(string path)
     {
         byte[] bytes = File.ReadAllBytes(path);
-        if (bytes.Length <= 1800)
+        const int syncWordLength = 4;
+        const int version2HeaderLength = 1796;
+        if (bytes.Length <= syncWordLength + version2HeaderLength)
         {
             throw new InvalidDataException($"PWG Raster output is too small to contain a page: {path}");
         }
 
         string magic = Encoding.ASCII.GetString(bytes, 0, 4);
-        if (magic is not ("RaS2" or "2SaR" or "RaS3" or "3SaR"))
+        bool isBigEndian = magic is "RaS2" or "RaS3";
+        if (!isBigEndian && magic is not ("2SaR" or "3SaR"))
         {
             throw new InvalidDataException($"PWG Raster output has invalid magic '{magic}': {path}");
         }
 
-        int bodyStart = Math.Min(1800, bytes.Length);
+        uint width = ReadRasterUInt32(bytes, syncWordLength + 372, isBigEndian);
+        uint height = ReadRasterUInt32(bytes, syncWordLength + 376, isBigEndian);
+        uint bitsPerColor = ReadRasterUInt32(bytes, syncWordLength + 384, isBigEndian);
+        uint bitsPerPixel = ReadRasterUInt32(bytes, syncWordLength + 388, isBigEndian);
+        uint bytesPerLine = ReadRasterUInt32(bytes, syncWordLength + 392, isBigEndian);
+        uint colorOrder = ReadRasterUInt32(bytes, syncWordLength + 396, isBigEndian);
+        uint colorSpace = ReadRasterUInt32(bytes, syncWordLength + 400, isBigEndian);
+        uint numberOfColors = ReadRasterUInt32(bytes, syncWordLength + 420, isBigEndian);
+
+        if (width == 0 || height == 0)
+        {
+            throw new InvalidDataException($"PWG Raster page dimensions are invalid: {path}");
+        }
+
+        if (bitsPerColor is not (1 or 2 or 4 or 8 or 16)
+            || bitsPerPixel == 0
+            || bitsPerPixel > 240)
+        {
+            throw new InvalidDataException($"PWG Raster bit depth is invalid: {path}");
+        }
+
+        if (bytesPerLine == 0 || bytesPerLine < (width * bitsPerPixel + 7) / 8)
+        {
+            throw new InvalidDataException($"PWG Raster stride is invalid: {path}");
+        }
+
+        if (colorOrder > 2)
+        {
+            throw new InvalidDataException($"PWG Raster color order is invalid: {path}");
+        }
+
+        if (colorSpace > 62 || numberOfColors is < 1 or > 15)
+        {
+            throw new InvalidDataException($"PWG Raster color metadata is invalid: {path}");
+        }
+
+        int bodyStart = syncWordLength + version2HeaderLength;
         int distinctBodyBytes = bytes
             .Skip(bodyStart)
             .Take(1024 * 1024)
@@ -277,6 +330,14 @@ internal static class DocumentAssertions
         {
             throw new InvalidDataException($"PWG Raster page body appears blank: {path}");
         }
+    }
+
+    private static uint ReadRasterUInt32(byte[] bytes, int offset, bool isBigEndian)
+    {
+        ReadOnlySpan<byte> value = bytes.AsSpan(offset, 4);
+        return isBigEndian
+            ? BinaryPrimitives.ReadUInt32BigEndian(value)
+            : BinaryPrimitives.ReadUInt32LittleEndian(value);
     }
 
     private static Dictionary<string, string> ParseOptions(string[] args)
