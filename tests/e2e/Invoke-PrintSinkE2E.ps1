@@ -899,6 +899,32 @@ function Find-EnabledDescendantByFilter {
     throw "Timed out waiting for $Description."
 }
 
+function Find-DescendantByFilter {
+    param(
+        [System.Windows.Automation.AutomationElement] $Root,
+        [scriptblock] $Predicate,
+        [int] $TimeoutSeconds,
+        [string] $Description
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $elements = $Root.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($element in $elements) {
+            if (& $Predicate $element) {
+                return $element
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for $Description."
+}
+
 function Add-DialogNativeMethods {
     if ('PrintSinkE2E.DialogNativeMethods' -as [type]) {
         return
@@ -1488,6 +1514,155 @@ function Invoke-PrintSinkWinRtSourcePrint {
     }
 }
 
+function Invoke-PrintSinkSettingsUiOwner {
+    param(
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $sourceText = 'foo settings ui owner e2e'
+    $alias = Get-Command printsink-app.exe -ErrorAction Stop
+    $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
+    Remove-Item $headlessLog -ErrorAction SilentlyContinue
+    $process = Start-MediumIntegrityProcess `
+        -FilePath $alias.Source `
+        -ArgumentList @('--winrt-source-print', '--text', $sourceText)
+
+    try {
+        $printDialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'PrintSink WinRT E2E Source - Print')) `
+            -TimeoutSeconds 45 `
+            -Description 'the WinRT source Windows print dialog for Settings UI'
+
+        Select-WindowsPrintPrinter `
+            -PrintDialog $printDialog `
+            -PrinterName 'PrintSink - PDF'
+
+        $moreSettings = Find-EnabledDescendantByFilter `
+            -Root $printDialog `
+            -Predicate {
+                param($element)
+
+                $element.Current.Name -eq 'More settings'
+            } `
+            -TimeoutSeconds 30 `
+            -Description 'the Windows print More settings link'
+
+        [object] $invokePattern = $null
+        if ($moreSettings.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invokePattern)) {
+            $invokePattern.Invoke()
+        }
+        else {
+            throw 'The Windows print More settings link does not expose InvokePattern.'
+        }
+
+        $settingsWindow = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Print preferences')) `
+            -TimeoutSeconds 45 `
+            -Description 'the PrintSink Settings UI window'
+
+        Wait-ForAutomationElementEnabledState `
+            -Element $printDialog `
+            -ExpectedEnabled $false `
+            -TimeoutSeconds 30 `
+            -Description 'the Windows print dialog while Settings UI is open'
+
+        $renderError = $null
+        $settingsElements = $settingsWindow.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($settingsElement in $settingsElements) {
+            if ($settingsElement.Current.Name.StartsWith('⚠ Render error', [System.StringComparison]::Ordinal)) {
+                $renderError = $settingsElement
+                break
+            }
+        }
+
+        if ($null -ne $renderError) {
+            throw 'Settings UI rendered a Reactor error surface.'
+        }
+
+        Find-DescendantByFilter `
+            -Root $settingsWindow `
+            -Predicate {
+                param($element)
+
+                $element.Current.Name -eq 'Modal to print preferences owner.'
+            } `
+            -TimeoutSeconds 30 `
+            -Description 'the Settings UI modal owner status' | Out-Null
+
+        Invoke-Button `
+            -Root $settingsWindow `
+            -Name 'Close' `
+            -TimeoutSeconds 30
+
+        Wait-ForTopLevelWindowClosed `
+            -Name 'Print preferences' `
+            -TimeoutSeconds 30
+
+        Wait-ForAutomationElementEnabledState `
+            -Element $printDialog `
+            -ExpectedEnabled $true `
+            -TimeoutSeconds 30 `
+            -Description 'the Windows print dialog after Settings UI closes'
+
+        Invoke-Button `
+            -Root $printDialog `
+            -Name 'Cancel' `
+            -TimeoutSeconds 30
+
+        if (-not $process.WaitForExit(60000)) {
+            throw 'Settings UI owner source process did not exit.'
+        }
+
+        $exitCode = $null
+        try {
+            $process.Refresh()
+            $exitCode = $process.ExitCode
+        }
+        catch [InvalidOperationException] {
+            $exitCode = $null
+        }
+
+        if ($null -ne $exitCode -and $exitCode -ne 0) {
+            $diagnostic = if (Test-Path $headlessLog) {
+                Get-Content $headlessLog -Raw
+            }
+            else {
+                'No headless diagnostic log was written.'
+            }
+
+            throw "Settings UI owner source process exited with $exitCode. $diagnostic"
+        }
+
+        return [ordered]@{
+            queue = 'PrintSink - PDF'
+            mode = 'settings-ui-owner'
+            ownerDisabled = $true
+            modalStatus = 'Modal to print preferences owner.'
+            packageFamilyName = $PackageFamilyName
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+
+        Get-Process -Name 'PrintSink*', 'PrintDialog' -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-PrintSinkSettingsWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -1946,6 +2121,56 @@ function Select-WindowsPrintPrinter {
     Start-Sleep -Milliseconds 500
 }
 
+function Wait-ForAutomationElementEnabledState {
+    param(
+        [System.Windows.Automation.AutomationElement] $Element,
+        [bool] $ExpectedEnabled,
+        [int] $TimeoutSeconds,
+        [string] $Description
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            if ($Element.Current.IsEnabled -eq $ExpectedEnabled) {
+                return
+            }
+        }
+        catch [System.Windows.Automation.ElementNotAvailableException] {
+            throw "$Description is no longer available."
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for $Description to be enabled=$ExpectedEnabled."
+}
+
+function Wait-ForTopLevelWindowClosed {
+    param(
+        [string] $Name,
+        [int] $TimeoutSeconds
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                $Name))
+        if ($null -eq $window) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for the $Name window to close."
+}
+
 function Assert-DocumentOutput {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintCase,
@@ -2160,6 +2385,9 @@ try {
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
 
+    $settingsUiOwnerResult = Invoke-PrintSinkSettingsUiOwner `
+        -PackageFamilyName $package.PackageFamilyName
+
     $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -2194,6 +2422,7 @@ try {
         realPrints = $realPrintResults
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult
+        settingsUiOwner = $settingsUiOwnerResult
         settingsWatermark = $settingsWatermarkResult
         settingsImageWatermark = $settingsImageWatermarkResult
         jobUiWatermark = $jobUiResult

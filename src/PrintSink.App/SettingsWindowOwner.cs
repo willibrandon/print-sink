@@ -1,5 +1,6 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
 using System.Runtime.InteropServices;
 using Windows.Graphics.Printing.PrintSupport;
 using WinRT.Interop;
@@ -9,6 +10,7 @@ namespace PrintSink.App;
 internal static partial class SettingsWindowOwner
 {
     private const int GwlParentWindow = -8;
+    private const uint GetAncestorRoot = 2;
 
     internal static string Apply(ReactorWindow? window, PrintSupportSettingsActivatedEventArgs? settingsArgs)
     {
@@ -28,16 +30,29 @@ internal static partial class SettingsWindowOwner
             return "Owner HWND unavailable.";
         }
 
-        nint childHwnd = WindowNative.GetWindowHandle(window.NativeWindow);
+        nint rootOwnerHwnd = GetAncestor(ownerHwnd, GetAncestorRoot);
+        if (rootOwnerHwnd != 0)
+        {
+            ownerHwnd = rootOwnerHwnd;
+        }
+
+        nint childHwnd = Microsoft.UI.Win32Interop.GetWindowFromWindowId(window.AppWindow.Id);
+        if (childHwnd == 0)
+        {
+            childHwnd = WindowNative.GetWindowHandle(window.NativeWindow);
+        }
+
         if (childHwnd == 0)
         {
             return "Settings HWND unavailable.";
         }
 
         _ = SetWindowLongPtr(childHwnd, GwlParentWindow, ownerHwnd);
+        // Reactor creates this Window before the PSA owner is known; disable the owner directly.
+        DisableOwnerUntilClosed(window.NativeWindow, ownerHwnd);
+
         if (window.AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.IsModal = true;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
             return "Modal to print preferences owner.";
@@ -55,4 +70,17 @@ internal static partial class SettingsWindowOwner
 
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static partial nint SetWindowLongPtr(nint windowHandle, int index, nint newLong);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    private static partial nint GetAncestor(nint windowHandle, uint flags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EnableWindow(nint windowHandle, [MarshalAs(UnmanagedType.Bool)] bool enable);
+
+    private static void DisableOwnerUntilClosed(Window settingsWindow, nint ownerHwnd)
+    {
+        _ = EnableWindow(ownerHwnd, false);
+        settingsWindow.Closed += (_, _) => EnableWindow(ownerHwnd, true);
+    }
 }

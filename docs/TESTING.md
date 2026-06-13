@@ -121,16 +121,18 @@ The required E2E suite proves the current installed-package behavior:
    copy route.
 6. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-7. Set package-local default text and image watermarks, call
+7. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+   and assert the owner is restored when Settings closes.
+8. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-8. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-9. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-10. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-11. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+9. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+10. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+11. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+12. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
-same change. The next known gap is visible Settings UI owner-window automation.
+same change.
 
 Real output assertions:
 
@@ -145,6 +147,8 @@ Real output assertions:
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
+- Settings UI activation must show the Reactor settings surface, disable the real Windows print dialog
+  owner while open, and restore the owner when closed.
 - Package-local default text watermark settings appear in a real PDF after a capability refresh.
 - Package-local default image watermark settings add PDF image content after a capability refresh.
 - Watermark text appears on rendered pages when enabled.
