@@ -24,6 +24,13 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("-PackagePath $package.FullName", workflow);
         Assert.Contains("-OutputDirectory", workflow);
         Assert.Contains("-Cleanup", workflow);
+        Assert.Contains("X509Store", workflow);
+        Assert.Contains("StoreName]::TrustedPeople", workflow);
+        Assert.Contains("StoreLocation]::CurrentUser", workflow);
+        Assert.Contains("StoreLocation]::LocalMachine", workflow);
+        Assert.IsFalse(
+            workflow.Contains("StoreName]::Root", StringComparison.Ordinal),
+            "CI package trust must not write to a Root store.");
 
         AssertBefore(workflow, "Build", "Test");
         AssertBefore(workflow, "Test", "Packaged app tests");
@@ -45,6 +52,44 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("[object] $Artifact", e2eScript);
         Assert.Contains("$null -eq $Artifact", e2eScript);
         Assert.Contains("$Artifact.Length -eq 0", e2eScript);
+    }
+
+    /// <summary>
+    /// Verifies the local E2E installer trusts the package-adjacent test certificate.
+    /// </summary>
+    [TestMethod]
+    public void E2ePackageInstallTrustsAdjacentCertificate()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+        string packageTrustScript = ExtractScriptBlock(
+            e2eScript,
+            "function Import-PrintSinkPackageCertificate",
+            "function Add-MediumIntegrityProcessLauncher");
+
+        Assert.Contains("function Import-PrintSinkPackageCertificate", e2eScript);
+        Assert.Contains("Add-PrintSinkPackageCertificateToStore", packageTrustScript);
+        Assert.Contains("X509Store", packageTrustScript);
+        Assert.Contains("StoreName]::TrustedPeople", packageTrustScript);
+        Assert.Contains("StoreLocation]::CurrentUser", packageTrustScript);
+        Assert.Contains("StoreLocation]::LocalMachine", packageTrustScript);
+        Assert.IsFalse(
+            packageTrustScript.Contains("StoreName]::Root", StringComparison.Ordinal),
+            "E2E package trust must not write to a Root store.");
+        Assert.Contains("Import-PrintSinkPackageCertificate -PackagePath $PackagePath", e2eScript);
+        AssertBefore(e2eScript, "Import-PrintSinkPackageCertificate -PackagePath $PackagePath", "Add-AppxPackage");
+    }
+
+    private static string ExtractScriptBlock(string text, string startMarker, string endMarker)
+    {
+        int startIndex = text.IndexOf(startMarker, StringComparison.Ordinal);
+        int endIndex = text.IndexOf(endMarker, startIndex >= 0 ? startIndex : 0, StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, startIndex, $"Could not find '{startMarker}'.");
+        Assert.IsGreaterThan(startIndex, endIndex, $"Could not find '{endMarker}' after '{startMarker}'.");
+
+        return text[startIndex..endIndex];
     }
 
     private static void AssertBefore(string text, string earlier, string later)

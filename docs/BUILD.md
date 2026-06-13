@@ -66,7 +66,8 @@ MSIX:
 ```powershell
 Get-AppxPackage PrintSink | Remove-AppxPackage
 $pkg = "artifacts\appxpackages\x64\PrintSink.App_1.0.0.0_x64_Debug_Test"
-Import-Certificate -FilePath "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer" -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+certutil -user -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
+certutil -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
 Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
 ```
 

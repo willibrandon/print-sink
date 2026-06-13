@@ -140,7 +140,41 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts\certificates | Out-Null
           $certificatePath = Join-Path $PWD 'artifacts\certificates\PrintSink.CI.cer'
           Export-Certificate -Cert $cert -FilePath $certificatePath | Out-Null
-          Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+
+          function Add-CertificateToStore {
+            param(
+              [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate,
+              [System.Security.Cryptography.X509Certificates.StoreName] $StoreName,
+              [System.Security.Cryptography.X509Certificates.StoreLocation] $StoreLocation
+            )
+
+            $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              $StoreName,
+              $StoreLocation)
+            try {
+              $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+              $existing = $store.Certificates.Find(
+                [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                $Certificate.Thumbprint,
+                $false)
+              if ($existing.Count -eq 0) {
+                $store.Add($Certificate)
+              }
+            }
+            finally {
+              $store.Dispose()
+            }
+          }
+
+          $exportedCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+          Add-CertificateToStore `
+            -Certificate $exportedCertificate `
+            -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople) `
+            -StoreLocation ([System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+          Add-CertificateToStore `
+            -Certificate $exportedCertificate `
+            -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople) `
+            -StoreLocation ([System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
           "PRINTSINK_PACKAGE_CERTIFICATE_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build signed MSIX

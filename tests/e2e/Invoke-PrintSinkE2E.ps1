@@ -475,6 +475,55 @@ function Stop-PrintSinkProcess {
     $Process.WaitForExit(5000) | Out-Null
 }
 
+function Import-PrintSinkPackageCertificate {
+    param(
+        [string] $PackagePath
+    )
+
+    $packageDirectory = Split-Path -Parent $PackagePath
+    $packageBaseName = [System.IO.Path]::GetFileNameWithoutExtension($PackagePath)
+    $certificatePath = Join-Path $packageDirectory "$packageBaseName.cer"
+    if (-not (Test-Path -LiteralPath $certificatePath -PathType Leaf)) {
+        return
+    }
+
+    Write-E2EProgress "Trusting package certificate $certificatePath"
+    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+    Add-PrintSinkPackageCertificateToStore `
+        -Certificate $certificate `
+        -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople) `
+        -StoreLocation ([System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+    Add-PrintSinkPackageCertificateToStore `
+        -Certificate $certificate `
+        -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople) `
+        -StoreLocation ([System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+}
+
+function Add-PrintSinkPackageCertificateToStore {
+    param(
+        [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate,
+        [System.Security.Cryptography.X509Certificates.StoreName] $StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation] $StoreLocation
+    )
+
+    $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+        $StoreName,
+        $StoreLocation)
+    try {
+        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $existing = $store.Certificates.Find(
+            [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+            $Certificate.Thumbprint,
+            $false)
+        if ($existing.Count -eq 0) {
+            $store.Add($Certificate)
+        }
+    }
+    finally {
+        $store.Dispose()
+    }
+}
+
 function Add-MediumIntegrityProcessLauncher {
     if ('PrintSinkE2E.MediumIntegrityProcessLauncher' -as [type]) {
         return
@@ -4834,6 +4883,8 @@ if (-not $SkipPackageInstall) {
     if (-not (Test-Path -LiteralPath $PackagePath)) {
         throw "Package path was not found: $PackagePath"
     }
+
+    Import-PrintSinkPackageCertificate -PackagePath $PackagePath
 
     Write-E2EProgress "Installing package from $PackagePath"
     Get-AppxPackage -Name $PackageName | Remove-AppxPackage -ErrorAction Stop
