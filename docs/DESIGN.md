@@ -202,7 +202,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
 | 20 | IPP attribute get behavior for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert document-format reads expose no usable virtual-printer IPP values, matching v4 platform behavior |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
-| 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Tracked only. Defensive handler for OS error-toast activation; not a supported virtual-printer behavior until a deterministic toast E2E exists. |
+| 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification`, `PrintWorkflowJobBackgroundSession.JobIssueDetected` | App Job UI + workflow task | Tracked only. Defensive handlers record OS error-toast/job-issue activations; not a supported virtual-printer behavior until a deterministic E2E exists. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Job password option model | `JobPasswordOptions` settings model | Core + Job UI | Job UI capture is tested; virtual file output records metadata as not applicable without exposing the secret; no physical target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
@@ -547,6 +547,9 @@ The physical-printer PSA path is an association and activation probe for
 - `JobStarting` records workflow activation and leaves system rendering enabled.
 - `PdlModificationRequested` honors Job UI cancel/fail semantics, consumes per-job UI options so they
   cannot leak to the next virtual-printer job, and records a pass-through diagnostic.
+- `JobIssueDetected` records issue kind, HRESULT, toast-skip state, and UI-launch availability when
+  Windows raises the event. It remains a tracked compatibility hook until a deterministic E2E can
+  trigger it.
 - The task does not call `SetSkipSystemRendering` or `CreateJobOnPrinter[WithAttributes]`.
 - Package-local diagnostics record physical workflow start, pass-through, and failure/cancel.
 

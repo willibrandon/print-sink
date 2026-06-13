@@ -1,4 +1,5 @@
 using Windows.ApplicationModel.Background;
+using Windows.Foundation.Metadata;
 using Windows.Graphics.Printing.Workflow;
 using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Settings;
@@ -10,6 +11,9 @@ namespace PrintSink.Tasks;
 /// </summary>
 public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 {
+    private const string PrintWorkflowJobBackgroundSessionType =
+        "Windows.Graphics.Printing.Workflow.PrintWorkflowJobBackgroundSession";
+
     private readonly BackgroundTaskHandlerState state = new();
 
     /// <inheritdoc />
@@ -28,6 +32,11 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         PrintWorkflowJobBackgroundSession session = jobDetails.PrintWorkflowJobSession;
         session.JobStarting += OnJobStarting;
         session.PdlModificationRequested += OnPdlModificationRequested;
+        if (ApiInformation.IsEventPresent(PrintWorkflowJobBackgroundSessionType, "JobIssueDetected"))
+        {
+            session.JobIssueDetected += OnJobIssueDetected;
+        }
+
         session.Start();
     }
 
@@ -102,6 +111,32 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         }
     }
 
+    private void OnJobIssueDetected(
+        PrintWorkflowJobBackgroundSession sender,
+        PrintWorkflowJobIssueDetectedEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+        try
+        {
+            state.Run(() =>
+            {
+                AppendDiagnostic(
+                    "Workflow job issue detected",
+                    GetPrinterName(args),
+                    string.Join(
+                        "; ",
+                        $"kind={args.JobIssueKind}",
+                        $"extendedError={FormatExtendedError(args.ExtendedError)}",
+                        $"skipSystemErrorToast={args.SkipSystemErrorToast}",
+                        $"uiLaunch={(args.UILauncher.IsUILaunchEnabled() ? "enabled" : "disabled")}"));
+            });
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
     private static bool CompleteJobUi(
         PrintWorkflowPdlModificationRequestedEventArgs args,
         LocalSettingsStore settingsStore)
@@ -156,6 +191,25 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             return string.Empty;
         }
+    }
+
+    private static string GetPrinterName(PrintWorkflowJobIssueDetectedEventArgs args)
+    {
+        try
+        {
+            return args.PrinterJob.Printer.PrinterName;
+        }
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string FormatExtendedError(Exception? extendedError)
+    {
+        return extendedError is null
+            ? "<none>"
+            : $"0x{extendedError.HResult:X8}";
     }
 
     private static void AppendDiagnostic(string message, string endpoint, string detail)

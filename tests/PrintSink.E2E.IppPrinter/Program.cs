@@ -25,6 +25,11 @@ app.MapGet("/{**path}", () => Results.Text("PrintSink E2E IPP printer"));
 app.MapPost("/{**path}", async context =>
 {
     context.Response.ContentType = "application/ipp";
+    if (options.ResponseDelay > TimeSpan.Zero)
+    {
+        await Task.Delay(options.ResponseDelay, context.RequestAborted).ConfigureAwait(false);
+    }
+
     await printerServer
         .ProcessAsync(context.Request.Body, context.Response.Body, context.RequestAborted)
         .ConfigureAwait(false);

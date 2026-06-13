@@ -130,11 +130,11 @@ internal sealed class IppPrinterServer
                     IppOperation.GetPrinterAttributes,
                 ],
                 PrinterInfo = options.PrinterName,
-                PrinterIsAcceptingJobs = true,
+                PrinterIsAcceptingJobs = !options.RejectJobs,
                 PrinterMakeAndModel = "PrintSink E2E IPP Printer",
                 PrinterName = options.PrinterName,
                 PrinterState = GetPrinterState(),
-                PrinterStateReasons = [PrinterStateReason.None],
+                PrinterStateReasons = options.PrinterStateReasons,
                 PrinterUriSupported = [options.PrinterUri],
                 QueuedJobCount = GetQueuedJobCount(),
                 UriAuthenticationSupported = [UriAuthentication.None],
@@ -143,13 +143,15 @@ internal sealed class IppPrinterServer
         };
     }
 
-    private static ValidateJobResponse CreateValidateJobResponse(ValidateJobRequest request)
+    private ValidateJobResponse CreateValidateJobResponse(ValidateJobRequest request)
     {
         return new ValidateJobResponse
         {
             RequestId = request.RequestId,
             Version = request.Version,
-            StatusCode = IppStatusCode.SuccessfulOk,
+            StatusCode = options.RejectJobs
+                ? IppStatusCode.ServerErrorNotAcceptingJobs
+                : IppStatusCode.SuccessfulOk,
         };
     }
 
@@ -157,6 +159,17 @@ internal sealed class IppPrinterServer
         IIppRequestMessage rawRequest,
         CreateJobRequest request)
     {
+        if (options.RejectJobs)
+        {
+            return new CreateJobResponse
+            {
+                RequestId = request.RequestId,
+                Version = request.Version,
+                StatusCode = IppStatusCode.ServerErrorNotAcceptingJobs,
+                JobAttributes = new JobAttributes(),
+            };
+        }
+
         IppPrinterJob job = CreateJob(
             request.OperationAttributes?.JobName,
             AttributeNames(rawRequest.OperationAttributes),
@@ -176,6 +189,17 @@ internal sealed class IppPrinterServer
         PrintJobRequest request,
         CancellationToken cancellationToken)
     {
+        if (options.RejectJobs)
+        {
+            return new PrintJobResponse
+            {
+                RequestId = request.RequestId,
+                Version = request.Version,
+                StatusCode = IppStatusCode.ServerErrorNotAcceptingJobs,
+                JobAttributes = new JobAttributes(),
+            };
+        }
+
         IppPrinterJob job = CreateJob(
             request.OperationAttributes?.JobName,
             AttributeNames(rawRequest.OperationAttributes),
@@ -202,13 +226,15 @@ internal sealed class IppPrinterServer
         CancellationToken cancellationToken)
     {
         IppPrinterJob? job = FindJob(request.OperationAttributes?.JobId);
-        if (job is null)
+        if (job is null || options.RejectJobs)
         {
             return new SendDocumentResponse
             {
                 RequestId = request.RequestId,
                 Version = request.Version,
-                StatusCode = IppStatusCode.ClientErrorNotPossible,
+                StatusCode = options.RejectJobs
+                    ? IppStatusCode.ServerErrorNotAcceptingJobs
+                    : IppStatusCode.ClientErrorNotPossible,
                 JobAttributes = new JobAttributes(),
             };
         }
@@ -398,6 +424,11 @@ internal sealed class IppPrinterServer
 
     private PrinterState GetPrinterState()
     {
+        if (options.PrinterState != PrinterState.Idle)
+        {
+            return options.PrinterState;
+        }
+
         return GetQueuedJobCount() > 0 ? PrinterState.Processing : PrinterState.Idle;
     }
 

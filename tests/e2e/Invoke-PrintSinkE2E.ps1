@@ -1579,7 +1579,11 @@ function Start-PrintSinkIppPrinterServer {
     param(
         [string] $PrinterName,
         [string] $HostName,
-        [string] $OutputDirectory
+        [string] $OutputDirectory,
+        [string] $PrinterState = '',
+        [string] $PrinterStateReason = '',
+        [switch] $RejectJobs,
+        [int] $ResponseDelayMilliseconds = 0
     )
 
     $projectPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\PrintSink.E2E.IppPrinter.csproj'
@@ -1612,6 +1616,22 @@ function Start-PrintSinkIppPrinterServer {
         $OutputDirectory,
         '--ready-file',
         $readyFile)
+    if (-not [string]::IsNullOrWhiteSpace($PrinterState)) {
+        $processArguments += @('--printer-state', $PrinterState)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PrinterStateReason)) {
+        $processArguments += @('--printer-state-reason', $PrinterStateReason)
+    }
+
+    if ($RejectJobs) {
+        $processArguments += '--reject-jobs'
+    }
+
+    if ($ResponseDelayMilliseconds -gt 0) {
+        $processArguments += @('--response-delay-ms', [string]$ResponseDelayMilliseconds)
+    }
+
     $processStartInfo.Arguments = Join-PrintSinkProcessArguments -Arguments $processArguments
     Set-Content -LiteralPath $argumentsFile -Value $processStartInfo.Arguments -Encoding UTF8
 
@@ -4167,7 +4187,7 @@ function New-PrintSinkDeferredFeatureEvidence {
             number = 22
             feature = 'Job notification compatibility hook'
             status = 'deferred'
-            evidence = 'Windows did not deliver a deterministic PrintWorkflowJobUISession.JobNotification activation in the supported virtual-printer E2E flow. The handler records diagnostics if the OS activates it, but PrintSink does not claim this as a supported feature until a real E2E can trigger it.'
+            evidence = 'Windows did not deliver deterministic PrintWorkflowJobUISession.JobNotification or PrintWorkflowJobBackgroundSession.JobIssueDetected activation in the supported E2E flow. The handlers record diagnostics if the OS activates them, but PrintSink does not claim this as a supported feature until a real E2E can trigger it.'
         },
         [ordered]@{
             number = 26

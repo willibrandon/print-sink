@@ -1,5 +1,8 @@
 namespace PrintSink.E2E.IppPrinter;
 
+using System.Reflection;
+using SharpIpp.Protocol.Models;
+
 internal sealed class IppPrinterOptions
 {
     internal string PrinterName { get; private set; } = "PrintSink E2E IPP";
@@ -12,6 +15,14 @@ internal sealed class IppPrinterOptions
         Path.Combine(Path.GetTempPath(), "PrintSink.E2E.IppPrinter");
 
     internal string DocumentFormat { get; private set; } = "application/pdf";
+
+    internal PrinterState PrinterState { get; private set; } = PrinterState.Idle;
+
+    internal PrinterStateReason[] PrinterStateReasons { get; private set; } = [PrinterStateReason.None];
+
+    internal bool RejectJobs { get; private set; }
+
+    internal TimeSpan ResponseDelay { get; private set; } = TimeSpan.Zero;
 
     internal string? ReadyFile { get; private set; }
 
@@ -46,6 +57,18 @@ internal sealed class IppPrinterOptions
                 case "--document-format":
                     options.DocumentFormat = GetRequiredValue(args, ref index, argument);
                     break;
+                case "--printer-state":
+                    options.PrinterState = GetRequiredPrinterState(args, ref index, argument);
+                    break;
+                case "--printer-state-reason":
+                    options.PrinterStateReasons = GetRequiredPrinterStateReasons(args, ref index, argument);
+                    break;
+                case "--reject-jobs":
+                    options.RejectJobs = true;
+                    break;
+                case "--response-delay-ms":
+                    options.ResponseDelay = TimeSpan.FromMilliseconds(GetRequiredNonNegativeInteger(args, ref index, argument));
+                    break;
                 case "--ready-file":
                     options.ReadyFile = GetRequiredValue(args, ref index, argument);
                     break;
@@ -76,4 +99,54 @@ internal sealed class IppPrinterOptions
             : throw new ArgumentException($"{option} must be a TCP port number.");
     }
 
+    private static int GetRequiredNonNegativeInteger(IReadOnlyList<string> args, ref int index, string option)
+    {
+        string value = GetRequiredValue(args, ref index, option);
+        return int.TryParse(value, out int result) && result >= 0
+            ? result
+            : throw new ArgumentException($"{option} must be a non-negative integer.");
+    }
+
+    private static PrinterState GetRequiredPrinterState(IReadOnlyList<string> args, ref int index, string option)
+    {
+        string value = GetRequiredValue(args, ref index, option);
+        return Enum.TryParse(value, true, out PrinterState state)
+            ? state
+            : throw new ArgumentException($"{option} has unsupported printer state '{value}'.");
+    }
+
+    private static PrinterStateReason[] GetRequiredPrinterStateReasons(
+        IReadOnlyList<string> args,
+        ref int index,
+        string option)
+    {
+        string value = GetRequiredValue(args, ref index, option);
+        PrinterStateReason[] reasons =
+        [
+            .. value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(ParsePrinterStateReason),
+        ];
+
+        return reasons.Length == 0 ? [PrinterStateReason.None] : reasons;
+    }
+
+    private static PrinterStateReason ParsePrinterStateReason(string value)
+    {
+        foreach (FieldInfo field in typeof(PrinterStateReason).GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (field.GetValue(null) is not PrinterStateReason reason)
+            {
+                continue;
+            }
+
+            if (string.Equals(field.Name, value, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(reason.Value, value, StringComparison.OrdinalIgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        throw new ArgumentException($"Unsupported printer-state-reason '{value}'.");
+    }
 }
