@@ -193,6 +193,7 @@ function New-AppxNamespaceManager {
     $namespaceManager = [System.Xml.XmlNamespaceManager]::new($Manifest.NameTable)
     $namespaceManager.AddNamespace('appx', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10') | Out-Null
     $namespaceManager.AddNamespace('uap3', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/3') | Out-Null
+    $namespaceManager.AddNamespace('uap10', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/10') | Out-Null
     $namespaceManager.AddNamespace('desktop', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10') | Out-Null
     $namespaceManager.AddNamespace('printsupport', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10') | Out-Null
     $namespaceManager.AddNamespace('printsupport2', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2') | Out-Null
@@ -264,6 +265,7 @@ function Assert-InstalledPackageShape {
     [xml] $manifest = Get-Content -LiteralPath $manifestPath -Raw
     [System.Xml.XmlNamespaceManager] $namespaceManager = New-AppxNamespaceManager -Manifest $manifest
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//uap3:Extension[@Category="windows.appExecutionAlias"]/uap3:AppExecutionAlias/desktop:ExecutionAlias[@Alias="printsink-app.exe"]' -Description 'the printsink-app.exe execution alias' | Out-Null
+    Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//appx:Application[@uap10:SupportsMultipleInstances="true"]' -Description 'multiple-instance application support' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportWorkflow" and @EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask"]' -Description 'the print support workflow extension' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportExtension" and @EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask"]' -Description 'the print support extension background task' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportSettingsUI" and @EntryPoint="PrintSink.App.App"]' -Description 'the settings UI extension' | Out-Null
@@ -364,6 +366,7 @@ function Assert-InstalledPackageShape {
 
     return [ordered]@{
         manifestPath = $manifestPath
+        supportsMultipleInstances = $true
         virtualPrinters = $reportedPrinters
         activationClasses = $activationClasses
     }

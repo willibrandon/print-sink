@@ -92,6 +92,7 @@ The script validates the installed package before provisioning:
 
 - `printsink-app.exe` app execution alias.
 - all print-support foreground/background extensions.
+- multiple-instance application support for concurrent print activations.
 - all six virtual-printer manifest entries and their localized DisplayName resource references.
 - packaged PDC/PDR files for each queue.
 - `WinRT.Host.dll`, `PrintSink.Tasks.winmd`, `PrintSink.Xps.dll`, and the registered activatable classes.
@@ -135,7 +136,8 @@ The required E2E suite proves the current installed-package behavior:
    the outputs reflect those defaults.
 12. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
 13. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-14. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+14. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+    app execution alias, WinRT host files, and activatable classes.
 15. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
 16. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
