@@ -17,6 +17,7 @@ internal sealed class WinRtPrintSourceSession
     private readonly string sourceText;
     private readonly PrintDocument printDocument = new();
     private readonly IPrintDocumentSource documentSource;
+    private TaskCompletionSource<PrintTaskCompletion>? taskCompletionSource;
     private XamlControls.Border? page;
     private PrintManager? printManager;
 
@@ -28,7 +29,7 @@ internal sealed class WinRtPrintSourceSession
         documentSource = printDocument.DocumentSource;
     }
 
-    internal async Task ShowAsync(Window window)
+    internal async Task<PrintTaskCompletion> ShowAsync(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
 
@@ -37,7 +38,9 @@ internal sealed class WinRtPrintSourceSession
             throw new InvalidOperationException("Windows printing is not available for this session.");
         }
 
+        TaskCompletionSource<PrintTaskCompletion> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         nint windowHandle = WindowNative.GetWindowHandle(window);
+        taskCompletionSource = completionSource;
         printManager = PrintManagerInterop.GetForWindow(windowHandle);
         printManager.PrintTaskRequested += OnPrintTaskRequested;
         printDocument.Paginate += OnPaginate;
@@ -49,9 +52,13 @@ internal sealed class WinRtPrintSourceSession
             await PrintManagerInterop.ShowPrintUIForWindowAsync(windowHandle)
                 .AsTask()
                 .ConfigureAwait(true);
+            return await completionSource.Task
+                .WaitAsync(TimeSpan.FromMinutes(5))
+                .ConfigureAwait(true);
         }
         finally
         {
+            taskCompletionSource = null;
             printManager.PrintTaskRequested -= OnPrintTaskRequested;
             printDocument.Paginate -= OnPaginate;
             printDocument.GetPreviewPage -= OnGetPreviewPage;
@@ -61,9 +68,16 @@ internal sealed class WinRtPrintSourceSession
 
     private void OnPrintTaskRequested(PrintManager sender, PrintTaskRequestedEventArgs args)
     {
-        args.Request.CreatePrintTask(
+        PrintTask printTask = args.Request.CreatePrintTask(
             "PrintSink WinRT E2E Source",
             sourceRequestedArgs => sourceRequestedArgs.SetSource(documentSource));
+        printTask.Completed += OnPrintTaskCompleted;
+    }
+
+    private void OnPrintTaskCompleted(PrintTask sender, PrintTaskCompletedEventArgs args)
+    {
+        sender.Completed -= OnPrintTaskCompleted;
+        taskCompletionSource?.TrySetResult(args.Completion);
     }
 
     private void OnPaginate(object sender, PaginateEventArgs args)

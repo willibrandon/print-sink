@@ -437,6 +437,265 @@ function Stop-PrintSinkE2ERuntime {
         Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
+function Add-MediumIntegrityProcessLauncher {
+    if ('PrintSinkE2E.MediumIntegrityProcessLauncher' -as [type]) {
+        return
+    }
+
+    Add-Type -TypeDefinition @'
+namespace PrintSinkE2E
+{
+    using System;
+    using System.ComponentModel;
+    using System.Runtime.InteropServices;
+    using System.Text;
+
+    public static class MediumIntegrityProcessLauncher
+    {
+        private const uint TokenAssignPrimary = 0x0001;
+        private const uint TokenDuplicate = 0x0002;
+        private const uint TokenQuery = 0x0008;
+        private const uint TokenAdjustDefault = 0x0080;
+        private const uint TokenAdjustSessionId = 0x0100;
+
+        private enum SecurityImpersonationLevel
+        {
+            SecurityAnonymous,
+            SecurityIdentification,
+            SecurityImpersonation,
+            SecurityDelegation,
+        }
+
+        private enum TokenType
+        {
+            TokenPrimary = 1,
+            TokenImpersonation,
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct StartupInfo
+        {
+            public uint cb;
+            public string lpReserved;
+            public string lpDesktop;
+            public string lpTitle;
+            public uint dwX;
+            public uint dwY;
+            public uint dwXSize;
+            public uint dwYSize;
+            public uint dwXCountChars;
+            public uint dwYCountChars;
+            public uint dwFillAttribute;
+            public uint dwFlags;
+            public ushort wShowWindow;
+            public ushort cbReserved2;
+            public IntPtr lpReserved2;
+            public IntPtr hStdInput;
+            public IntPtr hStdOutput;
+            public IntPtr hStdError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessInformation
+        {
+            public IntPtr hProcess;
+            public IntPtr hThread;
+            public uint dwProcessId;
+            public uint dwThreadId;
+        }
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool OpenProcessToken(
+            IntPtr processHandle,
+            uint desiredAccess,
+            out IntPtr tokenHandle);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool DuplicateTokenEx(
+            IntPtr existingToken,
+            uint desiredAccess,
+            IntPtr tokenAttributes,
+            SecurityImpersonationLevel impersonationLevel,
+            TokenType tokenType,
+            out IntPtr newToken);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool CreateProcessWithTokenW(
+            IntPtr token,
+            uint logonFlags,
+            string applicationName,
+            string commandLine,
+            uint creationFlags,
+            IntPtr environment,
+            string currentDirectory,
+            ref StartupInfo startupInfo,
+            out ProcessInformation processInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        public static int Start(
+            IntPtr sourceProcessHandle,
+            string applicationPath,
+            string[] arguments,
+            string workingDirectory)
+        {
+            IntPtr token;
+            if (!OpenProcessToken(
+                sourceProcessHandle,
+                TokenAssignPrimary | TokenDuplicate | TokenQuery | TokenAdjustDefault | TokenAdjustSessionId,
+                out token))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            try
+            {
+                IntPtr primaryToken;
+                if (!DuplicateTokenEx(
+                    token,
+                    TokenAssignPrimary | TokenDuplicate | TokenQuery | TokenAdjustDefault | TokenAdjustSessionId,
+                    IntPtr.Zero,
+                    SecurityImpersonationLevel.SecurityImpersonation,
+                    TokenType.TokenPrimary,
+                    out primaryToken))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
+
+                try
+                {
+                    StartupInfo startupInfo = new StartupInfo
+                    {
+                        cb = (uint)Marshal.SizeOf<StartupInfo>(),
+                    };
+                    ProcessInformation processInformation;
+                    string commandLine = BuildCommandLine(applicationPath, arguments);
+                    if (!CreateProcessWithTokenW(
+                        primaryToken,
+                        0,
+                        null,
+                        commandLine,
+                        0,
+                        IntPtr.Zero,
+                        workingDirectory,
+                        ref startupInfo,
+                        out processInformation))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error());
+                    }
+
+                    CloseHandle(processInformation.hThread);
+                    CloseHandle(processInformation.hProcess);
+                    return (int)processInformation.dwProcessId;
+                }
+                finally
+                {
+                    CloseHandle(primaryToken);
+                }
+            }
+            finally
+            {
+                CloseHandle(token);
+            }
+        }
+
+        private static string BuildCommandLine(string applicationPath, string[] arguments)
+        {
+            StringBuilder builder = new StringBuilder(QuoteArgument(applicationPath));
+            foreach (string argument in arguments)
+            {
+                builder.Append(' ');
+                builder.Append(QuoteArgument(argument));
+            }
+
+            return builder.ToString();
+        }
+
+        private static string QuoteArgument(string argument)
+        {
+            if (argument.Length == 0)
+            {
+                return "\"\"";
+            }
+
+            bool requiresQuoting = false;
+            foreach (char value in argument)
+            {
+                if (char.IsWhiteSpace(value) || value == '"')
+                {
+                    requiresQuoting = true;
+                    break;
+                }
+            }
+
+            if (!requiresQuoting)
+            {
+                return argument;
+            }
+
+            StringBuilder builder = new StringBuilder();
+            builder.Append('"');
+            int backslashes = 0;
+            foreach (char value in argument)
+            {
+                if (value == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+
+                if (value == '"')
+                {
+                    builder.Append('\\', backslashes * 2 + 1);
+                    builder.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+
+                builder.Append('\\', backslashes);
+                builder.Append(value);
+                backslashes = 0;
+            }
+
+            builder.Append('\\', backslashes * 2);
+            builder.Append('"');
+            return builder.ToString();
+        }
+    }
+}
+'@
+}
+
+function Start-MediumIntegrityProcess {
+    param(
+        [string] $FilePath,
+        [string[]] $ArgumentList
+    )
+
+    Add-MediumIntegrityProcessLauncher
+
+    $explorer = Get-Process -Name explorer -ErrorAction SilentlyContinue |
+        Where-Object { $_.Handle -ne [IntPtr]::Zero } |
+        Select-Object -First 1
+    if ($null -eq $explorer) {
+        return Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -PassThru
+    }
+
+    try {
+        $processId = [PrintSinkE2E.MediumIntegrityProcessLauncher]::Start(
+            $explorer.Handle,
+            $FilePath,
+            $ArgumentList,
+            (Get-Location).Path)
+        return Get-Process -Id $processId -ErrorAction Stop
+    }
+    catch {
+        Write-Verbose "Falling back to normal process launch after medium-integrity launch failed: $($_.Exception.Message)"
+        return Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -PassThru
+    }
+}
+
 function Invoke-PrintSinkCliCommand {
     param(
         [string[]] $Arguments,
@@ -1117,6 +1376,118 @@ function Invoke-PrintSinkPdfPassthroughPrint {
     }
 }
 
+function Invoke-PrintSinkWinRtSourcePrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $sourceText = 'foo winrt source e2e'
+    $outputPath = Join-Path $OutputDirectory 'PrintSink-WinRT-Source.pdf'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
+    Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+    $printCase = [ordered]@{
+        queue = 'PrintSink - PDF'
+        format = 'pdf'
+        extension = '.pdf'
+        requiresSaveAs = $true
+        expectedText = $sourceText
+        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+    }
+    $startedUtc = [DateTimeOffset]::UtcNow
+    $alias = Get-Command printsink-app.exe -ErrorAction Stop
+    $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
+    Remove-Item $headlessLog -ErrorAction SilentlyContinue
+    $process = Start-MediumIntegrityProcess `
+        -FilePath $alias.Source `
+        -ArgumentList @('--winrt-source-print', '--text', $sourceText)
+
+    try {
+        $printDialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'PrintSink WinRT E2E Source - Print')) `
+            -TimeoutSeconds 45 `
+            -Description 'the WinRT source Windows print dialog'
+
+        Select-WindowsPrintPrinter `
+            -PrintDialog $printDialog `
+            -PrinterName $printCase.queue
+
+        Invoke-Button `
+            -Root $printDialog `
+            -Name 'Print' `
+            -TimeoutSeconds 30
+
+        $saveDialog = Wait-ForAutomationElement `
+            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+            -Scope ([System.Windows.Automation.TreeScope]::Children) `
+            -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As')) `
+            -TimeoutSeconds 30 `
+            -Description 'the Save Print Output As dialog for the WinRT source print'
+        Set-FileDialogPath -Dialog $saveDialog -OutputPath $outputPath
+
+        if (-not $process.WaitForExit(60000)) {
+            throw 'WinRT source print process did not exit.'
+        }
+
+        $exitCode = $null
+        try {
+            $process.Refresh()
+            $exitCode = $process.ExitCode
+        }
+        catch [InvalidOperationException] {
+            $exitCode = $null
+        }
+
+        if ($null -ne $exitCode -and $exitCode -ne 0) {
+            $diagnostic = if (Test-Path $headlessLog) {
+                Get-Content $headlessLog -Raw
+            }
+            else {
+                'No headless diagnostic log was written.'
+            }
+
+            throw "WinRT source print process exited with $($process.ExitCode). $diagnostic"
+        }
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+
+        $diagnostic = Wait-ForPrintSinkJobCompleted `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printCase.queue `
+            -StartedUtc $startedUtc `
+            -ExpectedRouteDetail $printCase.expectedRoute
+
+        $file = Get-Item -LiteralPath $outputPath
+        return [ordered]@{
+            queue = $printCase.queue
+            format = $printCase.format
+            outputPath = $outputPath
+            bytes = $file.Length
+            mode = 'winrt-source'
+            diagnostic = $diagnostic
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+
+        Close-SavePrintOutputDialogs
+        Get-Process -Name 'PrintDialog' -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-PrintSinkSettingsWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -1527,6 +1898,54 @@ function Invoke-Button {
     $invokePattern.Invoke()
 }
 
+function Select-WindowsPrintPrinter {
+    param(
+        [System.Windows.Automation.AutomationElement] $PrintDialog,
+        [string] $PrinterName
+    )
+
+    $printerSelector = Find-EnabledDescendant `
+        -Root $PrintDialog `
+        -Condition ([System.Windows.Automation.AndCondition]::new(
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+                'printerSelector'),
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::ComboBox))) `
+        -TimeoutSeconds 30 `
+        -Description 'the Windows print printer selector'
+
+    [object] $expandPattern = $null
+    if ($printerSelector.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$expandPattern)) {
+        if ($expandPattern.Current.ExpandCollapseState -ne [System.Windows.Automation.ExpandCollapseState]::Expanded) {
+            $expandPattern.Expand()
+        }
+    }
+
+    $printerItem = Find-EnabledDescendantByFilter `
+        -Root $PrintDialog `
+        -Predicate {
+            param($element)
+
+            $element.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem `
+                -and $element.Current.Name -eq $PrinterName
+        } `
+        -TimeoutSeconds 30 `
+        -Description "the $PrinterName printer item"
+
+    [object] $selectionPattern = $null
+    if ($printerItem.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selectionPattern)) {
+        $selectionPattern.Select()
+    }
+    else {
+        $invokePattern = $printerItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+        $invokePattern.Invoke()
+    }
+
+    Start-Sleep -Milliseconds 500
+}
+
 function Assert-DocumentOutput {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintCase,
@@ -1737,6 +2156,10 @@ try {
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
 
+    $winRtSourceResult = Invoke-PrintSinkWinRtSourcePrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+
     $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -1770,6 +2193,7 @@ try {
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
         pdfPassthrough = $pdfPassthroughResult
+        winRtSource = $winRtSourceResult
         settingsWatermark = $settingsWatermarkResult
         settingsImageWatermark = $settingsImageWatermarkResult
         jobUiWatermark = $jobUiResult

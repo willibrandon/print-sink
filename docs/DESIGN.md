@@ -696,13 +696,18 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
+   - Send a real source PDF through Windows' PDL passthrough provider and assert the output is
+     byte-for-byte identical to the input PDF.
+   - Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+     `PrintSink - PDF`, and assert a valid PDF containing the source text.
    - Settings/defaults: set package-local endpoint text and image watermarks, call
      `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real jobs with Job UI disabled, and assert
      the default watermarks appear in the outputs.
    - Job UI: assert watermark changes are applied, and assert cancel aborts the real print flow while
      leaving the selected target empty and recording `Job canceled`.
    - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough,
-     or a new sink behavior changes, add the corresponding real E2E assertion in the same commit.
+     source printing, or a new sink behavior changes, add the corresponding real E2E assertion in the
+     same commit.
 
 ### 9.2 Test tooling
 
@@ -796,8 +801,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
-E2E automation passes for all six queues including watermark, settings modality, PDC refresh, and
-cancel paths.
+E2E automation passes for all six queues including PDF passthrough, WinRT source printing, watermark,
+settings modality, PDC refresh, and cancel paths.
 
 ---
 

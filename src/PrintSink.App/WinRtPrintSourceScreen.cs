@@ -1,6 +1,7 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
+using Windows.Graphics.Printing;
 using static Microsoft.UI.Reactor.Factories;
 using static Microsoft.UI.Reactor.Core.Theme;
 
@@ -62,8 +63,14 @@ internal sealed class WinRtPrintSourceScreen : Component<AppActivationRoute>
         {
             setStatus("Opening the Windows print dialog.");
             WinRtPrintSourceSession session = new(sourceText);
-            await session.ShowAsync(window).ConfigureAwait(true);
-            setStatus("The Windows print dialog closed.");
+            PrintTaskCompletion completion = await session.ShowAsync(window).ConfigureAwait(true);
+            setStatus(completion switch
+            {
+                PrintTaskCompletion.Submitted => "The WinRT print task was submitted.",
+                PrintTaskCompletion.Canceled => "The WinRT print task was canceled.",
+                PrintTaskCompletion.Failed => "The WinRT print task failed.",
+                _ => "The WinRT print task closed.",
+            });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
