@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -9,7 +10,7 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace PrintSink.E2E.Assertions;
 
-internal static class DocumentAssertions
+internal static partial class DocumentAssertions
 {
     internal static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -141,8 +142,50 @@ internal static class DocumentAssertions
         }
 
         string pdfSource = File.ReadAllText(path, Encoding.Latin1);
-        return pdfSource.Contains("/Subtype/Image", StringComparison.Ordinal)
-            || pdfSource.Contains("/Subtype /Image", StringComparison.Ordinal);
+        return ContainsPdfImageDictionary(pdfSource);
+    }
+
+    private static bool ContainsPdfImageDictionary(string pdfSource)
+    {
+        string uncommentedSource = RemovePdfComments(pdfSource);
+        foreach (Match dictionary in PdfDictionaryRegex().Matches(uncommentedSource))
+        {
+            if (PdfImageSubtypeRegex().IsMatch(dictionary.Value))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string RemovePdfComments(string source)
+    {
+        StringBuilder uncommentedSource = new(source.Length);
+        bool inComment = false;
+        foreach (char character in source)
+        {
+            if (inComment)
+            {
+                if (character is '\r' or '\n')
+                {
+                    inComment = false;
+                    uncommentedSource.Append(character);
+                }
+
+                continue;
+            }
+
+            if (character == '%')
+            {
+                inComment = true;
+                continue;
+            }
+
+            uncommentedSource.Append(character);
+        }
+
+        return uncommentedSource.ToString();
     }
 
     private static void AssertPclm(string path, string? forbiddenText)
@@ -416,6 +459,12 @@ internal static class DocumentAssertions
             ? BinaryPrimitives.ReadUInt32BigEndian(value)
             : BinaryPrimitives.ReadUInt32LittleEndian(value);
     }
+
+    [GeneratedRegex("<<[\\s\\S]*?>>", RegexOptions.CultureInvariant)]
+    private static partial Regex PdfDictionaryRegex();
+
+    [GeneratedRegex(@"/Subtype\s*/Image\b", RegexOptions.CultureInvariant)]
+    private static partial Regex PdfImageSubtypeRegex();
 
     private static Dictionary<string, string> ParseOptions(string[] args)
     {

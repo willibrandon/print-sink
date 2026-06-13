@@ -286,6 +286,29 @@ internal sealed class DocumentAssertionsTests
         }
     }
 
+    /// <summary>
+    /// Verifies a PCLm output is rejected when image evidence only appears in a PDF comment.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsPclmCommentOnlyImageMarker()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "comment-only.pclm");
+            WriteMinimalImagePdf(path, includePclmMarker: true, includeImage: false, includeCommentOnlyImageMarker: true);
+
+            int exitCode = RunAssertion(["--format", "pclm", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("PDF did not contain image content", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
     private static int RunAssertion(string[] args, out string error)
     {
         using StringWriter outputWriter = new();
@@ -319,7 +342,11 @@ internal sealed class DocumentAssertionsTests
         File.WriteAllBytes(path, builder.Build());
     }
 
-    private static void WriteMinimalImagePdf(string path, bool includePclmMarker)
+    private static void WriteMinimalImagePdf(
+        string path,
+        bool includePclmMarker,
+        bool includeImage = true,
+        bool includeCommentOnlyImageMarker = false)
     {
         StringBuilder builder = new();
         List<int> offsets = [];
@@ -329,19 +356,49 @@ internal sealed class DocumentAssertionsTests
             builder.Append("%PCLm 1.0\n");
         }
 
-        builder.Append("%/Subtype/Image\n");
+        if (includeCommentOnlyImageMarker)
+        {
+            builder.Append("%/Subtype/Image\n");
+        }
+
         AppendPdfObject(builder, offsets, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
         AppendPdfObject(builder, offsets, "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n");
-        AppendPdfObject(builder, offsets, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n");
+        if (includeImage)
+        {
+            AppendPdfObject(
+                builder,
+                offsets,
+                "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n");
+            AppendPdfObject(
+                builder,
+                offsets,
+                "4 0 obj\n<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n\u0080\nendstream\nendobj\n");
+            const string contentStream = "q\n1 0 0 1 72 720 cm\n/Im0 Do\nQ\n";
+            AppendPdfObject(
+                builder,
+                offsets,
+                string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"5 0 obj\n<< /Length {Encoding.Latin1.GetByteCount(contentStream)} >>\nstream\n{contentStream}endstream\nendobj\n"));
+        }
+        else
+        {
+            AppendPdfObject(builder, offsets, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n");
+        }
+
         int xrefOffset = builder.Length;
-        builder.Append("xref\n0 4\n0000000000 65535 f \n");
+        builder.Append("xref\n0 ");
+        builder.Append((offsets.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        builder.Append("\n0000000000 65535 f \n");
         foreach (int offset in offsets)
         {
             builder.Append(offset.ToString("D10", System.Globalization.CultureInfo.InvariantCulture));
             builder.Append(" 00000 n \n");
         }
 
-        builder.Append("trailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n");
+        builder.Append("trailer\n<< /Root 1 0 R /Size ");
+        builder.Append((offsets.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        builder.Append(" >>\nstartxref\n");
         builder.Append(xrefOffset.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.Append("\n%%EOF\n");
         File.WriteAllText(path, builder.ToString(), Encoding.Latin1);
