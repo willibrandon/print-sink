@@ -182,7 +182,8 @@ The required E2E suite proves the current installed-package behavior:
     the expected installed queue names.
 20. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
-21. Assert all six queues are removed when `-Cleanup` is used.
+21. Assert all six queues are removed when `-Cleanup` is used, and write the final cleanup snapshot to
+    `e2e-result.json`.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change. The E2E script also writes `featureEvidence` into `e2e-result.json`; that section is built
@@ -238,6 +239,6 @@ Real output assertions:
   that removes, loses, or unregisters a PrintSink queue fails CI.
 
 The CI job records the package version, Windows build, architecture, source application, target queue,
-queue snapshots, queue-persistence evidence, feature evidence, and output result for each run. The E2E script writes the full run
-record to `e2e-result.json` in the output directory, and CI uploads that file with the generated
-documents.
+queue snapshots, queue-persistence evidence, cleanup evidence, feature evidence, and output result for
+each run. The E2E script writes the full run record to `e2e-result.json` in the output directory, and
+CI uploads that file with the generated documents.

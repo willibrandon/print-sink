@@ -62,14 +62,21 @@ internal sealed class ContinuousIntegrationContractTests
         string e2eScript = File.ReadAllText(e2ePath);
 
         Assert.Contains("function Assert-PrintSinkQueuePersistence", e2eScript);
+        Assert.Contains("function Assert-PrintSinkQueuesRemoved", e2eScript);
         Assert.Contains("$queuePersistenceResult = Assert-PrintSinkQueuePersistence", e2eScript);
         Assert.Contains("-QueuePersistence $queuePersistenceResult", e2eScript);
         Assert.Contains("queuePersistence = $queuePersistenceResult", e2eScript);
+        Assert.Contains("$result['cleanup'] = $cleanupResult", e2eScript);
+        Assert.Contains("Assert-PrintSinkQueuesRemoved", e2eScript);
         Assert.Contains("Queue persistence failed", e2eScript);
         AssertBefore(
             e2eScript,
             "$queuePersistenceResult = Assert-PrintSinkQueuePersistence",
             "$featureEvidence = New-PrintSinkFeatureEvidence");
+        AssertBefore(
+            e2eScript,
+            "$result['cleanup'] = $cleanupResult",
+            "Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath | Out-Null");
     }
 
     /// <summary>

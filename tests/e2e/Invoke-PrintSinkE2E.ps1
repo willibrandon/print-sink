@@ -931,6 +931,21 @@ function Assert-PrintSinkQueuesInstalled {
     return $snapshot
 }
 
+function Assert-PrintSinkQueuesRemoved {
+    param(
+        [string[]] $ExpectedQueues,
+        [string] $Context
+    )
+
+    $snapshot = @(Get-PrintSinkQueueSnapshot -ExpectedQueues $ExpectedQueues)
+    $remainingQueues = @($snapshot | Where-Object { $_.installed } | ForEach-Object { $_.name })
+    if ($remainingQueues.Count -gt 0) {
+        throw "Remaining PrintSink queues ${Context}: $($remainingQueues -join ', ')"
+    }
+
+    return $snapshot
+}
+
 function Invoke-PrintSinkCliQueueLifecycle {
     param(
         [string[]] $ExpectedQueues
@@ -4746,12 +4761,34 @@ function Write-E2EProgress {
     Write-Host "[$([DateTimeOffset]::Now.ToString('O'))] $Message"
 }
 
+function Write-PrintSinkE2EResult {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $Result,
+        [string] $ResultPath
+    )
+
+    $resultJson = $Result | ConvertTo-Json -Depth 8
+    Set-Content -LiteralPath $ResultPath -Value $resultJson -Encoding UTF8
+    Write-E2EProgress "Wrote E2E result to $ResultPath"
+    return $resultJson
+}
+
 function Read-PrintSinkDiagnosticEvents {
     param(
         [string] $DiagnosticPath
     )
 
-    $json = Get-Content -LiteralPath $DiagnosticPath -Raw | ConvertFrom-Json
+    if (-not (Test-Path -LiteralPath $DiagnosticPath -PathType Leaf)) {
+        return @()
+    }
+
+    try {
+        $json = Get-Content -LiteralPath $DiagnosticPath -Raw | ConvertFrom-Json
+    }
+    catch [System.Management.Automation.ItemNotFoundException] {
+        return @()
+    }
+
     if ($null -eq $json) {
         return @()
     }
@@ -5121,6 +5158,8 @@ if ($null -eq $alias) {
 
 $completedSuccessfully = $false
 $e2eStartedUtc = [DateTimeOffset]::UtcNow
+$resultPath = Join-Path $OutputDirectory 'e2e-result.json'
+$result = $null
 
 Write-E2EProgress 'Disabling foreground job UI'
 Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
@@ -5340,7 +5379,6 @@ try {
         -JobUiCancel $jobUiCancelResult
     $deferredFeatureEvidence = New-PrintSinkDeferredFeatureEvidence
 
-    $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
     $result = [ordered]@{
         windowsVersion = [Environment]::OSVersion.Version.ToString()
         architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
@@ -5377,14 +5415,18 @@ try {
         deferredFeatureEvidence = $deferredFeatureEvidence
     }
 
-    $resultJson = $result | ConvertTo-Json -Depth 8
-    Set-Content -LiteralPath $resultPath -Value $resultJson -Encoding UTF8
-    Write-E2EProgress "Wrote E2E result to $resultPath"
+    $resultJson = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath
     $resultJson
     $completedSuccessfully = $true
 }
 finally {
     $cleanupFailures = [System.Collections.Generic.List[string]]::new()
+    $cleanupResult = [ordered]@{
+        requested = [bool]$Cleanup
+        completed = $false
+        timestamp = [DateTimeOffset]::UtcNow.ToString('O')
+        queues = @()
+    }
 
     if ($Cleanup) {
         try {
@@ -5394,12 +5436,22 @@ finally {
                 -ExpectedQueues $expectedQueues `
                 -ExpectedInstalled $false `
                 -TimeoutSeconds 30
+            $cleanupResult['completed'] = $true
+            $cleanupResult['timestamp'] = [DateTimeOffset]::UtcNow.ToString('O')
+            $cleanupResult['queues'] = Assert-PrintSinkQueuesRemoved `
+                -ExpectedQueues $expectedQueues `
+                -Context 'after cleanup'
         }
         catch {
             $cleanupFailures.Add("Virtual-printer cleanup failed: $($_.Exception.Message)")
         }
 
         Stop-PrintSinkE2ERuntime
+    }
+
+    if ($null -ne $result) {
+        $result['cleanup'] = $cleanupResult
+        Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath | Out-Null
     }
 
     try {
