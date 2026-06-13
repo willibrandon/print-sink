@@ -23,7 +23,7 @@ file because the solution also contains the native `PrintSink.Xps` project.
 
 ## Continuous Integration
 
-`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then builds a signed MSIX and runs the real print-stack E2E suite:
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage` to build a signed MSIX and run the real print-stack E2E suite:
 
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`

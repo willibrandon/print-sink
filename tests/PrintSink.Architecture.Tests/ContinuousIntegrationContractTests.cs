@@ -18,24 +18,21 @@ internal sealed class ContinuousIntegrationContractTests
 
         Assert.Contains("platform: x64", workflow);
         Assert.Contains("platform: ARM64", workflow);
-        Assert.Contains("Build signed MSIX", workflow);
         Assert.Contains("Real print-stack E2E", workflow);
-        Assert.Contains("tests\\e2e\\Invoke-PrintSinkE2E.ps1", workflow);
-        Assert.Contains("-PackagePath $package.FullName", workflow);
-        Assert.Contains("-OutputDirectory", workflow);
-        Assert.Contains("-Cleanup", workflow);
-        Assert.Contains("X509Store", workflow);
-        Assert.Contains("StoreName]::TrustedPeople", workflow);
-        Assert.Contains("StoreLocation]::CurrentUser", workflow);
-        Assert.Contains("StoreLocation]::LocalMachine", workflow);
+        Assert.Contains(".\\test-e2e.ps1", workflow);
+        Assert.Contains("-BuildPackage", workflow);
+        Assert.Contains("-Platform ${{ matrix.platform }}", workflow);
+        Assert.DoesNotContain("tests\\e2e\\Invoke-PrintSinkE2E.ps1", workflow);
+        Assert.DoesNotContain("New-SelfSignedCertificate", workflow);
+        Assert.DoesNotContain("PackageCertificateThumbprint", workflow);
         Assert.IsFalse(
             workflow.Contains("StoreName]::Root", StringComparison.Ordinal),
             "CI package trust must not write to a Root store.");
 
         AssertBefore(workflow, "Build", "Test");
         AssertBefore(workflow, "Test", "Packaged app tests");
-        AssertBefore(workflow, "Packaged app tests", "Build signed MSIX");
-        AssertBefore(workflow, "Build signed MSIX", "Real print-stack E2E");
+        AssertBefore(workflow, "Packaged app tests", "Core coverage");
+        AssertBefore(workflow, "Core coverage", "Real print-stack E2E");
     }
 
     /// <summary>
