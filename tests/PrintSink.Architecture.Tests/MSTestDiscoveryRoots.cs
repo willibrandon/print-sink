@@ -9,6 +9,7 @@ internal static class MSTestDiscoveryRoots
     {
         _ = new ContinuousIntegrationContractTests();
         _ = new FeatureEvidenceContractTests();
+        _ = new LineEndingPolicyTests();
         _ = new NamespaceStructureTests();
         _ = new OneTypePerFileTests();
         _ = new WarningConfigurationTests();
