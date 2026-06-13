@@ -78,6 +78,7 @@ $realPrintCases = @(
 $expectedVirtualPrinters = @(
     [ordered]@{
         printerUri = 'printsink:print-to-pdf'
+        displayNameResource = 'ms-resource:PdfPrintDisplayName'
         preferredInputFormat = 'application/oxps'
         outputFileTypes = 'pdf'
         pdcFile = 'Config\PrinterPdf.pdc.xml'
@@ -88,6 +89,7 @@ $expectedVirtualPrinters = @(
     },
     [ordered]@{
         printerUri = 'printsink:print-to-xps'
+        displayNameResource = 'ms-resource:XpsPrintDisplayName'
         preferredInputFormat = 'application/oxps'
         outputFileTypes = 'xps;oxps'
         pdcFile = 'Config\PrinterXps.pdc.xml'
@@ -99,6 +101,7 @@ $expectedVirtualPrinters = @(
     },
     [ordered]@{
         printerUri = 'printsink:print-to-ps'
+        displayNameResource = 'ms-resource:PostScriptPrintDisplayName'
         preferredInputFormat = 'application/postscript'
         outputFileTypes = 'ps'
         pdcFile = 'Config\PrinterPostScript.pdc.xml'
@@ -109,6 +112,7 @@ $expectedVirtualPrinters = @(
     },
     [ordered]@{
         printerUri = 'printsink:print-to-cloud'
+        displayNameResource = 'ms-resource:CloudPrintDisplayName'
         preferredInputFormat = 'application/oxps'
         outputFileTypes = ''
         pdcFile = 'Config\PrinterCloud.pdc.xml'
@@ -119,6 +123,7 @@ $expectedVirtualPrinters = @(
     },
     [ordered]@{
         printerUri = 'printsink:print-to-pwgr'
+        displayNameResource = 'ms-resource:PwgRasterPrintDisplayName'
         preferredInputFormat = 'application/oxps'
         outputFileTypes = 'pwg'
         pdcFile = 'Config\PrinterPwgRaster.pdc.xml'
@@ -127,6 +132,7 @@ $expectedVirtualPrinters = @(
     },
     [ordered]@{
         printerUri = 'printsink:print-to-pclm'
+        displayNameResource = 'ms-resource:PclmPrintDisplayName'
         preferredInputFormat = 'application/oxps'
         outputFileTypes = 'pclm'
         pdcFile = 'Config\PrinterPclm.pdc.xml'
@@ -293,6 +299,11 @@ function Assert-InstalledPackageShape {
             throw "Package manifest is missing virtual printer '$($expectedPrinter.printerUri)'."
         }
 
+        $actualDisplayName = $printerNode.GetAttribute('DisplayName')
+        if ($actualDisplayName -ne $expectedPrinter.displayNameResource) {
+            throw "Virtual printer '$($expectedPrinter.printerUri)' has DisplayName '$actualDisplayName'; expected '$($expectedPrinter.displayNameResource)'."
+        }
+
         foreach ($attributeName in @('PreferredInputFormat', 'PdcFile', 'PdrFile')) {
             $actual = $printerNode.GetAttribute($attributeName)
             $expected = Get-ExpectedVirtualPrinterValue -ExpectedPrinter $expectedPrinter -AttributeName $attributeName
@@ -342,6 +353,7 @@ function Assert-InstalledPackageShape {
 
         $reportedPrinters += [ordered]@{
             printerUri = $expectedPrinter.printerUri
+            displayName = $actualDisplayName
             preferredInputFormat = $printerNode.GetAttribute('PreferredInputFormat')
             outputFileTypes = $actualOutputFileTypes
             pdcFile = $expectedPrinter.pdcFile

@@ -705,6 +705,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      byte-for-byte identical to the input PDF.
    - Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
      `PrintSink - PDF`, and assert a valid PDF containing the source text.
+   - Assert virtual-printer DisplayName resources in the signed manifest and verify the installed
+     queue names that Windows reports.
    - Launch Settings UI from the real Windows print dialog and assert owner-window modality: the print
      dialog is disabled while Settings is open and restored when Settings closes.
    - Settings/defaults: set package-local endpoint text and image watermarks, call
