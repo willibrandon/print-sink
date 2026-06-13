@@ -121,24 +121,26 @@ The required E2E suite proves the current installed-package behavior:
    configuration, and printer selection records the adaptive-card/additional-field request.
 6. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
-7. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+7. Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
+   `document-format-supported` entries for a real virtual queue.
+8. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
-8. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+9. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-9. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+10. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
    and assert the owner is restored when Settings closes.
-10. Set package-local default text and image watermarks, call
+11. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-11. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-12. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-13. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-14. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+12. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+13. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+14. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
+15. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-15. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+16. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, Job UI complete, and Job UI cancel.
-16. Assert all six queues are removed when `-Cleanup` is used.
+17. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change.
@@ -156,6 +158,8 @@ Real output assertions:
   quality configuration, and printer-selected adaptive-card setup.
 - User default print-ticket diagnostics must prove a real default copy-count update and restore through
   `IppPrintDevice.UserDefaultPrintTicket`.
+- Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` returns document-format
+  entries for the real installed virtual queue.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows

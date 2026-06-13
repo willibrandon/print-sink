@@ -35,6 +35,7 @@ internal static class VirtualPrinterCommandLine
         bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
         bool printPdfPassthrough = Contains(commandArgs, "--print-pdf-passthrough");
         bool setDefaultCopies = Contains(commandArgs, "--set-default-copies");
+        bool assertVirtualAttributeRead = Contains(commandArgs, "--assert-virtual-attribute-read");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
         if (!install
             && !remove
@@ -46,6 +47,7 @@ internal static class VirtualPrinterCommandLine
             && !refreshCapabilities
             && !printPdfPassthrough
             && !setDefaultCopies
+            && !assertVirtualAttributeRead
             && !help)
         {
             return null;
@@ -61,7 +63,8 @@ internal static class VirtualPrinterCommandLine
             && !clearWatermark
             && !refreshCapabilities
             && !printPdfPassthrough
-            && !setDefaultCopies)
+            && !setDefaultCopies
+            && !assertVirtualAttributeRead)
         {
             WriteHelp();
             SetCommandLineExitCode(activationArguments, Success);
@@ -84,7 +87,8 @@ internal static class VirtualPrinterCommandLine
                 || clearWatermark
                 || refreshCapabilities
                 || printPdfPassthrough
-                || setDefaultCopies;
+                || setDefaultCopies
+                || assertVirtualAttributeRead;
             if (needsEndpoint)
             {
                 endpointKind = GetRequiredEndpointKind(commandArgs);
@@ -149,6 +153,18 @@ internal static class VirtualPrinterCommandLine
                 WriteDiagnostic(result);
                 await AppendDiagnosticAsync(
                         "User default print ticket updated",
+                        EndpointCatalog.GetByKind(endpointKind).QueueName,
+                        result,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (assertVirtualAttributeRead)
+            {
+                string result = InstalledVirtualPrinterReader.AssertAttributeReadSupported(endpointKind);
+                WriteDiagnostic(result);
+                await AppendDiagnosticAsync(
+                        "Virtual printer attribute read succeeded",
                         EndpointCatalog.GetByKind(endpointKind).QueueName,
                         result,
                         cancellationToken)
@@ -362,6 +378,7 @@ internal static class VirtualPrinterCommandLine
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
             "  --print-pdf-passthrough     Send a PDF through IppPrintDevice PDL passthrough.",
             "  --set-default-copies        Set default ticket copies for --endpoint.",
+            "  --assert-virtual-attribute-read  Assert virtual-printer IPP attributes can be read.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",

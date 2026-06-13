@@ -196,7 +196,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 | 17 | Print-ticket → IPP job attributes | `PrintWorkflowPrintJob.ConvertPrintTicketToJobAttributes`, merge policies | `PrintSupportWorkflowBackgroundTask` + Core | Add/remove attributes (e.g. drop `media-size`) |
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
-| 20 | IPP attribute get (virtual = "not supported") | `IppPrintDevice.GetPrinterAttributes(AsBuffer)` | Core adapter | Documented virtual-printer semantics |
+| 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` | Manifest | |
 | 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | |
@@ -698,6 +698,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      quality configuration, and printer-selected adaptive-card/additional-field setup.
    - Set and restore `IppPrintDevice.UserDefaultPrintTicket` for a real virtual queue, then assert the
      persisted default copy count through package-local diagnostics.
+   - Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
+     `document-format-supported` entries for a real virtual queue so package behavior is documented.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.

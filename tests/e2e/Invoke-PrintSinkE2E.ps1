@@ -1783,6 +1783,27 @@ function Invoke-PrintSinkUserDefaultPrintTicket {
     }
 }
 
+function Invoke-PrintSinkVirtualAttributeRead {
+    param(
+        [string] $PackageFamilyName,
+        [DateTimeOffset] $StartedUtc
+    )
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @('--assert-virtual-attribute-read', '--endpoint', 'Pdf') `
+        -Description 'Asserting PDF virtual-printer attribute reads through the packaged app'
+
+    return Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint 'PrintSink - PDF' `
+        -Message 'Virtual printer attribute read succeeded' `
+        -StartedUtc $StartedUtc `
+        -DetailContains @(
+            'Virtual printer attribute read succeeded',
+            'document-format-default=',
+            'document-format-supported=')
+}
+
 function Invoke-PrintSinkSettingsWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -2595,6 +2616,16 @@ try {
             -Context 'after user default print ticket update'
     })
 
+    $virtualAttributeReadResult = Invoke-PrintSinkVirtualAttributeRead `
+        -PackageFamilyName $package.PackageFamilyName `
+        -StartedUtc $e2eStartedUtc
+    $queueSnapshots.Add([ordered]@{
+        context = 'after virtual-printer attribute-read assertion'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after virtual-printer attribute-read assertion'
+    })
+
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
         $realPrintResults += Invoke-PrintSinkRealPrint `
@@ -2696,6 +2727,7 @@ try {
         outputDirectory = $OutputDirectory
         extensionCapabilities = $extensionCapabilitiesResult
         userDefaultPrintTicket = $userDefaultPrintTicketResult
+        virtualAttributeRead = $virtualAttributeReadResult
         realPrints = $realPrintResults
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult
