@@ -69,7 +69,8 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 
 Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Run the E2E script from elevated PowerShell 7
 (`pwsh`): it installs a temporary signed extension INF for the local IPP association check. The root wrapper
-builds a signed MSIX, installs it, runs the real print-stack assertions, and removes the queues by default:
+reuses or creates a local code-signing certificate, builds a signed MSIX, installs it, runs the real
+print-stack assertions, and removes the queues by default:
 
 ```powershell
 .\test-e2e.ps1 -BuildPackage -Platform x64

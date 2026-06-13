@@ -122,8 +122,8 @@ For the full MSIX path, use MSBuild or Visual Studio:
 Signing and deployment are package concerns. Lab installs should use a trusted test certificate. Store or production packaging must use the final publisher identity and certificate.
 
 For local real print-stack validation, prefer the E2E wrapper. It builds a signed test MSIX when requested,
-trusts the test certificate in `TrustedPeople`, runs the installed package, and removes the queues unless
-`-KeepQueues` is passed:
+reuses or creates a local code-signing certificate, trusts it in `TrustedPeople`, runs the installed package,
+and removes the queues unless `-KeepQueues` is passed:
 
 ```powershell
 .\test-e2e.ps1 -BuildPackage -Platform x64

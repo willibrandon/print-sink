@@ -40,6 +40,9 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("GenerateAppxPackageOnBuild=true", script);
         Assert.Contains("AppxPackageSigningEnabled=true", script);
         Assert.Contains("PackageCertificateThumbprint", script);
+        Assert.Contains("Find-PrintSinkPackageCertificate", script);
+        Assert.Contains("HasPrivateKey", script);
+        Assert.Contains("NotAfter", script);
         Assert.Contains("TrustedPeople", script);
         Assert.Contains("$KeepQueues", script);
         Assert.Contains("Cleanup = $true", script);

@@ -18,6 +18,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$PackageCertificateSubject = 'CN=PrintSink'
+$PackageCertificateFriendlyName = 'PrintSink local E2E package signing'
+$CodeSigningEnhancedKeyUsageOid = '1.3.6.1.5.5.7.3.3'
+
 function Assert-Administrator {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
@@ -54,14 +58,65 @@ function Add-CertificateToStore {
     }
 }
 
+function Test-PrintSinkPackageCertificate {
+    param(
+        [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate
+    )
+
+    if ($Certificate.Subject -ne $PackageCertificateSubject) {
+        return $false
+    }
+
+    if ($Certificate.FriendlyName -ne $PackageCertificateFriendlyName) {
+        return $false
+    }
+
+    if (-not $Certificate.HasPrivateKey) {
+        return $false
+    }
+
+    if ($Certificate.NotAfter -le (Get-Date).AddDays(1)) {
+        return $false
+    }
+
+    $enhancedKeyUsageExtension = $Certificate.Extensions |
+        Where-Object { $null -ne $_.Oid -and $_.Oid.Value -eq '2.5.29.37' } |
+        Select-Object -First 1
+    if ($null -eq $enhancedKeyUsageExtension) {
+        return $false
+    }
+
+    $enhancedKeyUsages = [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] $enhancedKeyUsageExtension
+    $codeSigningUsage = $enhancedKeyUsages.EnhancedKeyUsages |
+        Where-Object { $_.Value -eq $CodeSigningEnhancedKeyUsageOid } |
+        Select-Object -First 1
+    return $null -ne $codeSigningUsage
+}
+
+function Find-PrintSinkPackageCertificate {
+    return Get-ChildItem -LiteralPath Cert:\CurrentUser\My |
+        Where-Object { Test-PrintSinkPackageCertificate -Certificate $_ } |
+        Sort-Object -Property NotAfter -Descending |
+        Select-Object -First 1
+}
+
 function New-PrintSinkPackageCertificate {
     $cert = New-SelfSignedCertificate `
         -Type Custom `
-        -Subject 'CN=PrintSink' `
-        -FriendlyName 'PrintSink local E2E package signing' `
+        -Subject $PackageCertificateSubject `
+        -FriendlyName $PackageCertificateFriendlyName `
         -KeyUsage DigitalSignature `
         -CertStoreLocation Cert:\CurrentUser\My `
-        -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3')
+        -TextExtension @("2.5.29.37={text}$CodeSigningEnhancedKeyUsageOid")
+
+    return $cert
+}
+
+function Get-PrintSinkPackageCertificate {
+    $cert = Find-PrintSinkPackageCertificate
+    if ($null -eq $cert) {
+        $cert = New-PrintSinkPackageCertificate
+    }
 
     Add-CertificateToStore `
         -Certificate $cert `
@@ -153,7 +208,7 @@ if ($BuildPackage -and (-not [string]::IsNullOrWhiteSpace($PackagePath))) {
 if (-not $SkipPackageInstall) {
     if ($BuildPackage) {
         $packageDirectory = Join-Path $PSScriptRoot "artifacts\appxpackages\$Platform"
-        $certificate = New-PrintSinkPackageCertificate
+        $certificate = Get-PrintSinkPackageCertificate
         $PackagePath = Build-PrintSinkPackage `
             -PackageDirectory $packageDirectory `
             -Certificate $certificate
