@@ -77,6 +77,9 @@ printsink-app.exe --install-virtual-printers
 printsink-app.exe --remove-virtual-printers
 printsink-app.exe --disable-job-ui
 printsink-app.exe --enable-job-ui
+printsink-app.exe --set-text-watermark --endpoint Pdf --text "Draft"
+printsink-app.exe --clear-watermark --endpoint Pdf
+printsink-app.exe --refresh-capabilities --endpoint Pdf
 ```
 
 Prefer the CLI wrapper for queue provisioning:
@@ -90,6 +93,10 @@ dotnet run --project src\PrintSink.Cli -- queues remove
 `dotnet run --project src\PrintSink.App` launches the management UI. It is not the recommended queue provisioning entry point.
 
 `--disable-job-ui` makes background print activations process jobs without launching the foreground Job UI. Use it for unattended E2E runs, then restore the default with `--enable-job-ui`.
+
+The watermark and capability commands are package-identity automation hooks used by the real E2E suite.
+They write the same package-local settings the UI/background tasks read and then refresh the target
+queue capabilities through the Windows print API.
 
 ## CLI
 

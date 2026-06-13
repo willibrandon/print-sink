@@ -1,4 +1,6 @@
 using Microsoft.Windows.AppLifecycle;
+using PrintSink.Core.Endpoints;
+using PrintSink.Core.Watermark;
 using System.Text;
 using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
@@ -26,20 +28,37 @@ internal static class VirtualPrinterCommandLine
         bool remove = Contains(commandArgs, "--remove-virtual-printers");
         bool enableJobUi = Contains(commandArgs, "--enable-job-ui");
         bool disableJobUi = Contains(commandArgs, "--disable-job-ui");
+        bool setTextWatermark = Contains(commandArgs, "--set-text-watermark");
+        bool clearWatermark = Contains(commandArgs, "--clear-watermark");
+        bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
-        if (!install && !remove && !enableJobUi && !disableJobUi && !help)
+        if (!install
+            && !remove
+            && !enableJobUi
+            && !disableJobUi
+            && !setTextWatermark
+            && !clearWatermark
+            && !refreshCapabilities
+            && !help)
         {
             return null;
         }
 
-        if (help && !install && !remove && !enableJobUi && !disableJobUi)
+        if (help
+            && !install
+            && !remove
+            && !enableJobUi
+            && !disableJobUi
+            && !setTextWatermark
+            && !clearWatermark
+            && !refreshCapabilities)
         {
             WriteHelp();
             SetCommandLineExitCode(activationArguments, Success);
             return Success;
         }
 
-        if ((install && remove) || (enableJobUi && disableJobUi))
+        if ((install && remove) || (enableJobUi && disableJobUi) || (setTextWatermark && clearWatermark))
         {
             SetCommandLineExitCode(activationArguments, Failure);
             return Failure;
@@ -49,12 +68,35 @@ internal static class VirtualPrinterCommandLine
         Deferral? deferral = GetCommandLineDeferral(activationArguments);
         try
         {
+            EndpointKind endpointKind = EndpointKind.Pdf;
+            bool needsEndpoint = setTextWatermark || clearWatermark || refreshCapabilities;
+            if (needsEndpoint)
+            {
+                endpointKind = GetRequiredEndpointKind(commandArgs);
+            }
+
             if (enableJobUi || disableJobUi)
             {
                 await AppSettingsStoreFactory
                     .Create()
                     .SaveJobUiOptionsAsync(new(enableJobUi), cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            if (setTextWatermark)
+            {
+                string text = GetRequiredOptionValue(commandArgs, "--text");
+                await SaveTextWatermarkAsync(endpointKind, text, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (clearWatermark)
+            {
+                await SaveWatermarkAsync(endpointKind, WatermarkOptions.Disabled, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (refreshCapabilities)
+            {
+                WriteDiagnostic(InstalledVirtualPrinterReader.RefreshCapabilities(endpointKind));
             }
 
             if (install)
@@ -80,6 +122,57 @@ internal static class VirtualPrinterCommandLine
             SetCommandLineExitCode(activationArguments, exitCode);
             deferral?.Complete();
         }
+    }
+
+    private static async Task SaveTextWatermarkAsync(
+        EndpointKind endpointKind,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        WatermarkOptions options = new(
+            true,
+            new TextWatermark(text.Trim(), "Segoe UI", 48, 0.28, -30, 0, 0),
+            null);
+        await SaveWatermarkAsync(endpointKind, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task SaveWatermarkAsync(
+        EndpointKind endpointKind,
+        WatermarkOptions options,
+        CancellationToken cancellationToken)
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
+        await AppSettingsStoreFactory
+            .Create()
+            .SaveWatermarkOptionsAsync(endpoint.PrinterUri, options, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static EndpointKind GetRequiredEndpointKind(IReadOnlyList<string> args)
+    {
+        string endpointValue = GetRequiredOptionValue(args, "--endpoint");
+        return Enum.TryParse(endpointValue, ignoreCase: true, out EndpointKind endpointKind)
+            ? endpointKind
+            : throw new ArgumentException($"Unknown endpoint '{endpointValue}'.");
+    }
+
+    private static string GetRequiredOptionValue(IReadOnlyList<string> args, string option)
+    {
+        for (int index = 0; index < args.Count - 1; index++)
+        {
+            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase))
+            {
+                string value = args[index + 1];
+                if (!string.IsNullOrWhiteSpace(value) && !value.StartsWith("--", StringComparison.Ordinal))
+                {
+                    return value;
+                }
+            }
+        }
+
+        throw new ArgumentException($"Missing required {option} value.");
     }
 
     private static string[] GetActivationArguments(AppActivationArguments activationArguments)
@@ -207,6 +300,11 @@ internal static class VirtualPrinterCommandLine
             "  --remove-virtual-printers   Remove PrintSink virtual printer queues.",
             "  --disable-job-ui            Process jobs without launching the foreground Job UI.",
             "  --enable-job-ui             Restore foreground Job UI launch behavior.",
+            "  --set-text-watermark        Set a default text watermark for --endpoint.",
+            "  --clear-watermark           Clear the default watermark for --endpoint.",
+            "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
+            "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
+            "  --text <value>              Text used with --set-text-watermark.",
             "",
             "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
         Console.Out.WriteLine(help);

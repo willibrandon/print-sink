@@ -661,7 +661,14 @@ function Invoke-PrintSinkRealPrint {
     $printerName = $PrintCase.queue
     $startedUtc = [DateTimeOffset]::UtcNow
     $outputPath = if ($PrintCase.requiresSaveAs) {
-        Join-Path $OutputDirectory "$(($PrintCase.queue -replace '[^A-Za-z0-9]+', '-').Trim('-'))$($PrintCase.extension)"
+        $outputName = if ($PrintCase.Contains('outputName')) {
+            $PrintCase.outputName
+        }
+        else {
+            ($PrintCase.queue -replace '[^A-Za-z0-9]+', '-').Trim('-')
+        }
+
+        Join-Path $OutputDirectory "$outputName$($PrintCase.extension)"
     }
     else {
         ''
@@ -775,6 +782,45 @@ Add-Type -AssemblyName System.Drawing
         }
 
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-PrintSinkSettingsWatermarkPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    $watermarkText = 'CI DEFAULT WATERMARK'
+    Invoke-PrintSinkAppCommand `
+        -Arguments @(
+            '--set-text-watermark',
+            '--endpoint',
+            'Pdf',
+            '--text',
+            $watermarkText,
+            '--refresh-capabilities') `
+        -Description 'Setting default PDF watermark and refreshing capabilities'
+
+    try {
+        $printCase = [ordered]@{
+            queue = 'PrintSink - PDF'
+            format = 'pdf'
+            extension = '.pdf'
+            requiresSaveAs = $true
+            expectedText = $watermarkText
+            outputName = 'PrintSink-Settings-Watermark'
+        }
+
+        return Invoke-PrintSinkRealPrint `
+            -PrintCase $printCase `
+            -OutputDirectory $OutputDirectory `
+            -PackageFamilyName $PackageFamilyName
+    }
+    finally {
+        Invoke-PrintSinkAppCommand `
+            -Arguments @('--clear-watermark', '--endpoint', 'Pdf', '--refresh-capabilities') `
+            -Description 'Clearing default PDF watermark and refreshing capabilities'
     }
 }
 
@@ -1277,6 +1323,10 @@ try {
             -PackageFamilyName $package.PackageFamilyName
     }
 
+    $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+
     Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Enabling foreground job UI for the Job UI E2E path'
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
@@ -1300,6 +1350,7 @@ try {
         queues = @($expectedQueues)
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
+        settingsWatermark = $settingsWatermarkResult
         jobUiWatermark = $jobUiResult
         jobUiCancel = $jobUiCancelResult
     }
