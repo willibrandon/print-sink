@@ -1,5 +1,7 @@
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Windows.ApplicationModel;
 using Windows.Devices.Printers;
 
@@ -8,9 +10,17 @@ namespace PrintSink.App;
 /// <summary>
 /// Provisions the package's virtual printer queues through the Windows virtual-printer API.
 /// </summary>
-internal static class VirtualPrinterInstaller
+internal static partial class VirtualPrinterInstaller
 {
+    private const int ErrorFileNotFound = 2;
+    private const int ErrorInsufficientBuffer = 122;
+    private const int ErrorInvalidPrinterName = 1801;
+    private const int ErrorAccessDenied = 5;
     private const string EntryPoint = "PrintSink.Tasks.VirtualPrinterBackgroundTask";
+    private const uint PrinterControlPurge = 3;
+    private const uint PrinterInfoLevel = 4;
+    private const PrinterEnumerationFlags EnumerationScope =
+        PrinterEnumerationFlags.Local | PrinterEnumerationFlags.Connections;
 
     internal static async Task InstallAllAsync(CancellationToken cancellationToken)
     {
@@ -63,6 +73,8 @@ internal static class VirtualPrinterInstaller
             .FindAllVirtualPrinters(packageFamilyName)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        MoveDefaultPrinterBeforeRemoval(installedPrinters);
+
         foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -71,10 +83,158 @@ internal static class VirtualPrinterInstaller
                 continue;
             }
 
+            TryPurgePrintJobs(endpoint.QueueName);
+
             await VirtualPrinterManager
                 .RemoveVirtualPrinterAsync(endpoint.QueueName)
                 .AsTask(cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    internal static string? ChooseReplacementDefaultPrinter(
+        string? currentDefaultPrinter,
+        IReadOnlySet<string> printSinkPrinters,
+        IEnumerable<string> installedPrinters)
+    {
+        ArgumentNullException.ThrowIfNull(printSinkPrinters);
+        ArgumentNullException.ThrowIfNull(installedPrinters);
+
+        if (string.IsNullOrWhiteSpace(currentDefaultPrinter)
+            || !printSinkPrinters.Contains(currentDefaultPrinter))
+        {
+            return null;
+        }
+
+        return installedPrinters.FirstOrDefault(printer => !printSinkPrinters.Contains(printer));
+    }
+
+    private static void MoveDefaultPrinterBeforeRemoval(IReadOnlySet<string> printSinkPrinters)
+    {
+        string? replacement = ChooseReplacementDefaultPrinter(
+            TryGetDefaultPrinter(),
+            printSinkPrinters,
+            ReadPrinterNames());
+        if (string.IsNullOrWhiteSpace(replacement))
+        {
+            return;
+        }
+
+        if (!SetDefaultPrinter(replacement))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+    }
+
+    private static string? TryGetDefaultPrinter()
+    {
+        uint bufferSize = 0;
+        if (GetDefaultPrinter(null, ref bufferSize))
+        {
+            return null;
+        }
+
+        int error = Marshal.GetLastPInvokeError();
+        if (error == ErrorFileNotFound || bufferSize == 0)
+        {
+            return null;
+        }
+
+        if (error != ErrorInsufficientBuffer)
+        {
+            throw new Win32Exception(error);
+        }
+
+        char[] buffer = new char[bufferSize];
+        if (!GetDefaultPrinter(buffer, ref bufferSize))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+
+        return new string(buffer).TrimEnd('\0');
+    }
+
+    private static string[] ReadPrinterNames()
+    {
+        bool measured = EnumPrinters(
+            EnumerationScope,
+            null,
+            PrinterInfoLevel,
+            0,
+            0,
+            out uint needed,
+            out _);
+        if (!measured && Marshal.GetLastPInvokeError() != ErrorInsufficientBuffer)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+
+        if (needed == 0)
+        {
+            return [];
+        }
+
+        nint buffer = Marshal.AllocHGlobal(checked((int)needed));
+        try
+        {
+            if (!EnumPrinters(
+                EnumerationScope,
+                null,
+                PrinterInfoLevel,
+                buffer,
+                needed,
+                out _,
+                out uint returned))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
+            }
+
+            int itemSize = Marshal.SizeOf<PrinterInfo4>();
+            string[] names = new string[returned];
+            for (int index = 0; index < names.Length; index++)
+            {
+                nint item = nint.Add(buffer, index * itemSize);
+                PrinterInfo4 printerInfo = Marshal.PtrToStructure<PrinterInfo4>(item);
+                names[index] = printerInfo.PrinterName ?? string.Empty;
+            }
+
+            return [.. names.Where(name => !string.IsNullOrWhiteSpace(name))];
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    private static void TryPurgePrintJobs(string printerName)
+    {
+        if (!OpenPrinter(printerName, out nint printerHandle, 0))
+        {
+            int openError = Marshal.GetLastPInvokeError();
+            if (openError is ErrorFileNotFound or ErrorInvalidPrinterName or ErrorAccessDenied)
+            {
+                return;
+            }
+
+            throw new Win32Exception(openError);
+        }
+
+        try
+        {
+            if (!SetPrinter(printerHandle, 0, 0, PrinterControlPurge))
+            {
+                int purgeError = Marshal.GetLastPInvokeError();
+                if (purgeError is ErrorFileNotFound or ErrorInvalidPrinterName or ErrorAccessDenied)
+                {
+                    return;
+                }
+
+                throw new Win32Exception(purgeError);
+            }
+        }
+        finally
+        {
+            ClosePrinter(printerHandle);
         }
     }
 
@@ -167,4 +327,50 @@ internal static class VirtualPrinterInstaller
                 string.Concat(Path.DirectorySeparatorChar, "bin", Path.DirectorySeparatorChar),
                 StringComparison.OrdinalIgnoreCase);
     }
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", EntryPoint = "EnumPrintersW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EnumPrinters(
+        PrinterEnumerationFlags flags,
+        string? name,
+        uint level,
+        nint printerInfo,
+        uint bufferSize,
+        out uint needed,
+        out uint returned);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", EntryPoint = "GetDefaultPrinterW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetDefaultPrinter(
+        [Out] char[]? buffer,
+        ref uint bufferSize);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", EntryPoint = "OpenPrinterW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool OpenPrinter(
+        string printerName,
+        out nint printerHandle,
+        nint printerDefaults);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", EntryPoint = "SetDefaultPrinterW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetDefaultPrinter(string printerName);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", EntryPoint = "SetPrinterW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetPrinter(
+        nint printerHandle,
+        uint level,
+        nint printerInfo,
+        uint command);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("winspool.drv", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ClosePrinter(nint printerHandle);
 }

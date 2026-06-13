@@ -121,6 +121,45 @@ internal sealed class AppPackageTests
     }
 
     /// <summary>
+    /// Verifies virtual-printer removal leaves the default printer alone when it is not a PrintSink queue.
+    /// </summary>
+    [TestMethod]
+    public void ChooseReplacementDefaultPrinterReturnsNullForExternalDefault()
+    {
+        HashSet<string> printSinkPrinters = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "PrintSink - PDF",
+        };
+        string? replacement = PrintSinkApp::PrintSink.App.VirtualPrinterInstaller
+            .ChooseReplacementDefaultPrinter(
+                "Microsoft Print to PDF",
+                printSinkPrinters,
+                ["Microsoft Print to PDF", "PrintSink - PDF"]);
+
+        Assert.IsNull(replacement);
+    }
+
+    /// <summary>
+    /// Verifies virtual-printer removal can move the default printer away from PrintSink.
+    /// </summary>
+    [TestMethod]
+    public void ChooseReplacementDefaultPrinterReturnsFirstExternalPrinterForPrintSinkDefault()
+    {
+        HashSet<string> printSinkPrinters = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "PrintSink - PDF",
+            "PrintSink - XPS",
+        };
+        string? replacement = PrintSinkApp::PrintSink.App.VirtualPrinterInstaller
+            .ChooseReplacementDefaultPrinter(
+                "printsink - pdf",
+                printSinkPrinters,
+                ["PrintSink - PDF", "Microsoft Print to PDF", "PrintSink - XPS"]);
+
+        Assert.AreEqual("Microsoft Print to PDF", replacement);
+    }
+
+    /// <summary>
     /// Verifies headless activation argument parsing ignores missing or whitespace-only payloads.
     /// </summary>
     [TestMethod]

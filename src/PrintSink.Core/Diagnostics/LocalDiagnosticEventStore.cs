@@ -10,7 +10,7 @@ namespace PrintSink.Core.Diagnostics;
 public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposable
 {
     private const string EventsFileName = "diagnostic-events.json";
-    private const int DefaultMaximumStoredEvents = 200;
+    private const int DefaultMaximumStoredEvents = 4096;
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {

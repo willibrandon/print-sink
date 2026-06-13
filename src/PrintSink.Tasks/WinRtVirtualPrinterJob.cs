@@ -12,6 +12,8 @@ namespace PrintSink.Tasks;
 /// </summary>
 internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
 {
+    private static readonly TimeSpan CompleteJobTimeout = TimeSpan.FromSeconds(10);
+
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;
     private readonly WorkflowPrintTicket printTicket;
     private StorageFile? targetFile;
@@ -82,15 +84,13 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
             if (status == VirtualPrinterJobStatus.Succeeded && targetFile is not null && targetBuffer is not null)
             {
                 targetBuffer.Position = 0;
-                using IRandomAccessStream targetStream = await targetFile.OpenAsync(FileAccessMode.ReadWrite)
+                await FileIO
+                    .WriteBytesAsync(targetFile, targetBuffer.ToArray())
                     .AsTask(cancellationToken)
                     .ConfigureAwait(false);
-                targetStream.Size = 0;
-                using IOutputStream output = targetStream.GetOutputStreamAt(0);
-                await WinRtStreamBridge.WriteFromStreamAsync(targetBuffer, output, cancellationToken).ConfigureAwait(false);
             }
 
-            args.CompleteJob(ToWinRtStatus(status));
+            await CompleteSubmittedJobAsync(status, cancellationToken).ConfigureAwait(false);
             completed = true;
         }
         finally
@@ -120,5 +120,26 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
             VirtualPrinterJobStatus.Failed => PrintWorkflowSubmittedStatus.Failed,
             _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown virtual printer job status."),
         };
+    }
+
+    private async Task CompleteSubmittedJobAsync(
+        VirtualPrinterJobStatus status,
+        CancellationToken cancellationToken)
+    {
+        Task completeTask = Task.Run(() => args.CompleteJob(ToWinRtStatus(status)), CancellationToken.None);
+        _ = completeTask.ContinueWith(
+            task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        try
+        {
+            await completeTask.WaitAsync(CompleteJobTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Some passthrough jobs finish writing output but do not return from CompleteJob promptly.
+        }
     }
 }

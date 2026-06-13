@@ -456,6 +456,25 @@ function Stop-PrintSinkE2ERuntime {
         Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
+function Stop-PrintSinkProcess {
+    param(
+        [System.Diagnostics.Process] $Process
+    )
+
+    if ($null -eq $Process -or $Process.HasExited) {
+        return
+    }
+
+    try {
+        $Process.Kill($true)
+    }
+    catch [System.Management.Automation.MethodException] {
+        $Process.Kill()
+    }
+
+    $Process.WaitForExit(5000) | Out-Null
+}
+
 function Add-MediumIntegrityProcessLauncher {
     if ('PrintSinkE2E.MediumIntegrityProcessLauncher' -as [type]) {
         return
@@ -774,7 +793,7 @@ function Wait-ForQueueInstalledState {
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
-        $installedNames = @(Get-Printer | ForEach-Object Name)
+        $installedNames = @(Get-PrintSinkUsablePrinterNames)
         $matchesExpectedState = $true
         foreach ($queue in $ExpectedQueues) {
             if (($installedNames -contains $queue) -ne $ExpectedInstalled) {
@@ -801,13 +820,45 @@ function Wait-ForQueueInstalledState {
     throw "Timed out waiting for PrintSink queues to be $expectedStatus."
 }
 
+function Test-PrintSinkPrinterIsUsablyInstalled {
+    param(
+        [object] $Printer
+    )
+
+    if ($null -eq $Printer) {
+        return $false
+    }
+
+    return -not ([string]$Printer.PrinterStatus).Contains('PendingDeletion')
+}
+
+function Get-PrintSinkUsablePrinterNames {
+    return @(
+        Get-Printer |
+            Where-Object { Test-PrintSinkPrinterIsUsablyInstalled -Printer $_ } |
+            ForEach-Object Name
+    )
+}
+
+function Clear-PrintSinkQueueJobs {
+    param(
+        [string[]] $ExpectedQueues
+    )
+
+    foreach ($queue in $ExpectedQueues) {
+        Get-PrintJob -PrinterName $queue -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Remove-PrintJob -PrinterName $queue -ID $_.ID -ErrorAction SilentlyContinue
+            }
+    }
+}
+
 function Get-PrintSinkQueueSnapshot {
     param(
         [string[]] $ExpectedQueues
     )
 
-    $printers = @(Get-Printer)
-    $installedNames = @($printers | ForEach-Object Name)
+    $installedNames = @(Get-PrintSinkUsablePrinterNames)
     return @($ExpectedQueues | ForEach-Object {
         [ordered]@{
             name = $_
@@ -835,6 +886,8 @@ function Invoke-PrintSinkCliQueueLifecycle {
     param(
         [string[]] $ExpectedQueues
     )
+
+    Clear-PrintSinkQueueJobs -ExpectedQueues $ExpectedQueues
 
     $installOutput = Invoke-PrintSinkCliCommand `
         -Arguments @('queues', 'install') `
@@ -1340,12 +1393,10 @@ finally {
 "@
 
     Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-Process `
-        -FilePath powershell.exe `
-        -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) `
-        -RedirectStandardOutput $stdoutPath `
-        -RedirectStandardError $stderrPath `
-        -PassThru
+    $process = Start-PrintSinkPowerShellProcess `
+        -ScriptPath $scriptPath `
+        -StdOutPath $stdoutPath `
+        -StdErrPath $stderrPath
 
     return [ordered]@{
         process = $process
@@ -1353,6 +1404,44 @@ finally {
         stdoutPath = $stdoutPath
         stderrPath = $stderrPath
     }
+}
+
+function Start-PrintSinkPowerShellProcess {
+    param(
+        [string] $ScriptPath,
+        [string] $StdOutPath,
+        [string] $StdErrPath
+    )
+
+    $command = "& '$(ConvertTo-PowerShellSingleQuotedLiteral -Value $ScriptPath)'"
+    if (-not [string]::IsNullOrWhiteSpace($StdOutPath)) {
+        $command = "$command 1> '$(ConvertTo-PowerShellSingleQuotedLiteral -Value $StdOutPath)'"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($StdErrPath)) {
+        $command = "$command 2> '$(ConvertTo-PowerShellSingleQuotedLiteral -Value $StdErrPath)'"
+    }
+
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = (Get-Command powershell.exe).Source
+    $startInfo.Arguments = "-Sta -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+    $startInfo.UseShellExecute = $false
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) {
+        throw "Failed to start PowerShell print process for '$ScriptPath'."
+    }
+
+    return $process
+}
+
+function ConvertTo-PowerShellSingleQuotedLiteral {
+    param(
+        [string] $Value
+    )
+
+    return $Value.Replace("'", "''")
 }
 
 function Get-PrintSinkProcessOutput {
@@ -1379,6 +1468,35 @@ function Get-PrintSinkProcessOutput {
     }
 
     return $parts -join [Environment]::NewLine
+}
+
+function Wait-ForPrintSinkProcessSucceeded {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintProcess,
+        [int] $TimeoutMilliseconds,
+        [string] $Description
+    )
+
+    $process = $PrintProcess.process
+    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+        throw "$Description did not exit. $(Get-PrintSinkProcessOutput -PrintProcess $PrintProcess)"
+    }
+
+    $process.Refresh()
+    $exitCode = $process.ExitCode
+    if ($null -eq $exitCode) {
+        Start-Sleep -Milliseconds 100
+        $process.Refresh()
+        $exitCode = $process.ExitCode
+    }
+
+    if ($null -eq $exitCode) {
+        throw "$Description exited but did not report an exit code. $(Get-PrintSinkProcessOutput -PrintProcess $PrintProcess)"
+    }
+
+    if ($exitCode -ne 0) {
+        throw "$Description exited with $exitCode. $(Get-PrintSinkProcessOutput -PrintProcess $PrintProcess)"
+    }
 }
 
 function Test-CurrentProcessIsElevated {
@@ -1425,11 +1543,15 @@ function Start-PrintSinkIppPrinterServer {
     }
 
     $readyFile = Join-Path $OutputDirectory 'ipp-printer.ready'
+    $argumentsFile = Join-Path $OutputDirectory 'ipp-printer.arguments.txt'
+    $stdoutFile = Join-Path $OutputDirectory 'ipp-printer.stdout.log'
+    $stderrFile = Join-Path $OutputDirectory 'ipp-printer.stderr.log'
     Remove-Item -LiteralPath $readyFile -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $argumentsFile,$stdoutFile,$stderrFile -ErrorAction SilentlyContinue
 
     $processStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $processStartInfo.FileName = (Get-Command dotnet -ErrorAction Stop).Source
-    foreach ($argument in @(
+    $processArguments = @(
         $assemblyPath,
         '--printer-name',
         $PrinterName,
@@ -1440,13 +1562,15 @@ function Start-PrintSinkIppPrinterServer {
         '--output',
         $OutputDirectory,
         '--ready-file',
-        $readyFile)) {
-        [void] $processStartInfo.ArgumentList.Add($argument)
-    }
+        $readyFile)
+    $processStartInfo.Arguments = Join-PrintSinkProcessArguments -Arguments $processArguments
+    Set-Content -LiteralPath $argumentsFile -Value $processStartInfo.Arguments -Encoding UTF8
 
     $processStartInfo.WorkingDirectory = (Get-Location).Path
     $processStartInfo.UseShellExecute = $false
     $processStartInfo.CreateNoWindow = $true
+    $processStartInfo.RedirectStandardOutput = $true
+    $processStartInfo.RedirectStandardError = $true
     $process = [System.Diagnostics.Process]::Start($processStartInfo)
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(20)
     do {
@@ -1455,7 +1579,8 @@ function Start-PrintSinkIppPrinterServer {
         }
 
         if ($process.HasExited) {
-            throw "The E2E IPP printer exited with $($process.ExitCode) before it became ready."
+            Save-PrintSinkIppPrinterOutput -Process $process -StdoutFile $stdoutFile -StderrFile $stderrFile
+            throw "The E2E IPP printer exited with $($process.ExitCode) before it became ready. $(Get-PrintSinkIppPrinterOutputSummary -StdoutFile $stdoutFile -StderrFile $stderrFile)"
         }
 
         Start-Sleep -Milliseconds 200
@@ -1463,11 +1588,97 @@ function Start-PrintSinkIppPrinterServer {
     while ([DateTimeOffset]::UtcNow -lt $deadline)
 
     if (-not $process.HasExited) {
-        $process.Kill($true)
-        $process.WaitForExit(5000) | Out-Null
+        Stop-PrintSinkProcess -Process $process
+    }
+    Save-PrintSinkIppPrinterOutput -Process $process -StdoutFile $stdoutFile -StderrFile $stderrFile
+
+    throw "Timed out waiting for the E2E IPP printer to start. $(Get-PrintSinkIppPrinterOutputSummary -StdoutFile $stdoutFile -StderrFile $stderrFile)"
+}
+
+function Save-PrintSinkIppPrinterOutput {
+    param(
+        [System.Diagnostics.Process] $Process,
+        [string] $StdoutFile,
+        [string] $StderrFile
+    )
+
+    Set-Content -LiteralPath $StdoutFile -Value $Process.StandardOutput.ReadToEnd() -Encoding UTF8
+    Set-Content -LiteralPath $StderrFile -Value $Process.StandardError.ReadToEnd() -Encoding UTF8
+}
+
+function Get-PrintSinkIppPrinterOutputSummary {
+    param(
+        [string] $StdoutFile,
+        [string] $StderrFile
+    )
+
+    $stdout = if (Test-Path -LiteralPath $StdoutFile) {
+        Get-Content -LiteralPath $StdoutFile -Raw
+    }
+    else {
+        '<missing stdout>'
+    }
+    $stderr = if (Test-Path -LiteralPath $StderrFile) {
+        Get-Content -LiteralPath $StderrFile -Raw
+    }
+    else {
+        '<missing stderr>'
     }
 
-    throw 'Timed out waiting for the E2E IPP printer to start.'
+    return "stdout=$stdout stderr=$stderr"
+}
+
+function Join-PrintSinkProcessArguments {
+    param(
+        [string[]] $Arguments
+    )
+
+    return ($Arguments | ForEach-Object { ConvertTo-PrintSinkProcessArgument $_ }) -join ' '
+}
+
+function ConvertTo-PrintSinkProcessArgument {
+    param(
+        [string] $Argument
+    )
+
+    if ($null -eq $Argument) {
+        return '""'
+    }
+
+    if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void] $builder.Append('"')
+    $backslashCount = 0
+    foreach ($character in $Argument.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashCount++
+            continue
+        }
+
+        if ($character -eq '"') {
+            [void] $builder.Append('\', ($backslashCount * 2) + 1)
+            [void] $builder.Append('"')
+            $backslashCount = 0
+            continue
+        }
+
+        if ($backslashCount -gt 0) {
+            [void] $builder.Append('\', $backslashCount)
+            $backslashCount = 0
+        }
+
+        [void] $builder.Append($character)
+    }
+
+    if ($backslashCount -gt 0) {
+        [void] $builder.Append('\', $backslashCount * 2)
+    }
+
+    [void] $builder.Append('"')
+    return $builder.ToString()
 }
 
 function Get-PrintSinkIppHost {
@@ -1593,19 +1804,19 @@ function Install-PrintSinkPsaExtensionInf {
         [string] $CertificateSubject
     )
 
-    $certificate = New-SelfSignedCertificate `
-        -Type CodeSigningCert `
-        -Subject $CertificateSubject `
-        -CertStoreLocation Cert:\LocalMachine\My `
-        -KeyExportPolicy Exportable `
-        -NotAfter (Get-Date).AddDays(2)
     $certificatePath = Join-Path (Split-Path -Parent $InfPath) 'psa-signing.cer'
-    Export-Certificate -Cert $certificate -FilePath $certificatePath | Out-Null
-    Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-    Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+    $certificateThumbprint = New-PrintSinkPsaSigningCertificate `
+        -CertificateSubject $CertificateSubject `
+        -CertificatePath $certificatePath
+    Add-PrintSinkCertificateToStore `
+        -CertificatePath $certificatePath `
+        -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::Root)
+    Add-PrintSinkCertificateToStore `
+        -CertificatePath $certificatePath `
+        -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher)
 
     $signToolPath = Get-WindowsSdkToolPath -ToolName 'signtool.exe'
-    & $signToolPath sign /fd SHA256 /sha1 $certificate.Thumbprint /sm $CatalogPath | Out-Null
+    & $signToolPath sign /fd SHA256 /sha1 $certificateThumbprint /sm $CatalogPath | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Signing PSA extension catalog failed with exit code $LASTEXITCODE."
     }
@@ -1625,7 +1836,7 @@ function Install-PrintSinkPsaExtensionInf {
 
     return [ordered]@{
         publishedName = $publishedName
-        certificateThumbprint = $certificate.Thumbprint
+        certificateThumbprint = $certificateThumbprint
     }
 }
 
@@ -1640,11 +1851,149 @@ function Remove-PrintSinkPsaExtensionInf {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-        foreach ($store in 'Cert:\LocalMachine\My', 'Cert:\LocalMachine\Root', 'Cert:\LocalMachine\TrustedPublisher') {
-            Get-ChildItem $store -ErrorAction SilentlyContinue |
-                Where-Object { $_.Thumbprint -eq $CertificateThumbprint } |
-                Remove-Item -Force -ErrorAction SilentlyContinue
+        Remove-PrintSinkCertificateFromStore `
+            -CertificateThumbprint $CertificateThumbprint `
+            -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::My)
+        Remove-PrintSinkCertificateFromStore `
+            -CertificateThumbprint $CertificateThumbprint `
+            -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::Root)
+        Remove-PrintSinkCertificateFromStore `
+            -CertificateThumbprint $CertificateThumbprint `
+            -StoreName ([System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher)
+    }
+}
+
+function New-PrintSinkPsaSigningCertificate {
+    param(
+        [string] $CertificateSubject,
+        [string] $CertificatePath
+    )
+
+    $scriptPath = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), '.ps1')
+    $certificateScript = @'
+param(
+    [string] $Subject,
+    [string] $OutputPath
+)
+
+$ErrorActionPreference = 'Stop'
+$certificateProvider = Get-PSProvider Certificate -ErrorAction SilentlyContinue
+if ($null -eq $certificateProvider) {
+    Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+    $certificateProvider = Get-PSProvider Certificate -ErrorAction SilentlyContinue
+}
+
+if ($null -eq $certificateProvider) {
+    throw "The PowerShell Certificate provider is unavailable in the certificate helper process. PSModulePath=$env:PSModulePath"
+}
+
+if ($null -eq (Get-PSDrive Cert -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name Cert -PSProvider Certificate -Root '\' -ErrorAction Stop | Out-Null
+}
+
+Get-Command New-SelfSignedCertificate -ErrorAction Stop | Out-Null
+$certificate = New-SelfSignedCertificate `
+    -Type CodeSigningCert `
+    -Subject $Subject `
+    -CertStoreLocation Cert:\LocalMachine\My `
+    -KeyExportPolicy Exportable `
+    -NotAfter (Get-Date).AddDays(2)
+Export-Certificate -Cert $certificate -FilePath $OutputPath | Out-Null
+[Console]::Out.WriteLine($certificate.Thumbprint)
+'@
+
+    try {
+        Set-Content -LiteralPath $scriptPath -Value $certificateScript -Encoding UTF8
+        $certificateHost = Get-Command powershell.exe -ErrorAction Stop
+        $previousModulePath = $env:PSModulePath
+        $windowsPowerShellModulePath = @(
+            (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)) 'WindowsPowerShell\Modules'),
+            (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'),
+            (Join-Path $env:WINDIR 'system32\WindowsPowerShell\v1.0\Modules')
+        ) -join [System.IO.Path]::PathSeparator
+        try {
+            $env:PSModulePath = $windowsPowerShellModulePath
+            $certificateOutput = & $certificateHost.Source `
+                -NoProfile `
+                -ExecutionPolicy Bypass `
+                -File $scriptPath `
+                $CertificateSubject `
+                $CertificatePath 2>&1
         }
+        finally {
+            $env:PSModulePath = $previousModulePath
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Creating PSA signing certificate failed with exit code $LASTEXITCODE. $($certificateOutput -join [Environment]::NewLine)"
+        }
+
+        $thumbprint = $certificateOutput |
+            ForEach-Object { [string] $_ } |
+            Where-Object { $_ -match '^[0-9A-Fa-f]{40}$' } |
+            Select-Object -Last 1
+        if ([string]::IsNullOrWhiteSpace($thumbprint)) {
+            throw "Creating PSA signing certificate did not return a thumbprint. $($certificateOutput -join [Environment]::NewLine)"
+        }
+
+        if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
+            throw "Creating PSA signing certificate did not write $CertificatePath."
+        }
+
+        return ([string] $thumbprint).ToUpperInvariant()
+    }
+    finally {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Add-PrintSinkCertificateToStore {
+    param(
+        [string] $CertificatePath,
+        [System.Security.Cryptography.X509Certificates.StoreName] $StoreName
+    )
+
+    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
+    $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+        $StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+    try {
+        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $existing = $store.Certificates.Find(
+            [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+            $certificate.Thumbprint,
+            $false)
+        if ($existing.Count -eq 0) {
+            $store.Add($certificate)
+        }
+    }
+    finally {
+        $store.Close()
+        $certificate.Dispose()
+    }
+}
+
+function Remove-PrintSinkCertificateFromStore {
+    param(
+        [string] $CertificateThumbprint,
+        [System.Security.Cryptography.X509Certificates.StoreName] $StoreName
+    )
+
+    $store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+        $StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+    try {
+        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $matches = $store.Certificates.Find(
+            [System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+            $CertificateThumbprint,
+            $false)
+        foreach ($certificate in $matches) {
+            $store.Remove($certificate)
+        }
+    }
+    finally {
+        $store.Close()
     }
 }
 
@@ -1680,13 +2029,10 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
     $process = $printProcess.process
 
     try {
-        if (-not $process.WaitForExit(45000)) {
-            throw "IPP workflow print process did not exit for $PrinterName. $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
-        }
-
-        if ($process.ExitCode -ne 0) {
-            throw "IPP workflow print process for $PrinterName exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
-        }
+        Wait-ForPrintSinkProcessSucceeded `
+            -PrintProcess $printProcess `
+            -TimeoutMilliseconds 45000 `
+            -Description "IPP workflow print process for $PrinterName"
 
         $workflowStart = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
@@ -1848,8 +2194,7 @@ function Invoke-PrintSinkIppAssociation {
     finally {
         Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
         if ($serverProcess -and -not $serverProcess.HasExited) {
-            $serverProcess.Kill($true)
-            $serverProcess.WaitForExit(5000) | Out-Null
+            Stop-PrintSinkProcess -Process $serverProcess
         }
 
         Remove-PrintSinkPsaExtensionInf `
@@ -1907,13 +2252,10 @@ function Invoke-PrintSinkRealPrint {
             Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
         }
 
-        if (-not $process.WaitForExit(30000)) {
-            throw "Print process did not exit for $printerName. $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
-        }
-
-        if ($process.ExitCode -ne 0) {
-            throw "Print process for $printerName exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
-        }
+        Wait-ForPrintSinkProcessSucceeded `
+            -PrintProcess $printProcess `
+            -TimeoutMilliseconds 30000 `
+            -Description "Print process for $printerName"
 
         if ($PrintCase.requiresSaveAs) {
             $diagnostic = Wait-ForPrintSinkJobCompleted `
@@ -2123,15 +2465,16 @@ function Invoke-PrintSinkConcurrentPrints {
             pageCount = 48
         },
         [ordered]@{
-            queue = 'PrintSink - PDF'
-            format = 'pdf'
-            extension = '.pdf'
-            requiresSaveAs = $true
-            expectedText = 'foo concurrent pdf'
+            queue = 'PrintSink - Cloud'
+            format = 'cloud'
+            sinkFormat = 'pdf'
+            extension = ''
+            requiresSaveAs = $false
+            expectedText = 'foo concurrent cloud'
             expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
-            outputName = 'PrintSink-Concurrent-PDF'
-            printText = 'foo concurrent pdf'
-            pageCount = 24
+            outputName = 'PrintSink-Concurrent-Cloud'
+            printText = 'foo concurrent cloud'
+            pageCount = 96
         }
     )
 
@@ -2139,6 +2482,9 @@ function Invoke-PrintSinkConcurrentPrints {
     $startedUtc = [DateTimeOffset]::UtcNow
 
     try {
+        Get-ChildItem -LiteralPath $OutputDirectory -Filter 'PrintSink-Concurrent-*' -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+
         foreach ($printCase in $concurrentCases) {
             $outputPath = Join-Path $OutputDirectory "$($printCase.outputName)$($printCase.extension)"
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
@@ -2159,7 +2505,7 @@ function Invoke-PrintSinkConcurrentPrints {
             })
         }
 
-        foreach ($job in $jobs) {
+        foreach ($job in @($jobs | Where-Object { $_.printCase.requiresSaveAs })) {
             $printCase = $job.printCase
             $dialog = Wait-ForAutomationElement `
                 -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
@@ -2173,19 +2519,16 @@ function Invoke-PrintSinkConcurrentPrints {
             Set-FileDialogPath -Dialog $dialog -OutputPath $job.outputPath
         }
 
-        $results = @()
+        $diagnostics = @{}
+        $sinkArtifacts = @{}
         foreach ($job in $jobs) {
             $process = $job.process
             $printCase = $job.printCase
-            $outputPath = $job.outputPath
 
-            if (-not $process.WaitForExit(45000)) {
-                throw "Concurrent print process did not exit for $($printCase.queue). $(Get-PrintSinkProcessOutput -PrintProcess $job)"
-            }
-
-            if ($process.ExitCode -ne 0) {
-                throw "Concurrent print process for $($printCase.queue) exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $job)"
-            }
+            Wait-ForPrintSinkProcessSucceeded `
+                -PrintProcess $job `
+                -TimeoutMilliseconds 90000 `
+                -Description "Concurrent print process for $($printCase.queue)"
 
             $diagnostic = Wait-ForPrintSinkJobCompleted `
                 -PackageFamilyName $PackageFamilyName `
@@ -2193,16 +2536,68 @@ function Invoke-PrintSinkConcurrentPrints {
                 -StartedUtc $startedUtc `
                 -ExpectedRouteDetail $printCase.expectedRoute
 
-            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 60
-            Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
-            $file = Get-Item -LiteralPath $outputPath
+            $diagnostics[$printCase.queue] = $diagnostic
+
+            if (-not $printCase.requiresSaveAs -and $printCase.Contains('sinkFormat')) {
+                $sinkDiagnostic = Wait-ForPrintSinkDiagnostic `
+                    -PackageFamilyName $PackageFamilyName `
+                    -Endpoint $printCase.queue `
+                    -Message 'Cloud sink artifact written' `
+                    -StartedUtc $startedUtc `
+                    -DetailContains @(
+                        'path=',
+                        'bytes=',
+                        'contentType=application/pdf')
+                $sinkArtifacts[$printCase.queue] = Assert-CloudSinkArtifact `
+                    -Diagnostic $sinkDiagnostic `
+                    -PrintCase $printCase `
+                    -OutputDirectory $OutputDirectory
+            }
+        }
+
+        $fileBackedJobs = @($jobs | Where-Object { $_.printCase.requiresSaveAs })
+        $candidateFiles = if ($fileBackedJobs.Count -gt 0) {
+            Wait-ForNonEmptyFiles `
+                -Directory $OutputDirectory `
+                -Filter 'PrintSink-Concurrent-*' `
+                -ExpectedCount $fileBackedJobs.Count `
+                -TimeoutSeconds 60
+        }
+        else {
+            @()
+        }
+
+        $matchedPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $results = @()
+        foreach ($job in $jobs) {
+            $printCase = $job.printCase
+            if (-not $printCase.requiresSaveAs) {
+                $sinkArtifact = $sinkArtifacts[$printCase.queue]
+                $results += [ordered]@{
+                    queue = $printCase.queue
+                    format = $printCase.format
+                    outputPath = $null
+                    bytes = 0
+                    pageCount = $printCase.pageCount
+                    sinkArtifact = $sinkArtifact
+                    diagnostic = $diagnostics[$printCase.queue]
+                }
+                continue
+            }
+
+            $file = Find-MatchingDocumentOutput `
+                -PrintCase $printCase `
+                -CandidateFiles $candidateFiles `
+                -MatchedPaths $matchedPaths
+
+            $matchedPaths.Add($file.FullName) | Out-Null
             $results += [ordered]@{
                 queue = $printCase.queue
                 format = $printCase.format
-                outputPath = $outputPath
+                outputPath = $file.FullName
                 bytes = $file.Length
                 pageCount = $printCase.pageCount
-                diagnostic = $diagnostic
+                diagnostic = $diagnostics[$printCase.queue]
             }
         }
 
@@ -2782,6 +3177,8 @@ function Invoke-PrintSinkFailedImageWatermarkPrint {
         Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
         $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.FailedImageWatermark.$([Guid]::NewGuid()).ps1"
+        $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
+        $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
         $printScript = @"
 Add-Type -AssemblyName System.Drawing
 `$document = [System.Drawing.Printing.PrintDocument]::new()
@@ -2803,7 +3200,16 @@ Add-Type -AssemblyName System.Drawing
 "@
 
         Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-        $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+        $process = Start-PrintSinkPowerShellProcess `
+            -ScriptPath $scriptPath `
+            -StdOutPath $stdoutPath `
+            -StdErrPath $stderrPath
+        $printProcess = [ordered]@{
+            process = $process
+            scriptPath = $scriptPath
+            stdoutPath = $stdoutPath
+            stderrPath = $stderrPath
+        }
 
         try {
             $dialog = Wait-ForAutomationElement `
@@ -2817,13 +3223,10 @@ Add-Type -AssemblyName System.Drawing
 
             Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
 
-            if (-not $process.WaitForExit(30000)) {
-                throw 'Failed image watermark print process did not exit.'
-            }
-
-            if ($process.ExitCode -ne 0) {
-                throw "Failed image watermark print process exited with $($process.ExitCode)."
-            }
+            Wait-ForPrintSinkProcessSucceeded `
+                -PrintProcess $printProcess `
+                -TimeoutMilliseconds 30000 `
+                -Description 'Failed image watermark print process'
 
             $failure = Wait-ForPrintSinkJobFailed `
                 -PackageFamilyName $PackageFamilyName `
@@ -2860,6 +3263,8 @@ Add-Type -AssemblyName System.Drawing
 
             Close-SavePrintOutputDialogs
             Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
         }
     }
     finally {
@@ -2893,6 +3298,8 @@ function Invoke-PrintSinkJobUiWatermarkPrint {
     Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
     $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.JobUI.$([Guid]::NewGuid()).ps1"
+    $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
+    $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
     $printScript = @"
 Add-Type -AssemblyName System.Drawing
 `$document = [System.Drawing.Printing.PrintDocument]::new()
@@ -2914,7 +3321,16 @@ Add-Type -AssemblyName System.Drawing
 "@
 
     Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+    $process = Start-PrintSinkPowerShellProcess `
+        -ScriptPath $scriptPath `
+        -StdOutPath $stdoutPath `
+        -StdErrPath $stderrPath
+    $printProcess = [ordered]@{
+        process = $process
+        scriptPath = $scriptPath
+        stdoutPath = $stdoutPath
+        stderrPath = $stderrPath
+    }
 
     try {
         $dialog = Wait-ForAutomationElement `
@@ -2952,13 +3368,10 @@ Add-Type -AssemblyName System.Drawing
         Set-TextBoxValue -Root $jobWindow -Name 'Job password' -Value 'ci-password'
         Invoke-Button -Root $jobWindow -Name 'Continue' -TimeoutSeconds 30
 
-        if (-not $process.WaitForExit(30000)) {
-            throw 'Job UI watermark print process did not exit.'
-        }
-
-        if ($process.ExitCode -ne 0) {
-            throw "Job UI watermark print process exited with $($process.ExitCode)."
-        }
+        Wait-ForPrintSinkProcessSucceeded `
+            -PrintProcess $printProcess `
+            -TimeoutMilliseconds 30000 `
+            -Description 'Job UI watermark print process'
 
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
@@ -2996,6 +3409,8 @@ Add-Type -AssemblyName System.Drawing
         Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
     }
 }
 
@@ -3014,6 +3429,8 @@ function Invoke-PrintSinkJobUiCancelPrint {
     Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
     $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.JobUICancel.$([Guid]::NewGuid()).ps1"
+    $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
+    $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
     $printScript = @"
 Add-Type -AssemblyName System.Drawing
 `$document = [System.Drawing.Printing.PrintDocument]::new()
@@ -3035,7 +3452,16 @@ Add-Type -AssemblyName System.Drawing
 "@
 
     Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+    $process = Start-PrintSinkPowerShellProcess `
+        -ScriptPath $scriptPath `
+        -StdOutPath $stdoutPath `
+        -StdErrPath $stderrPath
+    $printProcess = [ordered]@{
+        process = $process
+        scriptPath = $scriptPath
+        stdoutPath = $stdoutPath
+        stderrPath = $stderrPath
+    }
 
     try {
         $dialog = Wait-ForAutomationElement `
@@ -3070,13 +3496,10 @@ Add-Type -AssemblyName System.Drawing
 
         Invoke-Button -Root $jobWindow -Name 'Cancel' -TimeoutSeconds 30
 
-        if (-not $process.WaitForExit(30000)) {
-            throw 'Job UI cancel print process did not exit.'
-        }
-
-        if ($process.ExitCode -ne 0) {
-            throw "Job UI cancel print process exited with $($process.ExitCode)."
-        }
+        Wait-ForPrintSinkProcessSucceeded `
+            -PrintProcess $printProcess `
+            -TimeoutMilliseconds 30000 `
+            -Description 'Job UI cancel print process'
 
         $diagnostic = Wait-ForPrintSinkJobCanceled `
             -PackageFamilyName $PackageFamilyName `
@@ -3123,6 +3546,8 @@ Add-Type -AssemblyName System.Drawing
         Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
     }
 }
 
@@ -3146,6 +3571,72 @@ function Wait-ForNonEmptyFile {
     while ([DateTimeOffset]::UtcNow -lt $deadline)
 
     throw "Timed out waiting for non-empty output file: $Path"
+}
+
+function Wait-ForNonEmptyFiles {
+    param(
+        [string] $Directory,
+        [string] $Filter,
+        [int] $ExpectedCount,
+        [int] $TimeoutSeconds
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $files = @(
+            Get-ChildItem -LiteralPath $Directory -Filter $Filter -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 } |
+                Sort-Object -Property Name
+        )
+        if ($files.Count -ge $ExpectedCount) {
+            return @($files)
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    $found = @(
+        Get-ChildItem -LiteralPath $Directory -Filter $Filter -File -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.Name)=$($_.Length)" }
+    )
+    throw "Timed out waiting for $ExpectedCount non-empty output files matching $Filter. Found: $($found -join ', ')"
+}
+
+function Test-DocumentOutput {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintCase,
+        [string] $OutputPath
+    )
+
+    try {
+        Assert-DocumentOutput -PrintCase $PrintCase -OutputPath $OutputPath
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Find-MatchingDocumentOutput {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintCase,
+        [object[]] $CandidateFiles,
+        [System.Collections.Generic.HashSet[string]] $MatchedPaths
+    )
+
+    foreach ($candidateFile in $CandidateFiles) {
+        if ($MatchedPaths.Contains($candidateFile.FullName)) {
+            continue
+        }
+
+        if (Test-DocumentOutput -PrintCase $PrintCase -OutputPath $candidateFile.FullName) {
+            return $candidateFile
+        }
+    }
+
+    $candidateSummary = @($CandidateFiles | ForEach-Object { "$($_.Name)=$($_.Length)" })
+    throw "Could not match a valid $($PrintCase.format) output for $($PrintCase.queue). Candidates: $($candidateSummary -join ', ')"
 }
 
 function Set-ToggleSwitch {
@@ -3549,15 +4040,33 @@ function New-VirtualPrinterSummary {
 function Add-PrintSinkFeatureEvidence {
     param(
         [System.Collections.Generic.List[object]] $FeatureEvidence,
+
+        [Parameter(Mandatory)]
         [int] $Number,
+
+        [Parameter(Mandatory)]
         [string] $Feature,
+
+        [Parameter(Mandatory)]
         [bool] $Passed,
+
+        [Parameter(Mandatory)]
         [string] $Evidence,
+
+        [Parameter(Mandatory)]
         [object] $Artifact
     )
 
     if (-not $Passed) {
         throw "Feature evidence missing for #${Number} ${Feature}: $Evidence"
+    }
+
+    if ($null -eq $Artifact) {
+        throw "Feature evidence artifact missing for #${Number} ${Feature}."
+    }
+
+    if ($Artifact -is [System.Array] -and $Artifact.Length -eq 0) {
+        throw "Feature evidence artifact empty for #${Number} ${Feature}."
     }
 
     $FeatureEvidence.Add([ordered]@{

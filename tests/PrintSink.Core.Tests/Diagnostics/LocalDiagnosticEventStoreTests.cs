@@ -104,6 +104,40 @@ internal sealed class LocalDiagnosticEventStoreTests
     }
 
     /// <summary>
+    /// Verifies the default retention survives long print runs with many diagnostic records.
+    /// </summary>
+    [TestMethod]
+    public async Task AppendAsyncDefaultRetentionPreservesLongPrintRuns()
+    {
+        string directory = CreateTestDirectory();
+        using LocalDiagnosticEventStore store = new(directory);
+        const int EventCount = 512;
+
+        try
+        {
+            for (int index = 0; index < EventCount; index++)
+            {
+                await store
+                    .AppendAsync(CreateRecord($"Long print event {index}", DateTimeOffset.UtcNow.AddSeconds(index)), TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            IReadOnlyList<DiagnosticEventRecord> records = await store
+                .ReadRecentAsync(EventCount, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string[] messages = [.. records.Select(record => record.Message)];
+            Assert.HasCount(EventCount, records);
+            Assert.Contains("Long print event 0", messages);
+            Assert.Contains($"Long print event {EventCount - 1}", messages);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies concurrent store instances preserve all appended diagnostics.
     /// </summary>
     [TestMethod]

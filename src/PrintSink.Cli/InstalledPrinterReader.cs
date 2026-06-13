@@ -9,7 +9,8 @@ namespace PrintSink.Cli;
 internal static partial class InstalledPrinterReader
 {
     private const int ErrorInsufficientBuffer = 122;
-    private const uint PrinterInfoLevel = 4;
+    private const uint PrinterInfoLevel = 2;
+    private const uint PrinterStatusPendingDeletion = 0x00000004;
     private const PrinterEnumerationFlags EnumerationScope =
         PrinterEnumerationFlags.Local | PrinterEnumerationFlags.Connections;
 
@@ -73,16 +74,20 @@ internal static partial class InstalledPrinterReader
                 throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
 
-            int itemSize = Marshal.SizeOf<PrinterInfo4>();
-            string[] names = new string[returned];
-            for (int index = 0; index < names.Length; index++)
+            int itemSize = Marshal.SizeOf<PrinterInfo2>();
+            List<string> names = [];
+            for (int index = 0; index < returned; index++)
             {
                 nint item = nint.Add(buffer, index * itemSize);
-                PrinterInfo4 printerInfo = Marshal.PtrToStructure<PrinterInfo4>(item);
-                names[index] = printerInfo.PrinterName ?? string.Empty;
+                PrinterInfo2 printerInfo = Marshal.PtrToStructure<PrinterInfo2>(item);
+                if ((printerInfo.Status & PrinterStatusPendingDeletion) == 0
+                    && !string.IsNullOrWhiteSpace(printerInfo.PrinterName))
+                {
+                    names.Add(printerInfo.PrinterName);
+                }
             }
 
-            return [.. names.Where(name => !string.IsNullOrWhiteSpace(name))];
+            return [.. names];
         }
         finally
         {

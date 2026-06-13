@@ -63,7 +63,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                         "Virtual printer job failed",
                         GetPrinterName(sender),
                         ex.ToString());
-                    args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+                    TryCompleteJob(args, PrintWorkflowSubmittedStatus.Failed, GetPrinterName(sender));
                 }
             });
 
@@ -73,7 +73,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                     "Virtual printer job failed",
                     GetPrinterName(sender),
                     "Background handler was already busy.");
-                args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+                TryCompleteJob(args, PrintWorkflowSubmittedStatus.Failed, GetPrinterName(sender));
             }
         }
         finally
@@ -99,7 +99,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 "Virtual printer endpoint unresolved",
                 printerName,
                 $"uri={printerUri}; contentType={args.SourceContent.ContentType}");
-            args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+            TryCompleteJob(args, PrintWorkflowSubmittedStatus.Failed, printerName);
             return;
         }
 
@@ -154,7 +154,6 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false);
         if (uiStatus == PrintWorkflowUICompletionStatus.UserCanceled)
         {
-            args.CompleteJob(PrintWorkflowSubmittedStatus.Canceled);
             await diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
@@ -165,10 +164,10 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                         endpoint.QueueName,
                         "User canceled from Job UI."))
                 .ConfigureAwait(false);
+            TryCompleteJob(args, PrintWorkflowSubmittedStatus.Canceled, endpoint.QueueName);
         }
         else
         {
-            args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
             await diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
@@ -179,6 +178,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                         endpoint.QueueName,
                         $"Job UI completed with {uiStatus}."))
                 .ConfigureAwait(false);
+            TryCompleteJob(args, PrintWorkflowSubmittedStatus.Failed, endpoint.QueueName);
         }
 
         return new JobUiCompletionResult(false, true);
@@ -298,6 +298,24 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             // Diagnostics must not make the virtual-printer contract fail.
+        }
+    }
+
+    private static void TryCompleteJob(
+        PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
+        PrintWorkflowSubmittedStatus status,
+        string printerName)
+    {
+        try
+        {
+            args.CompleteJob(status);
+        }
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
+        {
+            AppendDiagnostic(
+                "Virtual printer completion ignored",
+                printerName,
+                $"{status}: {ex}");
         }
     }
 

@@ -389,16 +389,14 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
     {
         try
         {
-            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
-            await diagnosticEventStore
-                .AppendAsync(
-                    new DiagnosticEventRecord(
-                        DateTimeOffset.UtcNow,
-                        DiagnosticEventSeverity.Warning,
-                        nameof(JobPreviewScreen),
-                        "Job canceled",
-                        null,
-                        $"User canceled from Job UI. Job: {jobTitle}; Source: {source}."))
+            await AppendDiagnosticWithRetryAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Warning,
+                    nameof(JobPreviewScreen),
+                    "Job canceled",
+                    null,
+                    $"User canceled from Job UI. Job: {jobTitle}; Source: {source}."))
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
@@ -430,16 +428,14 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         try
         {
             string jobStatus = args.PrinterJob.GetJobStatus().ToString();
-            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
-            diagnosticEventStore
-                .AppendAsync(
-                    new DiagnosticEventRecord(
-                        DateTimeOffset.UtcNow,
-                        DiagnosticEventSeverity.Information,
-                        nameof(JobPreviewScreen),
-                        "Job notification received",
-                        null,
-                        $"status={jobStatus}"))
+            AppendDiagnosticWithRetryAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(JobPreviewScreen),
+                    "Job notification received",
+                    null,
+                    $"status={jobStatus}"))
                 .GetAwaiter()
                 .GetResult();
         }
@@ -457,21 +453,40 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
     {
         try
         {
-            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
-            await diagnosticEventStore
-                .AppendAsync(
-                    new DiagnosticEventRecord(
-                        DateTimeOffset.UtcNow,
-                        DiagnosticEventSeverity.Information,
-                        nameof(JobPreviewScreen),
-                        "Job UI PDL received",
-                        null,
-                        $"kind={kind}; jobTitle={jobTitle}; source={sourceAppDisplayName}; contentType={contentType}"))
+            await AppendDiagnosticWithRetryAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(JobPreviewScreen),
+                    "Job UI PDL received",
+                    null,
+                    $"kind={kind}; jobTitle={jobTitle}; source={sourceAppDisplayName}; contentType={contentType}"))
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             // Job UI interaction must keep running even if local diagnostics are temporarily locked.
+        }
+    }
+
+    private static async Task AppendDiagnosticWithRetryAsync(DiagnosticEventRecord record)
+    {
+        const int MaximumAttempts = 3;
+
+        for (int attempt = 1; attempt <= MaximumAttempts; attempt++)
+        {
+            try
+            {
+                using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+                await diagnosticEventStore
+                    .AppendAsync(record)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex) && attempt < MaximumAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(150)).ConfigureAwait(false);
+            }
         }
     }
 }
