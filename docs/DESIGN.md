@@ -173,9 +173,10 @@ operator workflows; it references the same core library but is not an OS print a
 
 ## 4. Feature Completeness Matrix
 
-Every supported PrintSink capability listed here is implemented and covered by CI. The physical IPP
-path is limited to PSA association and activation evidence; document output is a virtual-printer
-feature.
+Every supported PrintSink capability listed here is implemented and covered by CI. The E2E run writes
+`featureEvidence` for the print-stack rows it proves. Pure model behavior is covered by unit tests.
+The physical IPP path is limited to PSA association and activation evidence; document output is a
+virtual-printer feature.
 
 | # | Feature | Contract / API | Component | Notes |
 | --- | --- | --- | --- | --- |
@@ -200,7 +201,7 @@ feature.
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
 | 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
-| 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Raised when a user opens a job notification toast. |
+| 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Defensive handler for OS error-toast activation; not a supported virtual-printer behavior until a deterministic toast E2E exists. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Job password option model | `JobPasswordOptions` settings model | Core | Reserved model; no physical workflow target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
@@ -558,8 +559,8 @@ instead of XAML pages:
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
   `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
   persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
-  `JobNotification` records job status/error context when Windows activates the app from a job
-  notification toast.
+  `JobNotification` records job status/error context if Windows activates the app from a job
+  notification toast; it is a compatibility hook, not part of the supported virtual-printer flow.
 - Headless automation sets package-local `JobUiOptions` through `printsink-app.exe --disable-job-ui`.
   Background tasks then skip `LaunchAndCompleteUIAsync` and process jobs directly. The normal default is
   restored with `printsink-app.exe --enable-job-ui`.

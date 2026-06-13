@@ -3144,6 +3144,463 @@ function Test-PrintSinkDiagnosticStartedAfter {
     return $timestamp -ge $StartedUtc.AddSeconds(-$SkewSeconds)
 }
 
+function Test-AllQueuesInstalled {
+    param(
+        [object[]] $QueueSnapshot,
+        [string[]] $ExpectedQueues
+    )
+
+    if ($QueueSnapshot.Count -ne $ExpectedQueues.Count) {
+        return $false
+    }
+
+    foreach ($queue in $ExpectedQueues) {
+        $entry = $QueueSnapshot |
+            Where-Object { $_.name -eq $queue } |
+            Select-Object -First 1
+        if ($null -eq $entry -or -not [bool]$entry.installed) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Get-ObjectPropertyValue {
+    param(
+        [object] $Object,
+        [string] $Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object[$Name]
+    }
+
+    return $Object.$Name
+}
+
+function Get-ResultByQueue {
+    param(
+        [object[]] $Results,
+        [string] $Queue
+    )
+
+    return $Results |
+        Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'queue') -eq $Queue } |
+        Select-Object -First 1
+}
+
+function Test-RouteContains {
+    param(
+        [object] $Result,
+        [string] $ExpectedText
+    )
+
+    if ($null -eq $Result -or $null -eq $Result.diagnostic) {
+        return $false
+    }
+
+    $diagnostic = Get-ObjectPropertyValue -Object $Result -Name 'diagnostic'
+    $route = Get-ObjectPropertyValue -Object $diagnostic -Name 'route'
+    return [string]$route -like "*$ExpectedText*"
+}
+
+function New-PrintResultSummary {
+    param(
+        [object[]] $Results,
+        [switch] $IncludeRoute,
+        [switch] $IncludeTicketValidation
+    )
+
+    return @($Results | ForEach-Object {
+        $diagnostic = Get-ObjectPropertyValue -Object $_ -Name 'diagnostic'
+        $summary = [ordered]@{
+            queue = Get-ObjectPropertyValue -Object $_ -Name 'queue'
+            format = Get-ObjectPropertyValue -Object $_ -Name 'format'
+            outputPath = Get-ObjectPropertyValue -Object $_ -Name 'outputPath'
+            bytes = Get-ObjectPropertyValue -Object $_ -Name 'bytes'
+        }
+
+        if ($IncludeRoute) {
+            $summary.route = Get-ObjectPropertyValue -Object $diagnostic -Name 'route'
+        }
+
+        if ($IncludeTicketValidation) {
+            $summary.ticketValidation = Get-ObjectPropertyValue -Object $_ -Name 'ticketValidation'
+        }
+
+        $summary
+    })
+}
+
+function New-VirtualPrinterSummary {
+    param(
+        [object[]] $VirtualPrinters
+    )
+
+    return @($VirtualPrinters | ForEach-Object {
+        [ordered]@{
+            printerUri = Get-ObjectPropertyValue -Object $_ -Name 'printerUri'
+            displayName = Get-ObjectPropertyValue -Object $_ -Name 'displayName'
+            preferredInputFormat = Get-ObjectPropertyValue -Object $_ -Name 'preferredInputFormat'
+            outputFileTypes = Get-ObjectPropertyValue -Object $_ -Name 'outputFileTypes'
+        }
+    })
+}
+
+function Add-PrintSinkFeatureEvidence {
+    param(
+        [System.Collections.Generic.List[object]] $FeatureEvidence,
+        [int] $Number,
+        [string] $Feature,
+        [bool] $Passed,
+        [string] $Evidence,
+        [object] $Artifact
+    )
+
+    if (-not $Passed) {
+        throw "Feature evidence missing for #${Number} ${Feature}: $Evidence"
+    }
+
+    $FeatureEvidence.Add([ordered]@{
+        number = $Number
+        feature = $Feature
+        evidence = $Evidence
+        artifact = $Artifact
+    }) | Out-Null
+}
+
+function Assert-PrintSinkFeatureEvidenceComplete {
+    param(
+        [object[]] $FeatureEvidence
+    )
+
+    $expectedNumbers = @()
+    $expectedNumbers += 1..21
+    $expectedNumbers += 23
+    $expectedNumbers += 25
+
+    $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ObjectPropertyValue -Object $_ -Name 'number') })
+    $missingNumbers = @($expectedNumbers | Where-Object { $_ -notin $actualNumbers })
+    $unexpectedNumbers = @($actualNumbers | Where-Object { $_ -notin $expectedNumbers })
+    $duplicateNumbers = @(
+        $actualNumbers |
+            Group-Object |
+            Where-Object { $_.Count -gt 1 } |
+            ForEach-Object { [int]$_.Name }
+    )
+
+    if ($missingNumbers.Count -gt 0) {
+        throw "Feature evidence is missing supported print-stack feature number(s): $($missingNumbers -join ', ')."
+    }
+
+    if ($unexpectedNumbers.Count -gt 0) {
+        throw "Feature evidence contains unsupported feature number(s): $($unexpectedNumbers -join ', ')."
+    }
+
+    if ($duplicateNumbers.Count -gt 0) {
+        throw "Feature evidence contains duplicate feature number(s): $($duplicateNumbers -join ', ')."
+    }
+}
+
+function New-PrintSinkFeatureEvidence {
+    param(
+        [string[]] $ExpectedQueues,
+        [object] $PackageShape,
+        [object[]] $QueueSnapshots,
+        [object] $CliQueueLifecycle,
+        [object] $ExtensionCapabilities,
+        [object] $UserDefaultPrintTicket,
+        [object] $VirtualAttributeRead,
+        [object] $IppAssociation,
+        [object[]] $RealPrintResults,
+        [object] $ConcurrentPrints,
+        [object] $PdfPassthrough,
+        [object] $WinRtSource,
+        [object] $SettingsUiOwner,
+        [object] $SettingsWatermark,
+        [object] $SettingsImageWatermark,
+        [object] $FailedImageWatermark,
+        [object] $JobUiWatermark,
+        [object] $JobUiCancel
+    )
+
+    $featureEvidence = [System.Collections.Generic.List[object]]::new()
+    $realPrints = @($RealPrintResults)
+    $virtualPrinters = @($PackageShape.virtualPrinters)
+    $initialSnapshot = @(
+        $QueueSnapshots |
+            Where-Object { $_.context -eq 'after provisioning' } |
+            Select-Object -First 1
+    )
+
+    $provisionedQueues = if ($initialSnapshot.Count -gt 0) {
+        @($initialSnapshot[0].queues)
+    }
+    else {
+        @()
+    }
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 1 `
+        -Feature 'Install N virtual print queues from one package' `
+        -Passed (
+            $virtualPrinters.Count -eq $ExpectedQueues.Count `
+                -and (Test-AllQueuesInstalled -QueueSnapshot $provisionedQueues -ExpectedQueues $ExpectedQueues) `
+                -and [string]$CliQueueLifecycle.install -like '*Installed*yes*') `
+        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, and the CLI observes them as installed.' `
+        -Artifact ([ordered]@{
+            virtualPrinters = $virtualPrinters.Count
+            provisionedQueues = $provisionedQueues
+            cliInstall = $CliQueueLifecycle.install
+        })
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 2 `
+        -Feature 'Receive spooled PDL and content type' `
+        -Passed (
+            $realPrints.Count -eq $ExpectedQueues.Count `
+                -and (@($realPrints | Where-Object {
+                    $diagnostic = Get-ObjectPropertyValue -Object $_ -Name 'diagnostic'
+                    [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $diagnostic -Name 'route'))
+                }).Count -eq 0)) `
+        -Evidence 'Every real queue produced a route diagnostic with the source content type from the live workflow activation.' `
+        -Artifact (New-PrintResultSummary -Results $realPrints -IncludeRoute)
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 3 `
+        -Feature 'Preferred input format negotiation' `
+        -Passed (
+            (@($virtualPrinters | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'preferredInputFormat') -eq 'application/oxps' }).Count -ge 5) `
+                -and (@($virtualPrinters | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'preferredInputFormat') -eq 'application/postscript' }).Count -eq 1) `
+                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript') -ExpectedText 'application/postscript')) `
+        -Evidence 'Manifest preferred formats include OXPS and PostScript, and the PostScript queue received PostScript in a real print job.' `
+        -Artifact (New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters)
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 4 `
+        -Feature 'Passthrough formats without OS re-render' `
+        -Passed (
+            (Test-RouteContains -Result $PdfPassthrough -ExpectedText 'application/pdf -> Pdf; Copy') `
+                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
+                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript') -ExpectedText 'Copy')) `
+        -Evidence 'PDF passthrough is byte-asserted; XPS and PostScript queues completed copy routes from real print jobs.' `
+        -Artifact ([ordered]@{
+            pdf = $PdfPassthrough.diagnostic
+            xps = (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS').diagnostic
+            postScript = (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript').diagnostic
+        })
+
+    $fileBackedPrints = @($realPrints | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'queue') -ne 'PrintSink - Cloud' })
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 5 `
+        -Feature 'File-printer Save As target' `
+        -Passed (
+            $fileBackedPrints.Count -eq 5 `
+                -and (@($fileBackedPrints | Where-Object {
+                    [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $_ -Name 'outputPath')) `
+                        -or (Get-ObjectPropertyValue -Object $_ -Name 'bytes') -le 0
+                }).Count -eq 0)) `
+        -Evidence 'The live Save-As broker produced non-empty files for every file-backed queue.' `
+        -Artifact (New-PrintResultSummary -Results $fileBackedPrints)
+
+    $cloudPrint = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - Cloud'
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 6 `
+        -Feature 'Non-file sinks' `
+        -Passed (
+            $null -ne $cloudPrint `
+                -and [string]::IsNullOrWhiteSpace([string]$cloudPrint.outputPath) `
+                -and $cloudPrint.bytes -eq 0 `
+                -and [string]$cloudPrint.diagnostic.message -eq 'Job completed') `
+        -Evidence 'The cloud endpoint omits Save-As output and records a completed sink write from a real print job.' `
+        -Artifact $cloudPrint
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 7 `
+        -Feature 'OXPS conversion to PDF, PWG Raster, and PCLm' `
+        -Passed (
+            (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PDF') -ExpectedText 'Convert XPS to PDF') `
+                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PWG Raster') -ExpectedText 'Convert XPS to PWG Raster') `
+                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PCLm') -ExpectedText 'Convert XPS to PCLm')) `
+        -Evidence 'The Windows converter produced valid PDF, PWG Raster, and PCLm outputs from real OXPS jobs.' `
+        -Artifact (New-PrintResultSummary `
+            -Results @($realPrints | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'queue') -in @('PrintSink - PDF', 'PrintSink - PWG Raster', 'PrintSink - PCLm') }) `
+            -IncludeRoute)
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 8 `
+        -Feature 'XPS/OXPS passthrough copy' `
+        -Passed (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
+        -Evidence 'The XPS endpoint completed a copy route and produced a valid OXPS package.' `
+        -Artifact (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS')
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 9 `
+        -Feature 'Watermark text and image on XPS pages' `
+        -Passed (
+            $SettingsWatermark.bytes -gt 0 `
+                -and $SettingsImageWatermark.bytes -gt 0 `
+                -and $JobUiWatermark.bytes -gt 0) `
+        -Evidence 'Default text watermark, default image watermark, and per-job UI watermark each produced validated PDF output.' `
+        -Artifact ([ordered]@{
+            settingsText = $SettingsWatermark
+            settingsImage = $SettingsImageWatermark
+            jobUiText = $JobUiWatermark
+        })
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 10 `
+        -Feature 'Per-job UI preview launched from background' `
+        -Passed ($JobUiWatermark.mode -eq 'job-ui-watermark' -and $JobUiWatermark.bytes -gt 0) `
+        -Evidence 'The E2E run opened the packaged Job UI, changed the watermark through UI Automation, continued the job, and validated the output.' `
+        -Artifact $JobUiWatermark
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 11 `
+        -Feature 'Custom print-preferences UI' `
+        -Passed ($SettingsUiOwner.ownerDisabled -and $SettingsUiOwner.modalStatus -eq 'Modal to print preferences owner.') `
+        -Evidence 'The Windows print dialog launched PrintSink settings, the owner was disabled while modal, and restored after close.' `
+        -Artifact $SettingsUiOwner
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 12 `
+        -Feature 'Print-ticket validation and resolve' `
+        -Passed (
+            $realPrints.Count -eq $ExpectedQueues.Count `
+                -and (@($realPrints | Where-Object {
+                    $ticketValidation = Get-ObjectPropertyValue -Object $_ -Name 'ticketValidation'
+                    [string](Get-ObjectPropertyValue -Object $ticketValidation -Name 'message') -ne 'Print ticket validated'
+                }).Count -eq 0)) `
+        -Evidence 'Every real queue recorded PrintSupportExtension ticket validation with status=Resolved.' `
+        -Artifact (New-PrintResultSummary -Results $realPrints -IncludeTicketValidation)
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 13 `
+        -Feature 'PDC regeneration and custom features' `
+        -Passed ([string]$ExtensionCapabilities.detail -like '*features=PageMediaSize,PageResolution,JobWatermarkMode*') `
+        -Evidence 'A real capability refresh updated the installed queue PDC with the built-in PrintSink feature set.' `
+        -Artifact $ExtensionCapabilities
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 14 `
+        -Feature 'PDR localization of custom features' `
+        -Passed ([string]$ExtensionCapabilities.detail -like '*pdr=updated*' -and [string]$ExtensionCapabilities.detail -like '*pdrResources=*') `
+        -Evidence 'The extension updated device resources and reported localized PDR resource count during a real refresh.' `
+        -Artifact $ExtensionCapabilities
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 15 `
+        -Feature 'Refresh PDC on settings change' `
+        -Passed ([string]$ExtensionCapabilities.message -eq 'Capabilities updated') `
+        -Evidence 'The packaged app invoked RefreshPrintDeviceCapabilities and the extension recorded Capabilities updated.' `
+        -Artifact $ExtensionCapabilities
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 16 `
+        -Feature 'Get and set user default print ticket' `
+        -Passed (
+            [string]$UserDefaultPrintTicket.set.detail -like '*copies=2*verifiedCopies=2*' `
+                -and [string]$UserDefaultPrintTicket.restore.detail -like '*copies=1*verifiedCopies=1*') `
+        -Evidence 'The packaged app changed the installed PDF queue default copies and restored it through IppPrintDevice.UserDefaultPrintTicket.' `
+        -Artifact $UserDefaultPrintTicket
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 17 `
+        -Feature 'Physical IPP PSA association and workflow activation' `
+        -Passed (
+            -not [string]::IsNullOrWhiteSpace([string]$IppAssociation.aumid) `
+                -and $IppAssociation.ippRequestCount -gt 0 `
+                -and [string]$IppAssociation.ticketValidation.message -eq 'Print ticket validated' `
+                -and $null -ne $IppAssociation.workflowActivationPrint.workflow) `
+        -Evidence 'A temporary signed INF associated the package with a real Microsoft IPP Class Driver queue and triggered extension plus workflow diagnostics.' `
+        -Artifact $IppAssociation
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 18 `
+        -Feature 'MXDC image quality per output quality' `
+        -Passed ([string]$ExtensionCapabilities.detail -like '*mxdc=configured*') `
+        -Evidence 'A real capability refresh configured PrintSupportMxdcImageQualityConfiguration.' `
+        -Artifact $ExtensionCapabilities
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 19 `
+        -Feature 'Printer-selected adaptive card in MPD' `
+        -Passed ([string]$SettingsUiOwner.printerSelected.detail -like '*adaptiveCard=set*' -and [string]$SettingsUiOwner.printerSelected.detail -like '*additionalFields=*') `
+        -Evidence 'The Windows print dialog selected a PrintSink queue and the extension set adaptive-card and additional-field metadata.' `
+        -Artifact $SettingsUiOwner.printerSelected
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 20 `
+        -Feature 'IPP attribute get for installed virtual queues' `
+        -Passed ([string]$VirtualAttributeRead.detail -like '*document-format-default=*' -and [string]$VirtualAttributeRead.detail -like '*document-format-supported=*') `
+        -Evidence 'The packaged app read document-format attributes from the installed PDF virtual queue.' `
+        -Artifact $VirtualAttributeRead
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 21 `
+        -Feature 'Multiple instances for concurrent jobs' `
+        -Passed ($PackageShape.supportsMultipleInstances -and $ConcurrentPrints.overlapped -and @($ConcurrentPrints.jobs).Count -eq 2) `
+        -Evidence 'The manifest supports multiple instances and two live jobs overlapped while producing valid outputs.' `
+        -Artifact $ConcurrentPrints
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 23 `
+        -Feature 'Graceful cancel, abort, and fail' `
+        -Passed (
+            [string]$FailedImageWatermark.diagnostic.message -eq 'Job failed' `
+                -and [string]$JobUiCancel.diagnostic.message -eq 'Job canceled' `
+                -and $JobUiCancel.bytes -eq 0) `
+        -Evidence 'A corrupt watermark aborts as failed with no output, and the Job UI cancel path records cancellation with no output.' `
+        -Artifact ([ordered]@{
+            failed = $FailedImageWatermark
+            canceled = $JobUiCancel
+        })
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 25 `
+        -Feature 'Localized printer queue display names' `
+        -Passed (
+            (@($virtualPrinters | Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'displayName') -like 'ms-resource:*' }).Count -eq $ExpectedQueues.Count) `
+                -and (Test-AllQueuesInstalled -QueueSnapshot $provisionedQueues -ExpectedQueues $ExpectedQueues)) `
+        -Evidence 'The signed manifest uses ms-resource display names and Windows reports the installed localized queue names.' `
+        -Artifact ([ordered]@{
+            manifestNames = New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters
+            installedQueues = $provisionedQueues
+        })
+
+    Assert-PrintSinkFeatureEvidenceComplete -FeatureEvidence @($featureEvidence)
+
+    return @($featureEvidence)
+}
+
 function Write-E2EProgress {
     param(
         [string] $Message
@@ -3706,6 +4163,26 @@ try {
             -Context 'after IPP PSA association'
     })
 
+    $featureEvidence = New-PrintSinkFeatureEvidence `
+        -ExpectedQueues $expectedQueues `
+        -PackageShape $packageShape `
+        -QueueSnapshots @($queueSnapshots) `
+        -CliQueueLifecycle $cliQueueLifecycle `
+        -ExtensionCapabilities $extensionCapabilitiesResult `
+        -UserDefaultPrintTicket $userDefaultPrintTicketResult `
+        -VirtualAttributeRead $virtualAttributeReadResult `
+        -IppAssociation $ippAssociationResult `
+        -RealPrintResults $realPrintResults `
+        -ConcurrentPrints $concurrentPrintResult `
+        -PdfPassthrough $pdfPassthroughResult `
+        -WinRtSource $winRtSourceResult `
+        -SettingsUiOwner $settingsUiOwnerResult `
+        -SettingsWatermark $settingsWatermarkResult `
+        -SettingsImageWatermark $settingsImageWatermarkResult `
+        -FailedImageWatermark $failedImageWatermarkResult `
+        -JobUiWatermark $jobUiResult `
+        -JobUiCancel $jobUiCancelResult
+
     $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
     $result = [ordered]@{
         windowsVersion = [Environment]::OSVersion.Version.ToString()
@@ -3737,6 +4214,7 @@ try {
         failedImageWatermark = $failedImageWatermarkResult
         jobUiWatermark = $jobUiResult
         jobUiCancel = $jobUiCancelResult
+        featureEvidence = $featureEvidence
     }
 
     $resultJson = $result | ConvertTo-Json -Depth 8
