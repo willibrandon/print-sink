@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Capabilities;
 using PrintSink.Core.Tickets;
 using Windows.ApplicationModel.Background;
@@ -63,6 +64,10 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
             {
                 WorkflowPrintTicketValidationStatus status = ValidatePrintTicket(args.PrintTicket);
                 args.SetPrintTicketValidationStatus(status);
+                AppendDiagnostic(
+                    "Print ticket validated",
+                    sender.Printer.PrinterName,
+                    $"status={status}");
             });
         }
         finally
@@ -102,6 +107,10 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         {
             state.Run(() =>
             {
+                bool mxdcConfigured = false;
+                bool pdrUpdated = false;
+                int resourceCount = 0;
+
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
                 XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
                 args.UpdatePrintDeviceCapabilities(updatedCapabilities);
@@ -109,18 +118,31 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
                 {
                     ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
+                    mxdcConfigured = true;
                 }
 
                 if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
                 {
                     XmlDocument resources = args.GetCurrentPrintDeviceResources();
                     Dictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
+                    resourceCount = localizedResources.Count;
                     if (localizedResources.Count > 0)
                     {
                         XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
                         args.UpdatePrintDeviceResources(updatedResources);
+                        pdrUpdated = true;
                     }
                 }
+
+                AppendDiagnostic(
+                    "Capabilities updated",
+                    sender.Printer.PrinterName,
+                    string.Join(
+                        "; ",
+                        $"features={FormatBuiltInFeatureNames()}",
+                        $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
+                        $"pdr={(pdrUpdated ? "updated" : "skipped")}",
+                        $"pdrResources={resourceCount}"));
             });
         }
         finally
@@ -251,7 +273,11 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     """;
 
                 args.SetAdaptiveCard(Windows.UI.Shell.AdaptiveCardBuilder.CreateAdaptiveCardFromJson(json));
-                RequestAdditionalPrintDialogFields(args);
+                string requestDetail = RequestAdditionalPrintDialogFields(args);
+                AppendDiagnostic(
+                    "Printer selected",
+                    sender.Printer.PrinterName,
+                    $"adaptiveCard=set; {requestDetail}");
             });
         }
         finally
@@ -260,7 +286,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         }
     }
 
-    private static void RequestAdditionalPrintDialogFields(PrintSupportPrinterSelectedEventArgs args)
+    private static string RequestAdditionalPrintDialogFields(PrintSupportPrinterSelectedEventArgs args)
     {
         ArgumentNullException.ThrowIfNull(args);
 
@@ -279,7 +305,19 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         {
             args.SetAdditionalFeatures(additionalFeatures);
             args.SetAdditionalParameters(additionalParameters);
+            return string.Join(
+                "; ",
+                "additionalFields=requested",
+                $"allowed={args.AllowedAdditionalFeaturesAndParametersCount}",
+                $"features={FormatPrintTicketElementNames(additionalFeatures)}",
+                $"parameters={FormatPrintTicketElementNames(additionalParameters)}");
         }
+
+        return string.Join(
+            "; ",
+            "additionalFields=skipped",
+            $"allowed={args.AllowedAdditionalFeaturesAndParametersCount}",
+            $"requested={requestedCount}");
     }
 
     private static PrintSupportPrintTicketElement CreatePrintTicketElement(string localName)
@@ -289,5 +327,40 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
             LocalName = localName,
             NamespaceUri = PrintSchemaNamespaces.Keywords,
         };
+    }
+
+    private static string FormatBuiltInFeatureNames()
+    {
+        return string.Join(
+            ",",
+            PrintSinkCapabilityFeatures.BuiltIn.Select(static feature => feature.Name.LocalName));
+    }
+
+    private static string FormatPrintTicketElementNames(PrintSupportPrintTicketElement[] elements)
+    {
+        return string.Join(",", elements.Select(static element => element.LocalName));
+    }
+
+    private static void AppendDiagnostic(string message, string endpoint, string detail)
+    {
+        try
+        {
+            PackagedSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(PrintSupportExtensionBackgroundTask),
+                        message,
+                        endpoint,
+                        detail))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Diagnostics must not make the PSA extension contract fail.
+        }
     }
 }

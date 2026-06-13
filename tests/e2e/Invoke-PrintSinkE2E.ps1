@@ -1291,6 +1291,12 @@ Add-Type -AssemblyName System.Drawing
                 -Endpoint $printerName `
                 -StartedUtc $startedUtc `
                 -ExpectedRouteDetail $PrintCase.expectedRoute
+            $ticketValidation = Wait-ForPrintSinkDiagnostic `
+                -PackageFamilyName $PackageFamilyName `
+                -Endpoint $printerName `
+                -Message 'Print ticket validated' `
+                -StartedUtc $startedUtc `
+                -DetailContains @('status=Resolved')
 
             return [ordered]@{
                 queue = $printerName
@@ -1298,6 +1304,7 @@ Add-Type -AssemblyName System.Drawing
                 outputPath = $outputPath
                 bytes = $file.Length
                 diagnostic = $diagnostic
+                ticketValidation = $ticketValidation
             }
         }
 
@@ -1306,6 +1313,12 @@ Add-Type -AssemblyName System.Drawing
             -Endpoint $printerName `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $PrintCase.expectedRoute
+        $ticketValidation = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printerName `
+            -Message 'Print ticket validated' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('status=Resolved')
 
         return [ordered]@{
             queue = $printerName
@@ -1313,6 +1326,7 @@ Add-Type -AssemblyName System.Drawing
             outputPath = $null
             bytes = 0
             diagnostic = $diagnostic
+            ticketValidation = $ticketValidation
         }
     }
     finally {
@@ -1522,6 +1536,7 @@ function Invoke-PrintSinkSettingsUiOwner {
     Add-Type -AssemblyName UIAutomationClient
 
     $sourceText = 'foo settings ui owner e2e'
+    $startedUtc = [DateTimeOffset]::UtcNow
     $alias = Get-Command printsink-app.exe -ErrorAction Stop
     $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
     Remove-Item $headlessLog -ErrorAction SilentlyContinue
@@ -1542,6 +1557,13 @@ function Invoke-PrintSinkSettingsUiOwner {
         Select-WindowsPrintPrinter `
             -PrintDialog $printDialog `
             -PrinterName 'PrintSink - PDF'
+
+        $printerSelected = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint 'PrintSink - PDF' `
+            -Message 'Printer selected' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('adaptiveCard=set', 'additionalFields=')
 
         $moreSettings = Find-EnabledDescendantByFilter `
             -Root $printDialog `
@@ -1651,6 +1673,7 @@ function Invoke-PrintSinkSettingsUiOwner {
             ownerDisabled = $true
             modalStatus = 'Modal to print preferences owner.'
             packageFamilyName = $PackageFamilyName
+            printerSelected = $printerSelected
         }
     }
     finally {
@@ -1661,6 +1684,29 @@ function Invoke-PrintSinkSettingsUiOwner {
         Get-Process -Name 'PrintSink*', 'PrintDialog' -ErrorAction SilentlyContinue |
             Stop-Process -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-PrintSinkExtensionCapabilities {
+    param(
+        [string] $PackageFamilyName,
+        [DateTimeOffset] $StartedUtc
+    )
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @('--refresh-capabilities', '--endpoint', 'Pdf') `
+        -Description 'Refreshing PDF capabilities through the packaged app'
+
+    return Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint 'PrintSink - PDF' `
+        -Message 'Capabilities updated' `
+        -StartedUtc $StartedUtc `
+        -DetailContains @(
+            'features=PageMediaSize,PageResolution,JobWatermarkMode',
+            'mxdc=configured',
+            'pdr=updated',
+            'pdrResources=') `
+        -TimeoutSeconds 120
 }
 
 function Invoke-PrintSinkSettingsWatermarkPrint {
@@ -2216,7 +2262,18 @@ function Wait-ForPrintSinkJobCompleted {
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
-            $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            try {
+                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            }
+            catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+
             $route = $events |
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
@@ -2270,6 +2327,67 @@ function Wait-ForPrintSinkJobCompleted {
     throw "Timed out waiting for PrintSink job completion diagnostic for $Endpoint."
 }
 
+function Wait-ForPrintSinkDiagnostic {
+    param(
+        [string] $PackageFamilyName,
+        [string] $Endpoint,
+        [string] $Message,
+        [DateTimeOffset] $StartedUtc,
+        [string[]] $DetailContains = @(),
+        [int] $TimeoutSeconds = 45
+    )
+
+    $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastCandidate = $null
+    do {
+        if (Test-Path -LiteralPath $diagnosticPath) {
+            try {
+                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            }
+            catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+
+            $candidates = @($events |
+                Where-Object {
+                    ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
+                        -and $_.message -eq $Message `
+                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                })
+
+            foreach ($candidate in $candidates) {
+                $lastCandidate = $candidate
+                $detail = [string]$candidate.detail
+                $missingDetail = @($DetailContains | Where-Object { $detail -notlike "*$_*" })
+                if ($missingDetail.Count -eq 0) {
+                    return [ordered]@{
+                        timestamp = $candidate.timestamp
+                        source = $candidate.source
+                        message = $candidate.message
+                        endpoint = $candidate.endpoint
+                        detail = $candidate.detail
+                    }
+                }
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    if ($null -ne $lastCandidate) {
+        throw "Timed out waiting for diagnostic '$Message' on '$Endpoint' with details '$($DetailContains -join ', ')'. Last detail: $($lastCandidate.detail)"
+    }
+
+    throw "Timed out waiting for diagnostic '$Message' on '$Endpoint'."
+}
+
 function Wait-ForPrintSinkJobCanceled {
     param(
         [string] $PackageFamilyName,
@@ -2281,7 +2399,18 @@ function Wait-ForPrintSinkJobCanceled {
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
-            $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            try {
+                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+            }
+            catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+
             $match = $events |
                 Where-Object {
                     ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace([string]$_.endpoint)) `
@@ -2344,6 +2473,8 @@ if (-not $SkipPackageInstall) {
 
 $package = Get-InstalledPackage -Name $PackageName
 $packageShape = Assert-InstalledPackageShape -Package $package -ExpectedVirtualPrinters $expectedVirtualPrinters
+$diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\Settings\diagnostic-events.json"
+Remove-Item -LiteralPath $diagnosticPath -ErrorAction SilentlyContinue
 
 $alias = Get-Command printsink-app.exe -ErrorAction SilentlyContinue
 if ($null -eq $alias) {
@@ -2351,6 +2482,7 @@ if ($null -eq $alias) {
 }
 
 $completedSuccessfully = $false
+$e2eStartedUtc = [DateTimeOffset]::UtcNow
 
 Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
 try {
@@ -2368,6 +2500,10 @@ try {
     if ($missingQueues.Count -gt 0) {
         throw "Missing PrintSink queues: $($missingQueues -join ', ')"
     }
+
+    $extensionCapabilitiesResult = Invoke-PrintSinkExtensionCapabilities `
+        -PackageFamilyName $package.PackageFamilyName `
+        -StartedUtc $e2eStartedUtc
 
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
@@ -2419,6 +2555,7 @@ try {
         queues = @($expectedQueues)
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
+        extensionCapabilities = $extensionCapabilitiesResult
         realPrints = $realPrintResults
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult

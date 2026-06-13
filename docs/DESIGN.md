@@ -693,6 +693,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Print from a real Win32 print harness to every endpoint.
    - Assert route diagnostics for every real job, including source content type, target format, copy
      versus conversion action, and route reason.
+   - Assert `PrintSupportExtensionBackgroundTask` diagnostics from real OS activations: ticket
+     validation on every queue, capability refresh with custom features, PDR update, MXDC image
+     quality configuration, and printer-selected adaptive-card/additional-field setup.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
@@ -804,7 +807,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
 E2E automation passes for all six queues including PDF passthrough, WinRT source printing, watermark,
-settings modality, PDC refresh, and cancel paths.
+settings modality, PDC/PDR/MXDC extension refresh, printer selection, ticket validation, and cancel
+paths.
 
 ---
 
