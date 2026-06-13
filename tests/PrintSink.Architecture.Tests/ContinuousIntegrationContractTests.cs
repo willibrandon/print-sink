@@ -55,6 +55,27 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the live E2E suite must prove installed queue persistence after every major workflow.
+    /// </summary>
+    [TestMethod]
+    public void E2eRequiresQueuePersistenceEvidence()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+
+        Assert.Contains("function Assert-PrintSinkQueuePersistence", e2eScript);
+        Assert.Contains("$queuePersistenceResult = Assert-PrintSinkQueuePersistence", e2eScript);
+        Assert.Contains("-QueuePersistence $queuePersistenceResult", e2eScript);
+        Assert.Contains("queuePersistence = $queuePersistenceResult", e2eScript);
+        Assert.Contains("Queue persistence failed", e2eScript);
+        AssertBefore(
+            e2eScript,
+            "$queuePersistenceResult = Assert-PrintSinkQueuePersistence",
+            "$featureEvidence = New-PrintSinkFeatureEvidence");
+    }
+
+    /// <summary>
     /// Verifies the physical IPP E2E path proves non-default printer state traffic.
     /// </summary>
     [TestMethod]
