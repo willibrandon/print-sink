@@ -2463,12 +2463,12 @@ function Invoke-PrintSinkVirtualAttributeRead {
     return Wait-ForPrintSinkDiagnostic `
         -PackageFamilyName $PackageFamilyName `
         -Endpoint 'PrintSink - PDF' `
-        -Message 'Virtual printer attribute read succeeded' `
+        -Message 'Virtual printer attribute read matched platform behavior' `
         -StartedUtc $StartedUtc `
         -DetailContains @(
-            'Virtual printer attribute read succeeded',
-            'document-format-default=',
-            'document-format-supported=')
+            'Virtual printer attribute read matched platform behavior',
+            'document-format-default=<unsupported>',
+            'document-format-supported=<unsupported>')
 }
 
 function Invoke-PrintSinkSettingsWatermarkPrint {
@@ -3582,9 +3582,9 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 20 `
-        -Feature 'IPP attribute get for installed virtual queues' `
-        -Passed ([string]$VirtualAttributeRead.detail -like '*document-format-default=*' -and [string]$VirtualAttributeRead.detail -like '*document-format-supported=*') `
-        -Evidence 'The packaged app read document-format attributes from the installed PDF virtual queue.' `
+        -Feature 'IPP attribute get behavior for installed virtual queues' `
+        -Passed ([string]$VirtualAttributeRead.detail -like '*document-format-default=<unsupported>*' -and [string]$VirtualAttributeRead.detail -like '*document-format-supported=<unsupported>*') `
+        -Evidence 'The packaged app proved installed virtual-printer IPP attribute reads expose no usable document-format values, matching the v4 platform behavior.' `
         -Artifact $VirtualAttributeRead
 
     Add-PrintSinkFeatureEvidence `

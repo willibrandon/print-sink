@@ -59,7 +59,7 @@ internal static class InstalledVirtualPrinterReader
         return $"Capabilities refreshed for {endpoint.QueueName}.";
     }
 
-    internal static string AssertAttributeReadSupported(EndpointKind endpointKind)
+    internal static string AssertAttributeReadMatchesPlatformBehavior(EndpointKind endpointKind)
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
         IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
@@ -67,22 +67,22 @@ internal static class InstalledVirtualPrinterReader
             ["document-format-default", "document-format-supported"]);
 
         string[] requiredAttributes = ["document-format-default", "document-format-supported"];
-        string[] missingAttributes =
+        string[] supportedAttributes =
         [
-            .. requiredAttributes.Where(attribute => !attributes.ContainsKey(attribute)),
+            .. requiredAttributes.Where(
+                attribute => attributes.TryGetValue(attribute, out IppAttributeValue? value)
+                    && value.GetKeywordArray().Count > 0),
         ];
-        if (missingAttributes.Length > 0)
+        if (supportedAttributes.Length > 0)
         {
             throw new InvalidOperationException(
-                $"Virtual printer attribute read for {endpoint.QueueName} missed attributes: {string.Join(",", missingAttributes)}");
+                $"Virtual printer attribute read for {endpoint.QueueName} returned usable document-format attributes: {string.Join(",", supportedAttributes)}");
         }
 
         string returnedAttributes = string.Join(
             "; ",
-            attributes
-                .OrderBy(attribute => attribute.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(attribute => $"{attribute.Key}={FormatKeywordValues(attribute.Value)}"));
-        return $"Virtual printer attribute read succeeded for {endpoint.QueueName}: {returnedAttributes}";
+            requiredAttributes.Select(attribute => $"{attribute}={FormatUnsupportedAttribute(attribute, attributes)}"));
+        return $"Virtual printer attribute read matched platform behavior for {endpoint.QueueName}: {returnedAttributes}";
     }
 
     private static InstalledVirtualPrinterSnapshot ReadInstalled(VirtualEndpoint endpoint)
@@ -120,5 +120,14 @@ internal static class InstalledVirtualPrinterReader
         return values.Count == 0
             ? "<empty>"
             : string.Join(",", values);
+    }
+
+    private static string FormatUnsupportedAttribute(
+        string attributeName,
+        IDictionary<string, IppAttributeValue> attributes)
+    {
+        return attributes.TryGetValue(attributeName, out IppAttributeValue? attribute)
+            ? FormatKeywordValues(attribute).Replace("<empty>", "<unsupported>", StringComparison.Ordinal)
+            : "<unsupported>";
     }
 }

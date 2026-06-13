@@ -200,7 +200,7 @@ activation evidence; document output is a virtual-printer feature.
 | 17 | Physical IPP PSA association + workflow activation | Temporary signed PSA extension INF, Microsoft IPP Class Driver queue, `windows.printSupportWorkflow` activation | Extension task + workflow task + E2E | Association probe only; physical target-stream replacement is not claimed |
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
-| 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
+| 20 | IPP attribute get behavior for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert document-format reads expose no usable virtual-printer IPP values, matching v4 platform behavior |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
 | 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Tracked only. Defensive handler for OS error-toast activation; not a supported virtual-printer behavior until a deterministic toast E2E exists. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
@@ -710,8 +710,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      quality configuration, and printer-selected adaptive-card/additional-field setup.
    - Set and restore `IppPrintDevice.UserDefaultPrintTicket` for a real virtual queue, then assert the
      persisted default copy count through package-local diagnostics.
-   - Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
-     `document-format-supported` entries for a real virtual queue so package behavior is documented.
+   - Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
+     `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
+     behavior for virtual printers.
    - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect a local
      Microsoft IPP Class Driver queue to the in-process E2E IPP printer, assert the installed PSA AUMID
      device property, prove the extension task validates real print tickets for that queue, and submit a

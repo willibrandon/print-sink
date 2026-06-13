@@ -162,10 +162,10 @@ internal static class VirtualPrinterCommandLine
 
             if (assertVirtualAttributeRead)
             {
-                string result = InstalledVirtualPrinterReader.AssertAttributeReadSupported(endpointKind);
+                string result = InstalledVirtualPrinterReader.AssertAttributeReadMatchesPlatformBehavior(endpointKind);
                 WriteDiagnostic(result);
                 await AppendDiagnosticAsync(
-                        "Virtual printer attribute read succeeded",
+                        "Virtual printer attribute read matched platform behavior",
                         EndpointCatalog.GetByKind(endpointKind).QueueName,
                         result,
                         cancellationToken)
@@ -379,7 +379,7 @@ internal static class VirtualPrinterCommandLine
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
             "  --print-pdf-passthrough     Send a PDF through IppPrintDevice PDL passthrough.",
             "  --set-default-copies        Set default ticket copies for --endpoint.",
-            "  --assert-virtual-attribute-read  Assert virtual-printer IPP attributes can be read.",
+            "  --assert-virtual-attribute-read  Assert virtual-printer IPP attribute behavior.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",

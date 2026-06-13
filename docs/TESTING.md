@@ -130,8 +130,9 @@ The required E2E suite proves the current installed-package behavior:
    configuration, and printer selection records the adaptive-card/additional-field request.
 7. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
-8. Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
-   `document-format-supported` entries for a real virtual queue.
+8. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
+   `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
+   behavior for virtual printers.
 9. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
    queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
    `GetPrinterAttributes` traffic, the real `PrintSupportExtensionBackgroundTask` validates print
@@ -183,8 +184,8 @@ Real output assertions:
   quality configuration, and printer-selected adaptive-card setup.
 - User default print-ticket diagnostics must prove a real default copy-count update and restore through
   `IppPrintDevice.UserDefaultPrintTicket`.
-- Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` returns document-format
-  entries for the real installed virtual queue.
+- Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` exposes no usable
+  document-format values for the real installed virtual queue.
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
   with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, submit a
   real print job that activates workflow pass-through, and produce local IPP request evidence.
