@@ -241,4 +241,7 @@ Real output assertions:
 The CI job records the package version, Windows build, architecture, source application, target queue,
 queue snapshots, queue-persistence evidence, cleanup evidence, feature evidence, and output result for
 each run. The E2E script writes the full run record to `e2e-result.json` in the output directory, and
-CI uploads that file with the generated documents.
+the root wrapper runs `tests\e2e\Assert-PrintSinkE2EResult.ps1` against that file before CI uploads it
+with the generated documents. The validator rechecks the supported/deferred feature evidence, queue
+persistence snapshots, cleanup state, output file byte counts, document validity, PDF passthrough byte
+equality, cloud sink artifacts, failed-job empty outputs, and Job UI cancel evidence.
