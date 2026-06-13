@@ -1231,6 +1231,51 @@ function Assert-FileBytesEqual {
     }
 }
 
+function Start-PrintSinkWin32PrintProcess {
+    param(
+        [string] $PrinterName,
+        [string] $DocumentName,
+        [string] $Text,
+        [int] $PageCount = 1
+    )
+
+    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$([Guid]::NewGuid()).ps1"
+    $escapedPrinterName = $PrinterName.Replace("'", "''")
+    $escapedDocumentName = $DocumentName.Replace("'", "''")
+    $escapedText = $Text.Replace("'", "''")
+    $printScript = @"
+Add-Type -AssemblyName System.Drawing
+`$document = [System.Drawing.Printing.PrintDocument]::new()
+`$document.DocumentName = '$escapedDocumentName'
+`$document.PrinterSettings.PrinterName = '$escapedPrinterName'
+`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
+`$pageIndex = 0
+`$pageCount = $PageCount
+`$document.add_PrintPage({
+    param(`$sender, `$eventArgs)
+    `$font = [System.Drawing.Font]::new('Consolas', 16)
+    try {
+        `$pageNumber = `$script:pageIndex + 1
+        `$eventArgs.Graphics.DrawString('$escapedText page ' + `$pageNumber, `$font, [System.Drawing.Brushes]::Black, 96, 96)
+        `$script:pageIndex++
+        `$eventArgs.HasMorePages = `$script:pageIndex -lt `$pageCount
+    }
+    finally {
+        `$font.Dispose()
+    }
+})
+`$document.Print()
+"@
+
+    Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
+    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+
+    return [ordered]@{
+        process = $process
+        scriptPath = $scriptPath
+    }
+}
+
 function Invoke-PrintSinkRealPrint {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintCase,
@@ -1260,30 +1305,11 @@ function Invoke-PrintSinkRealPrint {
         Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
     }
 
-    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.Print.$([Guid]::NewGuid()).ps1"
-    $escapedPrinterName = $printerName.Replace("'", "''")
-    $printScript = @"
-Add-Type -AssemblyName System.Drawing
-`$document = [System.Drawing.Printing.PrintDocument]::new()
-`$document.DocumentName = 'PrintSink E2E Real Print'
-`$document.PrinterSettings.PrinterName = '$escapedPrinterName'
-`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
-`$document.add_PrintPage({
-    param(`$sender, `$eventArgs)
-    `$font = [System.Drawing.Font]::new('Consolas', 16)
-    try {
-        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
-        `$eventArgs.HasMorePages = `$false
-    }
-    finally {
-        `$font.Dispose()
-    }
-})
-`$document.Print()
-"@
-
-    Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-Process -FilePath powershell.exe -ArgumentList @('-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -PassThru
+    $printProcess = Start-PrintSinkWin32PrintProcess `
+        -PrinterName $printerName `
+        -DocumentName 'PrintSink E2E Real Print' `
+        -Text 'foo'
+    $process = $printProcess.process
 
     try {
         if ($PrintCase.requiresSaveAs) {
@@ -1380,7 +1406,137 @@ Add-Type -AssemblyName System.Drawing
         }
 
         Close-SavePrintOutputDialogs
-        Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-PrintSinkConcurrentPrints {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+
+    $concurrentCases = @(
+        [ordered]@{
+            queue = 'PrintSink - PCLm'
+            format = 'pclm'
+            extension = '.pclm'
+            requiresSaveAs = $true
+            expectedText = ''
+            expectedRoute = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'
+            outputName = 'PrintSink-Concurrent-PCLm'
+            printText = 'foo concurrent pclm'
+            pageCount = 24
+        },
+        [ordered]@{
+            queue = 'PrintSink - PDF'
+            format = 'pdf'
+            extension = '.pdf'
+            requiresSaveAs = $true
+            expectedText = 'foo concurrent pdf'
+            expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+            outputName = 'PrintSink-Concurrent-PDF'
+            printText = 'foo concurrent pdf'
+            pageCount = 24
+        }
+    )
+
+    $jobs = [System.Collections.Generic.List[object]]::new()
+    $startedUtc = [DateTimeOffset]::UtcNow
+
+    try {
+        foreach ($printCase in $concurrentCases) {
+            $outputPath = Join-Path $OutputDirectory "$($printCase.outputName)$($printCase.extension)"
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
+            Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+
+            $printProcess = Start-PrintSinkWin32PrintProcess `
+                -PrinterName $printCase.queue `
+                -DocumentName "PrintSink E2E Concurrent $($printCase.format)" `
+                -Text $printCase.printText `
+                -PageCount $printCase.pageCount
+            $jobs.Add([ordered]@{
+                printCase = $printCase
+                outputPath = $outputPath
+                process = $printProcess.process
+                scriptPath = $printProcess.scriptPath
+            })
+
+            $dialog = Wait-ForAutomationElement `
+                -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
+                -Scope ([System.Windows.Automation.TreeScope]::Children) `
+                -Condition ([System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::NameProperty,
+                    'Save Print Output As')) `
+                -TimeoutSeconds 30 `
+                -Description "the Save Print Output As dialog for $($printCase.queue)"
+
+            Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
+        }
+
+        $results = @()
+        foreach ($job in $jobs) {
+            $process = $job.process
+            $printCase = $job.printCase
+            $outputPath = $job.outputPath
+
+            if (-not $process.WaitForExit(45000)) {
+                throw "Concurrent print process did not exit for $($printCase.queue)."
+            }
+
+            if ($process.ExitCode -ne 0) {
+                throw "Concurrent print process for $($printCase.queue) exited with $($process.ExitCode)."
+            }
+
+            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 60
+            Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+            $diagnostic = Wait-ForPrintSinkJobCompleted `
+                -PackageFamilyName $PackageFamilyName `
+                -Endpoint $printCase.queue `
+                -StartedUtc $startedUtc `
+                -ExpectedRouteDetail $printCase.expectedRoute
+
+            $file = Get-Item -LiteralPath $outputPath
+            $results += [ordered]@{
+                queue = $printCase.queue
+                format = $printCase.format
+                outputPath = $outputPath
+                bytes = $file.Length
+                pageCount = $printCase.pageCount
+                diagnostic = $diagnostic
+            }
+        }
+
+        $first = $results[0].diagnostic
+        $second = $results[1].diagnostic
+        $firstRouteUtc = [DateTimeOffset]::Parse($first.routeTimestamp)
+        $firstCompletedUtc = [DateTimeOffset]::Parse($first.timestamp)
+        $secondRouteUtc = [DateTimeOffset]::Parse($second.routeTimestamp)
+        $secondCompletedUtc = [DateTimeOffset]::Parse($second.timestamp)
+        $overlapped = $firstRouteUtc -lt $secondCompletedUtc -and $secondRouteUtc -lt $firstCompletedUtc
+        if (-not $overlapped) {
+            throw "Concurrent print jobs did not overlap. $($concurrentCases[0].queue): $firstRouteUtc -> $firstCompletedUtc; $($concurrentCases[1].queue): $secondRouteUtc -> $secondCompletedUtc."
+        }
+
+        return [ordered]@{
+            startedUtc = $startedUtc.ToString('O')
+            overlapped = $true
+            jobs = $results
+        }
+    }
+    finally {
+        foreach ($job in $jobs) {
+            $process = $job.process
+            if ($process -and -not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+            }
+
+            Remove-Item -LiteralPath $job.scriptPath -ErrorAction SilentlyContinue
+        }
+
+        Close-SavePrintOutputDialogs
     }
 }
 
@@ -2518,7 +2674,8 @@ function Wait-ForPrintSinkJobCompleted {
                     timestamp = $match.timestamp
                     message = $match.message
                     detail = $match.detail
-                    route = $route.detail
+                    routeTimestamp = if ($null -eq $route) { $null } else { $route.timestamp }
+                    route = if ($null -eq $route) { $null } else { $route.detail }
                 }
             }
 
@@ -2853,6 +3010,16 @@ try {
         })
     }
 
+    $concurrentPrintResult = Invoke-PrintSinkConcurrentPrints `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after concurrent real prints'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after concurrent real prints'
+    })
+
     $pdfPassthroughResult = Invoke-PrintSinkPdfPassthroughPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -2954,6 +3121,7 @@ try {
         userDefaultPrintTicket = $userDefaultPrintTicketResult
         virtualAttributeRead = $virtualAttributeReadResult
         realPrints = $realPrintResults
+        concurrentPrints = $concurrentPrintResult
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult
         settingsUiOwner = $settingsUiOwnerResult

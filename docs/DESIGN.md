@@ -197,7 +197,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
 | 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
-| 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` | Manifest | |
+| 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
 | 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Encrypted job password (operation attrs) | `msft-operation-attribute-col`, `job-password` / `job-password-encryption` | Workflow task + Core | Parity path |
@@ -690,8 +690,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    as scripted Windows automation in CI and on clean Windows 11 26100+ VMs:
    - Build and install the signed MSIX, run `printsink-app.exe --install-virtual-printers`, and assert
      all six queues appear (`Get-Printer`).
-   - Assert the signed manifest keeps `uap10:SupportsMultipleInstances="true"` so concurrent print
-     activations are supported.
+   - Assert the signed manifest keeps `uap10:SupportsMultipleInstances="true"` and submit overlapping
+     real print jobs so concurrent activations are proven by output files and diagnostics.
    - Print from a real Win32 print harness to every endpoint.
    - Assert route diagnostics for every real job, including source content type, target format, copy
      versus conversion action, and route reason.

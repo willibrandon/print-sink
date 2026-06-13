@@ -113,39 +113,41 @@ The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
-3. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
+3. Submit two real Win32 jobs to different file-backed queues while the first job is still active,
+   then assert both outputs and overlapping route/completion diagnostics.
+4. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
    the real Windows printer list.
-4. Assert the package-local route diagnostic for every real job: source content type, target format,
+5. Assert the package-local route diagnostic for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior.
-5. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
+6. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, and MXDC
    configuration, and printer selection records the adaptive-card/additional-field request.
-6. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
+7. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
-7. Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
+8. Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
    `document-format-supported` entries for a real virtual queue.
-8. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+9. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
-9. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+10. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-10. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+11. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
    and assert the owner is restored when Settings closes.
-11. Set package-local default text and image watermarks, call
+12. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-12. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
+13. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-13. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-14. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-15. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+14. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+15. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+16. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
-16. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+17. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-17. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+18. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
-18. Assert all six queues are removed when `-Cleanup` is used.
+19. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change.
@@ -159,6 +161,8 @@ Real output assertions:
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output and must still report `Job completed` from the real background task.
 - Route diagnostics must prove the expected copy or conversion path for the source content type.
+- Concurrent output diagnostics must prove two real jobs overlapped by comparing route and completion
+  timestamps for the two activated queues.
 - Extension diagnostics must prove real ticket validation for every queue, PDC/PDR refresh, MXDC image
   quality configuration, and printer-selected adaptive-card setup.
 - User default print-ticket diagnostics must prove a real default copy-count update and restore through
