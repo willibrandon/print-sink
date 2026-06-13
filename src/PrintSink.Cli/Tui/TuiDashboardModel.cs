@@ -12,16 +12,19 @@ internal sealed class TuiDashboardModel
         TuiAssetValidation manifest,
         TuiAssetValidation[] printDeviceCapabilities,
         TuiRouteCheck[] routeChecks,
+        PrinterQueueSnapshot installedQueues,
         IReadOnlyList<DiagnosticEventRecord> diagnosticEvents)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(printDeviceCapabilities);
         ArgumentNullException.ThrowIfNull(routeChecks);
+        ArgumentNullException.ThrowIfNull(installedQueues);
         ArgumentNullException.ThrowIfNull(diagnosticEvents);
 
         Manifest = manifest;
         PrintDeviceCapabilities = printDeviceCapabilities;
         RouteChecks = routeChecks;
+        InstalledQueues = installedQueues;
         DiagnosticEvents = diagnosticEvents;
     }
 
@@ -30,6 +33,8 @@ internal sealed class TuiDashboardModel
     internal IReadOnlyList<TuiAssetValidation> PrintDeviceCapabilities { get; }
 
     internal IReadOnlyList<TuiRouteCheck> RouteChecks { get; }
+
+    internal PrinterQueueSnapshot InstalledQueues { get; }
 
     internal IReadOnlyList<DiagnosticEventRecord> DiagnosticEvents { get; }
 
@@ -41,6 +46,7 @@ internal sealed class TuiDashboardModel
         return await LoadAsync(
                 workingDirectory,
                 new LocalDiagnosticEventStore(diagnosticsRootDirectory),
+                InstalledPrinterReader.Read,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -50,8 +56,23 @@ internal sealed class TuiDashboardModel
         IDiagnosticEventStore diagnosticEventStore,
         CancellationToken cancellationToken)
     {
+        return await LoadAsync(
+                workingDirectory,
+                diagnosticEventStore,
+                InstalledPrinterReader.Read,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<TuiDashboardModel> LoadAsync(
+        string workingDirectory,
+        IDiagnosticEventStore diagnosticEventStore,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
         ArgumentNullException.ThrowIfNull(diagnosticEventStore);
+        ArgumentNullException.ThrowIfNull(readInstalledQueues);
 
         string appDirectory = ResolveAppDirectory(workingDirectory);
         string manifestPath = Path.Combine(appDirectory, "Package.appxmanifest");
@@ -65,11 +86,12 @@ internal sealed class TuiDashboardModel
         TuiAssetValidation[] pdcValidations = ValidatePrintDeviceCapabilities(appDirectory);
         TuiRouteCheck[] routeChecks = await RunRouteChecksAsync(cancellationToken)
             .ConfigureAwait(false);
+        PrinterQueueSnapshot installedQueues = readInstalledQueues();
         IReadOnlyList<DiagnosticEventRecord> diagnosticEvents = await diagnosticEventStore
             .ReadRecentAsync(8, cancellationToken)
             .ConfigureAwait(false);
 
-        return new TuiDashboardModel(manifest, pdcValidations, routeChecks, diagnosticEvents);
+        return new TuiDashboardModel(manifest, pdcValidations, routeChecks, installedQueues, diagnosticEvents);
     }
 
     private static TuiAssetValidation[] ValidatePrintDeviceCapabilities(string appDirectory)
@@ -156,7 +178,7 @@ internal sealed class TuiDashboardModel
         return Path.Combine(Path.GetFullPath(workingDirectory), "src", "PrintSink.App");
     }
 
-    private static string ResolveDiagnosticsRootDirectory(string workingDirectory)
+    internal static string ResolveDiagnosticsRootDirectory(string workingDirectory)
     {
         string? packageSettingsDirectory = TryResolveInstalledPackageSettingsDirectory();
         if (packageSettingsDirectory is not null)

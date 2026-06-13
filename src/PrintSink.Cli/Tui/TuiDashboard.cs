@@ -18,7 +18,7 @@ internal static class TuiDashboard
     /// <returns>The dashboard root widget.</returns>
     public static Hex1bWidget Build(RootContext context, TuiDashboardModel model)
     {
-        return Build(context, model, static () => { }, "Ready.");
+        return Build(context, model, static () => { }, static () => { }, static () => { }, "Ready.");
     }
 
     internal static Hex1bWidget Build(
@@ -27,9 +27,22 @@ internal static class TuiDashboard
         Action refreshDashboard,
         string actionStatus)
     {
+        return Build(context, model, refreshDashboard, static () => { }, static () => { }, actionStatus);
+    }
+
+    internal static Hex1bWidget Build(
+        RootContext context,
+        TuiDashboardModel model,
+        Action refreshDashboard,
+        Action installQueues,
+        Action removeQueues,
+        string actionStatus)
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(refreshDashboard);
+        ArgumentNullException.ThrowIfNull(installQueues);
+        ArgumentNullException.ThrowIfNull(removeQueues);
         ArgumentException.ThrowIfNullOrWhiteSpace(actionStatus);
 
         return context.VStack(stack =>
@@ -39,10 +52,13 @@ internal static class TuiDashboard
                 stack.Text("PrintSink"),
                 stack.Text("Virtual printer diagnostics"),
                 stack.Text($"Queues: {EndpointCatalog.All.Count}"),
+                stack.Text(FormatInstalledQueueSummary(model.InstalledQueues)),
                 stack.Text(""),
                 stack.Text("Actions"),
                 stack.Text("Tab focuses actions. Enter or Space activates the focused action."),
                 stack.Button("Refresh dashboard").OnClick(_ => refreshDashboard()),
+                stack.Button("Install queues").OnClick(_ => installQueues()),
+                stack.Button("Remove queues").OnClick(_ => removeQueues()),
                 stack.Text($"Status: {actionStatus}"),
                 stack.Text(""),
                 stack.Text("Shell commands"),
@@ -99,8 +115,9 @@ internal static class TuiDashboard
             foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
             {
                 string sink = GetSinkDisplay(endpoint);
+                string installed = GetInstalledStatus(model.InstalledQueues, endpoint);
                 widgets.Add(stack.Text(
-                    $"{endpoint.QueueName} | target={endpoint.TargetFormat} | input={endpoint.PreferredInputFormat} | sink={sink}"));
+                    $"{endpoint.QueueName} | target={endpoint.TargetFormat} | input={endpoint.PreferredInputFormat} | sink={sink} | installed={installed}"));
             }
 
             return [.. widgets];
@@ -135,7 +152,13 @@ internal static class TuiDashboard
                 app =>
                 {
                     state.Attach(app);
-                    return context => Build(context, state.Model, state.Refresh, state.Status);
+                    return context => Build(
+                        context,
+                        state.Model,
+                        state.Refresh,
+                        state.InstallQueues,
+                        state.RemoveQueues,
+                        state.Status);
                 })
             .Build();
 
@@ -152,6 +175,27 @@ internal static class TuiDashboard
         return endpoint.OutputExtensions.Count == 0
             ? "file"
             : string.Join(",", endpoint.OutputExtensions);
+    }
+
+    private static string FormatInstalledQueueSummary(PrinterQueueSnapshot installedQueues)
+    {
+        if (!installedQueues.IsAvailable)
+        {
+            return "Installed queues: unknown";
+        }
+
+        int installedEndpointCount = EndpointCatalog.All.Count(endpoint => installedQueues.Contains(endpoint.QueueName));
+        return $"Installed queues: {installedEndpointCount}/{EndpointCatalog.All.Count}";
+    }
+
+    private static string GetInstalledStatus(PrinterQueueSnapshot installedQueues, VirtualEndpoint endpoint)
+    {
+        if (!installedQueues.IsAvailable)
+        {
+            return "unknown";
+        }
+
+        return installedQueues.Contains(endpoint.QueueName) ? "yes" : "no";
     }
 
     private static string FormatStatus(bool succeeded)

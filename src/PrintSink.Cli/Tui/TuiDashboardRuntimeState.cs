@@ -1,20 +1,32 @@
 using Hex1b;
+using PrintSink.Core.Diagnostics;
 
 namespace PrintSink.Cli.Tui;
 
 internal sealed class TuiDashboardRuntimeState
 {
     private readonly CancellationToken cancellationToken;
+    private readonly Func<string, CancellationToken, Task<TuiPackageCommandResult>> runPackageCommand;
+    private readonly Func<PrinterQueueSnapshot> readInstalledQueues;
     private readonly string workingDirectory;
     private Hex1bApp? app;
-    private bool isRefreshing;
+    private bool isBusy;
 
     private TuiDashboardRuntimeState(
         string workingDirectory,
         TuiDashboardModel model,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        Func<string, CancellationToken, Task<TuiPackageCommandResult>> runPackageCommand,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(readInstalledQueues);
+        ArgumentNullException.ThrowIfNull(runPackageCommand);
+
         this.workingDirectory = workingDirectory;
+        this.readInstalledQueues = readInstalledQueues;
+        this.runPackageCommand = runPackageCommand;
         this.cancellationToken = cancellationToken;
         Model = model;
     }
@@ -27,11 +39,34 @@ internal sealed class TuiDashboardRuntimeState
         string workingDirectory,
         CancellationToken cancellationToken)
     {
+        return await CreateAsync(
+                workingDirectory,
+                InstalledPrinterReader.Read,
+                RunPackageCommandAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<TuiDashboardRuntimeState> CreateAsync(
+        string workingDirectory,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        Func<string, CancellationToken, Task<TuiPackageCommandResult>> runPackageCommand,
+        CancellationToken cancellationToken)
+    {
         TuiDashboardModel model = await TuiDashboardModel
-            .LoadAsync(workingDirectory, cancellationToken)
+            .LoadAsync(
+                workingDirectory,
+                new LocalDiagnosticEventStore(TuiDashboardModel.ResolveDiagnosticsRootDirectory(workingDirectory)),
+                readInstalledQueues,
+                cancellationToken)
             .ConfigureAwait(false);
 
-        return new TuiDashboardRuntimeState(workingDirectory, model, cancellationToken);
+        return new TuiDashboardRuntimeState(
+            workingDirectory,
+            model,
+            readInstalledQueues,
+            runPackageCommand,
+            cancellationToken);
     }
 
     internal void Attach(Hex1bApp hex1bApp)
@@ -41,24 +76,28 @@ internal sealed class TuiDashboardRuntimeState
 
     internal void Refresh()
     {
-        if (isRefreshing)
-        {
-            return;
-        }
+        StartBackgroundWork("Refreshing dashboard.", RefreshAsync);
+    }
 
-        isRefreshing = true;
-        Status = "Refreshing dashboard.";
-        app?.Invalidate();
-        _ = RefreshAsync();
+    internal void InstallQueues()
+    {
+        StartBackgroundWork(
+            "Installing queues.",
+            () => RunQueueCommandAsync("--install-virtual-printers", "Queue install completed."));
+    }
+
+    internal void RemoveQueues()
+    {
+        StartBackgroundWork(
+            "Removing queues.",
+            () => RunQueueCommandAsync("--remove-virtual-printers", "Queue removal completed."));
     }
 
     private async Task RefreshAsync()
     {
         try
         {
-            Model = await TuiDashboardModel
-                .LoadAsync(workingDirectory, cancellationToken)
-                .ConfigureAwait(false);
+            Model = await LoadModelAsync().ConfigureAwait(false);
             Status = "Dashboard refreshed.";
         }
         catch (OperationCanceledException)
@@ -71,8 +110,77 @@ internal sealed class TuiDashboardRuntimeState
         }
         finally
         {
-            isRefreshing = false;
+            isBusy = false;
             app?.Invalidate();
         }
+    }
+
+    private async Task RunQueueCommandAsync(string packageArgument, string successStatus)
+    {
+        try
+        {
+            TuiPackageCommandResult result = await runPackageCommand(packageArgument, cancellationToken)
+                .ConfigureAwait(false);
+            Model = await LoadModelAsync().ConfigureAwait(false);
+            Status = result.ExitCode == CliExitCodes.Success
+                ? successStatus
+                : $"Queue command failed with exit code {result.ExitCode}: {GetPackageCommandMessage(result)}";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Queue command canceled.";
+        }
+        catch (Exception exception)
+        {
+            Status = $"Queue command failed: {exception.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+            app?.Invalidate();
+        }
+    }
+
+    private void StartBackgroundWork(string startingStatus, Func<Task> work)
+    {
+        if (isBusy)
+        {
+            return;
+        }
+
+        isBusy = true;
+        Status = startingStatus;
+        app?.Invalidate();
+        _ = work();
+    }
+
+    private Task<TuiDashboardModel> LoadModelAsync()
+    {
+        return TuiDashboardModel.LoadAsync(
+            workingDirectory,
+            new LocalDiagnosticEventStore(TuiDashboardModel.ResolveDiagnosticsRootDirectory(workingDirectory)),
+            readInstalledQueues,
+            cancellationToken);
+    }
+
+    private static async Task<TuiPackageCommandResult> RunPackageCommandAsync(
+        string argument,
+        CancellationToken cancellationToken)
+    {
+        using StringWriter output = new();
+        using StringWriter error = new();
+        int exitCode = await AppPackageCommandRunner
+            .RunAsync(argument, output, error, cancellationToken)
+            .ConfigureAwait(false);
+        return new TuiPackageCommandResult(exitCode, output.ToString(), error.ToString());
+    }
+
+    private static string GetPackageCommandMessage(TuiPackageCommandResult result)
+    {
+        string message = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error;
+        string firstLine = message
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? "No diagnostic output.";
+        return firstLine;
     }
 }

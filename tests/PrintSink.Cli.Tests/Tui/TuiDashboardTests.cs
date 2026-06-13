@@ -113,6 +113,10 @@ public sealed class TuiDashboardTests
         Assert.Contains(".xps,.oxps", screenText);
         Assert.Contains("Actions", screenText);
         Assert.Contains("Refresh dashboard", screenText);
+        Assert.Contains("Install queues", screenText);
+        Assert.Contains("Remove queues", screenText);
+        Assert.Contains("Installed queues:", screenText);
+        Assert.Contains("installed=", screenText);
         Assert.Contains("Shell commands", screenText);
         Assert.DoesNotContain("Commands", screenText);
     }
@@ -164,10 +168,122 @@ public sealed class TuiDashboardTests
         }
     }
 
+    /// <summary>
+    /// Verifies that the install queues dashboard action runs the package command from the keyboard.
+    /// </summary>
+    [TestMethod]
+    public async Task Dashboard_install_action_runs_package_command()
+    {
+        await VerifyQueueActionAsync(
+                tabCount: 1,
+                expectedArgument: "--install-virtual-printers",
+                expectedStatus: "Queue install completed.",
+                installsQueues: true)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verifies that the remove queues dashboard action runs the package command from the keyboard.
+    /// </summary>
+    [TestMethod]
+    public async Task Dashboard_remove_action_runs_package_command()
+    {
+        await VerifyQueueActionAsync(
+                tabCount: 2,
+                expectedArgument: "--remove-virtual-printers",
+                expectedStatus: "Queue removal completed.",
+                installsQueues: false)
+            .ConfigureAwait(false);
+    }
+
     private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    private async Task VerifyQueueActionAsync(
+        int tabCount,
+        string expectedArgument,
+        string expectedStatus,
+        bool installsQueues)
+    {
+        bool queuesInstalled = !installsQueues;
+        List<string> packageArguments = [];
+        TuiDashboardRuntimeState state = await TuiDashboardRuntimeState
+            .CreateAsync(
+                Environment.CurrentDirectory,
+                () => PrinterQueueSnapshot.Available(GetInstalledQueueNames(queuesInstalled)),
+                (argument, _) =>
+                {
+                    packageArguments.Add(argument);
+                    queuesInstalled = installsQueues;
+                    return Task.FromResult(new TuiPackageCommandResult(CliExitCodes.Success, "ok", string.Empty));
+                },
+                TestContext.CancellationToken)
+            .ConfigureAwait(false);
+
+        using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+            .WithHex1bApp(
+                _ => { },
+                app =>
+                {
+                    state.Attach(app);
+                    return context => TuiDashboard.Build(
+                        context,
+                        state.Model,
+                        state.Refresh,
+                        state.InstallQueues,
+                        state.RemoveQueues,
+                        state.Status);
+                })
+            .WithHeadless()
+            .WithDimensions(120, 50)
+            .Build();
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
+
+        Task<int> runTask = terminal.RunAsync(cancellation.Token);
+        Hex1bTerminalInputSequenceBuilder sequenceBuilder = new Hex1bTerminalInputSequenceBuilder()
+            .WaitUntil(
+                screen => screen.ContainsText("Install queues") && screen.ContainsText("Remove queues"),
+                TimeSpan.FromSeconds(2),
+                "queue actions");
+        for (int index = 0; index < tabCount; index++)
+        {
+            sequenceBuilder.Tab();
+        }
+
+        await sequenceBuilder
+            .Enter()
+            .WaitUntil(
+                screen => screen.ContainsText(expectedStatus),
+                TimeSpan.FromSeconds(2),
+                expectedStatus)
+            .Ctrl()
+            .Key(Hex1bKey.C)
+            .Build()
+            .ApplyAsync(terminal, cancellation.Token)
+            .ConfigureAwait(false);
+
+        cancellation.Cancel();
+
+        try
+        {
+            await runTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert.Contains(expectedArgument, packageArguments);
+    }
+
+    private static string[] GetInstalledQueueNames(bool queuesInstalled)
+    {
+        return queuesInstalled
+            ? [.. EndpointCatalog.All.Select(endpoint => endpoint.QueueName)]
+            : [];
     }
 }
