@@ -39,5 +39,6 @@ internal sealed class IppPrinterJob
     internal bool OperationPasswordCollectionReceived =>
         OperationAttributes.Contains("msft-operation-attribute-col", StringComparer.OrdinalIgnoreCase)
         || OperationAttributes.Contains("job-password", StringComparer.OrdinalIgnoreCase)
-        || OperationAttributes.Contains("job-password-encryption", StringComparer.OrdinalIgnoreCase);
+        || OperationAttributes.Contains("job-password-encryption", StringComparer.OrdinalIgnoreCase)
+        || JobAttributes.Contains("msft-operation-attribute-col", StringComparer.OrdinalIgnoreCase);
 }

@@ -507,6 +507,73 @@ internal sealed class IppPrinterServer
         AddMissingAttribute(
             attributes,
             new IppAttribute(Tag.TextWithoutLanguage, "printer-make-and-model", "PrintSink E2E IPP Printer"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.MimeMediaType, "document-format-preferred", options.DocumentFormat));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Integer, "job-password-supported", 255));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "media-default", "na_letter_8.5x11in"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "media-source-default", "auto"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "media-type-default", "stationery"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Integer, "copies-default", 1));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Integer, "number-up-default", 1));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Enum, "orientation-requested-default", 3));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "output-bin-default", "face-down"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "print-color-mode-default", "monochrome"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Enum, "print-quality-default", 4));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "sides-default", "one-sided"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(
+                Tag.Resolution,
+                "printer-resolution-default",
+                new Resolution(300, 300, ResolutionUnit.DotsPerInch, true)));
+
+        AddMissingKeywordAttributes(attributes, "job-password-encryption-supported", "sha2-256", "none");
+        AddMissingKeywordAttributes(attributes, "media-supported", "na_letter_8.5x11in", "northamericaletter");
+        AddMissingKeywordAttributes(attributes, "media-source-supported", "auto", "automaticinputbin", "main", "tray-1");
+        AddMissingKeywordAttributes(attributes, "media-type-supported", "stationery", "auto");
+        AddMissingKeywordAttributes(attributes, "media-col-supported", "media-size", "media-type", "media-source");
+        AddMissingKeywordAttributes(
+            attributes,
+            "multiple-document-handling-supported",
+            "separate-documents-uncollated-copies",
+            "separate-documents-collated-copies");
+        AddMissingKeywordAttributes(attributes, "output-bin-supported", "face-down", "auto", "automationoutputbin");
+        AddMissingKeywordAttributes(attributes, "page-delivery-supported", "same-order", "reverse-order", "oddpagesthenevenpages");
+        AddMissingKeywordAttributes(attributes, "print-color-mode-supported", "monochrome", "color");
+        AddMissingKeywordAttributes(attributes, "print-scaling-supported", "auto", "auto-fit", "fill", "fit", "none");
+        AddMissingKeywordAttributes(attributes, "sides-supported", "one-sided", "two-sided-long-edge", "two-sided-short-edge");
+        AddMissingIntegerAttributes(attributes, Tag.Enum, "finishings-supported", 3, 4, 20, 21, 22, 23);
+        AddMissingIntegerAttributes(attributes, Tag.Enum, "orientation-requested-supported", 3, 4, 5, 6);
+        AddMissingIntegerAttributes(attributes, Tag.Enum, "print-quality-supported", 3, 4, 5);
+        AddMissingRangeAttribute(attributes, "copies-supported", 1, 999);
+        AddMissingRangeAttribute(attributes, "job-impressions-supported", 0, int.MaxValue);
+        AddMissingRangeAttribute(attributes, "job-media-sheets-supported", 0, int.MaxValue);
+        AddMissingRangeAttribute(attributes, "job-pages-per-set-supported", 1, int.MaxValue);
+        AddMissingRangeAttribute(attributes, "number-up-supported", 1, 16);
+        AddMissingResolutionAttributes(attributes, "printer-resolution-supported");
     }
 
     private string GetPrinterDeviceId()
@@ -526,6 +593,72 @@ internal sealed class IppPrinterServer
         {
             attributes.Add(attribute);
         }
+    }
+
+    private static void AddMissingKeywordAttributes(
+        List<IppAttribute> attributes,
+        string name,
+        params string[] values)
+    {
+        if (attributes.Any(existing => string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        foreach (string value in values.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            attributes.Add(new IppAttribute(Tag.Keyword, name, value));
+        }
+    }
+
+    private static void AddMissingIntegerAttributes(
+        List<IppAttribute> attributes,
+        Tag tag,
+        string name,
+        params int[] values)
+    {
+        if (attributes.Any(existing => string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        foreach (int value in values.Distinct())
+        {
+            attributes.Add(new IppAttribute(tag, name, value));
+        }
+    }
+
+    private static void AddMissingRangeAttribute(
+        List<IppAttribute> attributes,
+        string name,
+        int lower,
+        int upper)
+    {
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(
+                Tag.RangeOfInteger,
+                name,
+                new SharpIpp.Protocol.Models.Range(lower, upper, false)));
+    }
+
+    private static void AddMissingResolutionAttributes(List<IppAttribute> attributes, string name)
+    {
+        if (attributes.Any(existing => string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        attributes.Add(
+            new IppAttribute(
+                Tag.Resolution,
+                name,
+                new Resolution(300, 300, ResolutionUnit.DotsPerInch, true)));
+        attributes.Add(
+            new IppAttribute(
+                Tag.Resolution,
+                name,
+                new Resolution(600, 600, ResolutionUnit.DotsPerInch, true)));
     }
 
     private async Task SendErrorResponseAsync(

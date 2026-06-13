@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Windows.ApplicationModel.Background;
 using Windows.Devices.Printers;
 using Windows.Graphics.Printing.Workflow;
@@ -17,6 +18,8 @@ namespace PrintSink.Tasks;
 /// </summary>
 public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 {
+    private static readonly IppAttributeMapper AttributeMapper = new();
+
     private readonly BackgroundTaskHandlerState state = new();
 
     /// <inheritdoc />
@@ -43,8 +46,18 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         var deferral = args.GetDeferral();
         try
         {
-            AppendDiagnostic("Workflow job starting", string.Empty, "skipSystemRendering=set");
-            state.Run(args.SetSkipSystemRendering);
+            bool compressionDisabled = false;
+            state.Run(() =>
+            {
+                args.SetSkipSystemRendering();
+                if (args.IsIppCompressionEnabled)
+                {
+                    args.DisableIppCompressionForJob();
+                    compressionDisabled = true;
+                }
+            });
+            string compressionDetail = compressionDisabled ? "ippCompression=disabled" : "ippCompression=unchanged";
+            AppendDiagnostic("Workflow job starting", string.Empty, $"skipSystemRendering=set; {compressionDetail}");
         }
         finally
         {
@@ -174,10 +187,8 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         string documentFormat,
         JobProcessingOptions? jobProcessingOptions)
     {
-        IDictionary<string, WinRtIppAttributeValue> jobAttributes = args.PrinterJob.ConvertPrintTicketToJobAttributes(
-            args.PrinterJob.GetJobPrintTicket(),
-            documentFormat);
-        IDictionary<string, WinRtIppAttributeValue> filteredAttributes = ApplyMergePolicy(
+        IDictionary<string, WinRtIppAttributeValue> jobAttributes = CreateJobAttributes(args, documentFormat);
+        Dictionary<string, WinRtIppAttributeValue> filteredAttributes = ApplyMergePolicy(
             jobAttributes,
             AttributeMergePolicyOptions.RemovePdlEmbeddedMediaSize);
         Dictionary<string, WinRtIppAttributeValue> operationAttributes = BuildOperationAttributes(jobProcessingOptions);
@@ -192,6 +203,37 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             operationAttributes,
             PrintWorkflowAttributesMergePolicy.DoNotMergeWithPrintTicket,
             PrintWorkflowAttributesMergePolicy.MergePreferPrintTicketOnConflict);
+    }
+
+    private static IDictionary<string, WinRtIppAttributeValue> CreateJobAttributes(
+        PrintWorkflowPdlModificationRequestedEventArgs args,
+        string documentFormat)
+    {
+        try
+        {
+            IDictionary<string, WinRtIppAttributeValue> attributes = args.PrinterJob.ConvertPrintTicketToJobAttributes(
+                args.PrinterJob.GetJobPrintTicket(),
+                documentFormat);
+            AppendDiagnostic(
+                "Workflow job attributes converted",
+                GetPrinterName(args),
+                $"source=windows; target={documentFormat}; count={attributes.Count}");
+            return attributes;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            XDocument printTicket = XDocument.Parse(
+                args.PrinterJob.GetJobPrintTicket().XmlNode.GetXml(),
+                LoadOptions.PreserveWhitespace);
+            IReadOnlyDictionary<string, CoreIppAttributeValue> fallbackAttributes =
+                AttributeMapper.FromPrintTicket(printTicket);
+            Dictionary<string, WinRtIppAttributeValue> attributes = ToWinRtAttributes(fallbackAttributes);
+            AppendDiagnostic(
+                "Workflow job attributes converted",
+                GetPrinterName(args),
+                $"source=core-fallback; target={documentFormat}; count={attributes.Count}; reason=0x{ex.HResult:X8}");
+            return attributes;
+        }
     }
 
     private static Dictionary<string, WinRtIppAttributeValue> BuildOperationAttributes(
@@ -230,6 +272,52 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             : "job-password=absent";
 
         return $"jobAttributes={jobAttributeNames}; operationAttributes={operationAttributeNames}; {passwordStatus}; mergePolicy=RemovePdlEmbeddedMediaSize";
+    }
+
+    private static Dictionary<string, WinRtIppAttributeValue> ToWinRtAttributes(
+        IReadOnlyDictionary<string, CoreIppAttributeValue> attributes)
+    {
+        Dictionary<string, WinRtIppAttributeValue> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, CoreIppAttributeValue> attribute in attributes)
+        {
+            result[attribute.Key] = ToWinRtAttributeValue(attribute.Value);
+        }
+
+        return result;
+    }
+
+    private static WinRtIppAttributeValue ToWinRtAttributeValue(CoreIppAttributeValue attribute)
+    {
+        if (attribute.Collections.Count > 0)
+        {
+            Dictionary<string, WinRtIppAttributeValue> members = new(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, CoreIppAttributeValue> member in attribute.Collections[0])
+            {
+                members[member.Key] = ToWinRtAttributeValue(member.Value);
+            }
+
+            return WinRtIppAttributeValue.CreateCollection(members);
+        }
+
+        string value = attribute.Values[0];
+        if (IsIntegerAttribute(attribute.Name) && int.TryParse(value, out int integerValue))
+        {
+            return WinRtIppAttributeValue.CreateInteger(integerValue);
+        }
+
+        return attribute.Values.Count == 1
+            ? WinRtIppAttributeValue.CreateKeyword(value)
+            : WinRtIppAttributeValue.CreateKeywordArray(attribute.Values);
+    }
+
+    private static bool IsIntegerAttribute(string attributeName)
+    {
+        return attributeName is
+            "copies" or
+            "finishings" or
+            "number-up" or
+            "orientation-requested" or
+            "print-quality";
     }
 
     private static string FormatRouteDetail(PrinterDocumentFormatPlan plan)
