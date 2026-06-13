@@ -696,6 +696,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Assert `PrintSupportExtensionBackgroundTask` diagnostics from real OS activations: ticket
      validation on every queue, capability refresh with custom features, PDR update, MXDC image
      quality configuration, and printer-selected adaptive-card/additional-field setup.
+   - Set and restore `IppPrintDevice.UserDefaultPrintTicket` for a real virtual queue, then assert the
+     persisted default copy count through package-local diagnostics.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.
@@ -808,7 +810,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 **Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
 E2E automation passes for all six queues including PDF passthrough, WinRT source printing, watermark,
 settings modality, PDC/PDR/MXDC extension refresh, printer selection, ticket validation, and cancel
-paths.
+paths, plus user default print-ticket updates.
 
 ---
 

@@ -1,4 +1,5 @@
 using Microsoft.Windows.AppLifecycle;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Watermark;
 using System.Text;
@@ -33,6 +34,7 @@ internal static class VirtualPrinterCommandLine
         bool clearWatermark = Contains(commandArgs, "--clear-watermark");
         bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
         bool printPdfPassthrough = Contains(commandArgs, "--print-pdf-passthrough");
+        bool setDefaultCopies = Contains(commandArgs, "--set-default-copies");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
         if (!install
             && !remove
@@ -43,6 +45,7 @@ internal static class VirtualPrinterCommandLine
             && !clearWatermark
             && !refreshCapabilities
             && !printPdfPassthrough
+            && !setDefaultCopies
             && !help)
         {
             return null;
@@ -57,7 +60,8 @@ internal static class VirtualPrinterCommandLine
             && !setImageWatermark
             && !clearWatermark
             && !refreshCapabilities
-            && !printPdfPassthrough)
+            && !printPdfPassthrough
+            && !setDefaultCopies)
         {
             WriteHelp();
             SetCommandLineExitCode(activationArguments, Success);
@@ -79,7 +83,8 @@ internal static class VirtualPrinterCommandLine
                 || setImageWatermark
                 || clearWatermark
                 || refreshCapabilities
-                || printPdfPassthrough;
+                || printPdfPassthrough
+                || setDefaultCopies;
             if (needsEndpoint)
             {
                 endpointKind = GetRequiredEndpointKind(commandArgs);
@@ -131,6 +136,23 @@ internal static class VirtualPrinterCommandLine
                         cancellationToken)
                     .ConfigureAwait(false);
                 WriteDiagnostic($"PDF passthrough print job submitted: {printJobId}");
+            }
+
+            if (setDefaultCopies)
+            {
+                string result = await UserDefaultPrintTicketEditor
+                    .SetCopiesAsync(
+                        endpointKind,
+                        GetRequiredIntegerOptionValue(commandArgs, "--copies", 1, 999),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                WriteDiagnostic(result);
+                await AppendDiagnosticAsync(
+                        "User default print ticket updated",
+                        EndpointCatalog.GetByKind(endpointKind).QueueName,
+                        result,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (install)
@@ -339,11 +361,13 @@ internal static class VirtualPrinterCommandLine
             "  --clear-watermark           Clear the default watermark for --endpoint.",
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
             "  --print-pdf-passthrough     Send a PDF through IppPrintDevice PDL passthrough.",
+            "  --set-default-copies        Set default ticket copies for --endpoint.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",
             "  --image <path>              Image file used with --set-image-watermark.",
             "  --source <path>             Source file used with --print-pdf-passthrough.",
+            "  --copies <count>            Copy count used with --set-default-copies.",
             "",
             "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
         Console.Out.WriteLine(help);
@@ -366,5 +390,42 @@ internal static class VirtualPrinterCommandLine
     private static bool Contains(IReadOnlyList<string> args, string value)
     {
         return args.Any(arg => string.Equals(arg, value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int GetRequiredIntegerOptionValue(
+        IReadOnlyList<string> args,
+        string option,
+        int minimumValue,
+        int maximumValue)
+    {
+        string value = GetRequiredOptionValue(args, option);
+        if (!int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int result)
+            || result < minimumValue
+            || result > maximumValue)
+        {
+            throw new ArgumentException($"{option} must be an integer from {minimumValue} through {maximumValue}.");
+        }
+
+        return result;
+    }
+
+    private static async Task AppendDiagnosticAsync(
+        string message,
+        string endpoint,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        await AppSettingsStoreFactory
+            .CreateDiagnosticEventStore()
+            .AppendAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(VirtualPrinterCommandLine),
+                    message,
+                    endpoint,
+                    detail),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }

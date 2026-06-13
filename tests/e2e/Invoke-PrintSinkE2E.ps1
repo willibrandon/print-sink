@@ -1709,6 +1709,38 @@ function Invoke-PrintSinkExtensionCapabilities {
         -TimeoutSeconds 120
 }
 
+function Invoke-PrintSinkUserDefaultPrintTicket {
+    param(
+        [string] $PackageFamilyName,
+        [DateTimeOffset] $StartedUtc
+    )
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @('--set-default-copies', '--endpoint', 'Pdf', '--copies', '2') `
+        -Description 'Setting PDF user default print ticket copies to 2'
+    $setResult = Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint 'PrintSink - PDF' `
+        -Message 'User default print ticket updated' `
+        -StartedUtc $StartedUtc `
+        -DetailContains @('copies=2', 'verifiedCopies=2')
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @('--set-default-copies', '--endpoint', 'Pdf', '--copies', '1') `
+        -Description 'Restoring PDF user default print ticket copies to 1'
+    $restoreResult = Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint 'PrintSink - PDF' `
+        -Message 'User default print ticket updated' `
+        -StartedUtc $StartedUtc `
+        -DetailContains @('copies=1', 'verifiedCopies=1')
+
+    return [ordered]@{
+        set = $setResult
+        restore = $restoreResult
+    }
+}
+
 function Invoke-PrintSinkSettingsWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -2505,6 +2537,10 @@ try {
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
 
+    $userDefaultPrintTicketResult = Invoke-PrintSinkUserDefaultPrintTicket `
+        -PackageFamilyName $package.PackageFamilyName `
+        -StartedUtc $e2eStartedUtc
+
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
         $realPrintResults += Invoke-PrintSinkRealPrint `
@@ -2556,6 +2592,7 @@ try {
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
         extensionCapabilities = $extensionCapabilitiesResult
+        userDefaultPrintTicket = $userDefaultPrintTicketResult
         realPrints = $realPrintResults
         pdfPassthrough = $pdfPassthroughResult
         winRtSource = $winRtSourceResult
