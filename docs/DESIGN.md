@@ -3,8 +3,8 @@
 **Project:** print-sink
 **Solution / assembly / root namespace:** `PrintSink`
 **Author:** Brandon Williams
-**Status:** Design — approved for implementation
-**Last updated:** 2026-06-12
+**Status:** Implementation — active
+**Last updated:** 2026-06-13
 **Target platform:** Windows 11 24H2 (build 26100) and later; Windows Server 2025+
 
 ---
@@ -25,14 +25,18 @@ This is the only forward-looking architecture as of 2026:
 - Third-party V3/V4 drivers and port monitors are on the End-of-Servicing plan.
 
 The Virtual Printer Architecture lets an ISV implement a software printer **as an application** that
-implements the features formerly carried by a V3/V4 driver. PrintSink implements **every feature the
-PSA v4 surface exposes** — no feature is descoped.
+implements the features formerly carried by a V3/V4 driver. PrintSink supports every deterministic
+PSA v4 virtual-printer feature Windows exposes to packaged apps. Platform hooks that Windows does not
+deliver through a deterministic virtual-printer E2E path are implemented defensively and tracked as
+deferred compatibility hooks until a real trigger can prove them.
 
 ### 1.1 Goals
 
 1. Install multiple virtual print queues from one MSIX package via the
    `windows.printSupportVirtualPrinterWorkflow` contract.
-2. Implement the full PSA v4 feature set (see the **Feature Completeness Matrix**, §4).
+2. Implement the full deterministic PSA v4 virtual-printer feature set (see the
+   **Feature Completeness Matrix**, §4), with platform-trigger-only compatibility hooks tracked
+   separately.
 3. Be the most modern possible C#/.NET implementation: **.NET 10**, **WinUI 3 / Windows App SDK**,
    **Microsoft.UI.Reactor** for the foreground UI, **CsWinRT 2.2+** projections,
    **single-project MSIX** packaging.
@@ -230,12 +234,11 @@ print-sink/
 │  │  ├─ app.manifest
 │  │  ├─ App.cs                           # top-level Reactor entry point
 │  │  ├─ AppRoot.cs                       # Reactor root component + shell routing
-│  │  ├─ Activation/                     # one handler type per file
-│  │  │  ├─ SettingsActivationHandler.cs
-│  │  │  ├─ JobActivationHandler.cs
-│  │  │  └─ LaunchActivationHandler.cs
-│  │  ├─ Screens/                         # ManagementScreen, SettingsScreen, JobPreviewScreen
-│  │  ├─ Components/                      # PreviewPagination, WatermarkPreview, QueueList, …
+│  │  ├─ AppActivation*.cs                # activation route parsing and state
+│  │  ├─ ManagementScreen.cs              # management / diagnostics shell
+│  │  ├─ SettingsScreen.cs                # printSupportSettingsUI surface
+│  │  ├─ JobPreviewScreen.cs              # printSupportJobUI surface
+│  │  ├─ WinRtPrintSource*.cs             # packaged WinRT print-source E2E harness
 │  │  ├─ Config/  PrinterPdf.pdc.xml, PrinterPdf.pdr.xml, … (one per endpoint)
 │  │  ├─ Strings/<lang>/Resources.resw, IppMediaTypes.resw, CustomMediaTypes.resw
 │  │  └─ Assets/
@@ -578,8 +581,8 @@ instead of XAML pages:
   Background tasks then skip `LaunchAndCompleteUIAsync` and process jobs directly. The normal default is
   restored with `printsink-app.exe --enable-job-ui`.
 
-The UI is made from small Reactor components under `Screens/` and `Components/`. State that must cross
-the UI/background boundary lives in `PrintSink.Core` models and stores, not in WinUI controls.
+The UI is made from small one-type-per-file Reactor components in `PrintSink.App`. State that must
+cross the UI/background boundary lives in `PrintSink.Core` models and stores, not in WinUI controls.
 
 Because the background task cannot mutate XPS while the UI is up, the UI→background handshake is: UI
 collects options → writes to local settings → returns `Completed` → background task reads options and
@@ -851,10 +854,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M6 | Packaged-app tests + E2E automation; CI on Windows runners (x64/ARM64). |
 | M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
-**Definition of done:** every feature in §4 implemented; all unit/component/packaged tests green; the
-E2E automation passes for all six queues including PDF passthrough, WinRT source printing, watermark,
-settings modality, PDC/PDR/MXDC extension refresh, printer selection, ticket validation, and cancel
-paths, plus user default print-ticket updates.
+**Definition of done:** every supported feature in §4 implemented; rows 22 and 26 keep defensive
+handlers plus deferred evidence until Windows exposes deterministic triggers; all
+unit/component/packaged tests green; the E2E automation passes for all six queues including PDF
+passthrough, WinRT source printing, watermark, settings modality, PDC/PDR/MXDC extension refresh,
+printer selection, ticket validation, and cancel paths, plus user default print-ticket updates.
 
 ---
 

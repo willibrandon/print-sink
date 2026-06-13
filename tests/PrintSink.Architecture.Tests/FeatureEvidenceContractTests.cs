@@ -40,6 +40,22 @@ internal sealed partial class FeatureEvidenceContractTests
             "Tracked-only design rows must match deferred E2E evidence numbers.");
     }
 
+    /// <summary>
+    /// Verifies the design document does not overclaim platform-trigger-only compatibility hooks.
+    /// </summary>
+    [TestMethod]
+    public void DesignDocumentSeparatesSupportedAndDeferredFeatures()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
+        string design = File.ReadAllText(designPath);
+
+        Assert.Contains("Rows 1-21, 23-25, and 27 are supported", design);
+        Assert.Contains("Rows 22 and 26 are tracked separately as deferred compatibility hooks", design);
+        Assert.Contains("every supported feature in §4 implemented", design);
+        Assert.DoesNotContain("no feature is descoped", design);
+    }
+
     private static int[] ExtractDesignFeatureNumbers(string design)
     {
         return [.. DesignFeatureRowRegex()
