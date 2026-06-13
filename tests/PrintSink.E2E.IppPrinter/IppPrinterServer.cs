@@ -41,7 +41,6 @@ internal sealed class IppPrinterServer
             IIppRequest request = await sharpIppServer
                 .ReceiveRequestAsync(rawRequest, cancellationToken)
                 .ConfigureAwait(false);
-            RecordRequest(rawRequest);
 
             IIppResponse response = await CreateResponseAsync(rawRequest, request, cancellationToken)
                 .ConfigureAwait(false);
@@ -49,6 +48,7 @@ internal sealed class IppPrinterServer
                 .CreateRawResponseAsync(response, cancellationToken)
                 .ConfigureAwait(false);
             ImproveRawResponse(request, rawResponse);
+            RecordRequest(rawRequest, rawResponse);
 
             await sharpIppServer
                 .SendRawResponseAsync(rawResponse, responseStream, cancellationToken)
@@ -406,8 +406,9 @@ internal sealed class IppPrinterServer
         }
     }
 
-    private void RecordRequest(IIppRequestMessage rawRequest)
+    private void RecordRequest(IIppRequestMessage rawRequest, IIppResponseMessage rawResponse)
     {
+        IppAttribute[] responsePrinterAttributes = [.. rawResponse.PrinterAttributes.SelectMany(static group => group)];
         lock (gate)
         {
             requests.Add(
@@ -416,7 +417,9 @@ internal sealed class IppPrinterServer
                     rawRequest.IppOperation.ToString(),
                     AttributeNames(rawRequest.OperationAttributes),
                     AttributeValues(rawRequest.OperationAttributes),
-                    AttributeNames(rawRequest.JobAttributes)));
+                    AttributeNames(rawRequest.JobAttributes),
+                    AttributeNames(responsePrinterAttributes),
+                    AttributeValues(responsePrinterAttributes)));
             WriteEvidenceUnsafe();
         }
     }
@@ -507,6 +510,15 @@ internal sealed class IppPrinterServer
         AddMissingAttribute(
             attributes,
             new IppAttribute(Tag.TextWithoutLanguage, "printer-make-and-model", "PrintSink E2E IPP Printer"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Enum, "printer-state", 3));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "printer-state-reasons", "none"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Boolean, "printer-is-accepting-jobs", true));
         AddMissingAttribute(
             attributes,
             new IppAttribute(Tag.MimeMediaType, "document-format-preferred", options.DocumentFormat));

@@ -7,7 +7,9 @@ internal sealed class IppRequestRecord
         string operation,
         IReadOnlyList<string> operationAttributes,
         IReadOnlyDictionary<string, IReadOnlyList<string>> operationAttributeValues,
-        IReadOnlyList<string> jobAttributes)
+        IReadOnlyList<string> jobAttributes,
+        IReadOnlyList<string> responsePrinterAttributes,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> responsePrinterAttributeValues)
     {
         Timestamp = timestamp;
         Operation = operation;
@@ -18,6 +20,11 @@ internal sealed class IppRequestRecord
         }
 
         JobAttributes.AddRange(jobAttributes);
+        ResponsePrinterAttributes.AddRange(responsePrinterAttributes);
+        foreach (KeyValuePair<string, IReadOnlyList<string>> attribute in responsePrinterAttributeValues)
+        {
+            ResponsePrinterAttributeValues[attribute.Key] = [.. attribute.Value];
+        }
     }
 
     internal DateTimeOffset Timestamp { get; }
@@ -29,4 +36,8 @@ internal sealed class IppRequestRecord
     internal Dictionary<string, List<string>> OperationAttributeValues { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     internal List<string> JobAttributes { get; } = [];
+
+    internal List<string> ResponsePrinterAttributes { get; } = [];
+
+    internal Dictionary<string, List<string>> ResponsePrinterAttributeValues { get; } = new(StringComparer.OrdinalIgnoreCase);
 }

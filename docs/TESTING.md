@@ -95,6 +95,7 @@ The script validates the installed package before provisioning:
 
 - `printsink-app.exe` app execution alias.
 - all print-support foreground/background extensions.
+- `privateNetworkClientServer`, required for IPP workflow communication.
 - multiple-instance application support for concurrent print activations.
 - all six virtual-printer manifest entries and their localized DisplayName resource references.
 - packaged PDC/PDR files for each queue.
@@ -133,9 +134,9 @@ The required E2E suite proves the current installed-package behavior:
    `document-format-supported` entries for a real virtual queue.
 9. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
    queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
-   `GetPrinterAttributes` traffic, and the real `PrintSupportExtensionBackgroundTask` validates print
-   tickets for that IPP queue. This is an association/ticket-validation probe; real document output is
-   covered by the PrintSink virtual queues.
+   `GetPrinterAttributes` traffic, the real `PrintSupportExtensionBackgroundTask` validates print
+   tickets for that IPP queue, and a real print job records `PrintSupportWorkflowBackgroundTask`
+   pass-through. Document-output assertions are made through the PrintSink virtual queues.
 10. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
@@ -180,8 +181,8 @@ Real output assertions:
 - Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` returns document-format
   entries for the real installed virtual queue.
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
-  with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, and produce
-  local IPP request evidence.
+  with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, submit a
+  real print job that activates workflow pass-through, and produce local IPP request evidence.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows

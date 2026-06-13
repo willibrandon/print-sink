@@ -608,6 +608,7 @@ public sealed class CliApplicationTests
             </Application>
           </Applications>
           <Capabilities>
+            <Capability Name="privateNetworkClientServer" />
             <rescap:Capability Name="runFullTrust" />
           </Capabilities>
         </Package>
@@ -675,6 +676,7 @@ public sealed class CliApplicationTests
             </Application>
           </Applications>
           <Capabilities>
+            <Capability Name="privateNetworkClientServer" />
             <rescap:Capability Name="runFullTrust" />
           </Capabilities>
         </Package>

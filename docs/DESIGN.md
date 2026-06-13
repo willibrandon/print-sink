@@ -173,7 +173,9 @@ operator workflows; it references the same core library but is not an OS print a
 
 ## 4. Feature Completeness Matrix
 
-Every capability exposed by the PSA v4 Virtual Printer surface is implemented. None deferred.
+Every supported PrintSink capability listed here is implemented and covered by CI. The physical IPP
+path is limited to PSA association and activation evidence; document output is a virtual-printer
+feature.
 
 | # | Feature | Contract / API | Component | Notes |
 | --- | --- | --- | --- | --- |
@@ -193,14 +195,14 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 | 14 | PDR localization of custom features | `GetCurrentPrintDeviceResources` / `UpdatePrintDeviceResources`, `ResourceLanguage` | Extension task + `.resw` | |
 | 15 | Refresh PDC on settings change | `IppPrintDevice.RefreshPrintDeviceCapabilities()` | `PrintSink.App` → Extension task | |
 | 16 | Get/set user default print ticket | `IppPrintDevice.UserDefaultPrintTicket`, `CanModifyUserDefaultPrintTicket` | `PrintSink.App` | |
-| 17 | Print-ticket → IPP job attributes | `PrintWorkflowPrintJob.ConvertPrintTicketToJobAttributes`, merge policies | `PrintSupportWorkflowBackgroundTask` + Core | Add/remove attributes (e.g. drop `media-size`) |
+| 17 | Physical IPP PSA association + workflow activation | Temporary signed PSA extension INF, Microsoft IPP Class Driver queue, `windows.printSupportWorkflow` activation | Extension task + workflow task + E2E | Association probe only; physical target-stream replacement is not claimed |
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
 | 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
 | 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Raised when a user opens a job notification toast. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
-| 24 | Encrypted job password (operation attrs) | `msft-operation-attribute-col`, `job-password` / `job-password-encryption` | Workflow task + Core | Parity path |
+| 24 | Job password option model | `JobPasswordOptions` settings model | Core | Reserved model; no physical workflow target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 
 ---
@@ -421,7 +423,7 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust"/>
-    <!-- privateNetworkClientServer only if a sink performs IPP/network I/O -->
+    <Capability Name="privateNetworkClientServer"/>
   </Capabilities>
 
   <!-- In-process WinRT activation of background tasks (hosted by CsWinRT WinRT.Host.dll) -->
@@ -532,20 +534,14 @@ deferral is completed exactly once.
 
 ### 7.3 `PrintSink.Tasks.PrintSupportWorkflowBackgroundTask`
 
-The physical-printer parity path (shared PSA `windows.printSupportWorkflow`). Implements `JobStarting`
-and `PdlModificationRequested`:
+The physical-printer PSA path is an association and activation probe for
+`windows.printSupportWorkflow`. It does not replace the physical printer's output stream.
 
-- Negotiates the printer's document format (`document-format-default`/`-supported` via
-  `IppPrintDevice.GetPrinterAttributes`).
-- Optional watermark of OXPS.
-- `ConvertPrintTicketToJobAttributes` → mutate IPP attributes (e.g. drop `media-col/media-size` when the
-  size travels in the PDL header), with explicit `PrintWorkflowAttributesMergePolicy` choices.
-- Optional encrypted `job-password` via `msft-operation-attribute-col`.
-- `CreateJobOnPrinter[WithAttributes]` → convert/copy to target stream →
-  `CompleteStreamSubmission(Succeeded)`; abort via `AbortPrintFlow(reason)` on failure/cancel.
-- Package-local diagnostics record physical workflow start, route, IPP attribute preparation, and
-  completion/failure. Headless automation can stage the next workflow job password with
-  `printsink-app.exe --set-job-password --password <value>`.
+- `JobStarting` records workflow activation and leaves system rendering enabled.
+- `PdlModificationRequested` honors Job UI cancel/fail semantics, consumes per-job UI options so they
+  cannot leak to the next virtual-printer job, and records a pass-through diagnostic.
+- The task does not call `SetSkipSystemRendering` or `CreateJobOnPrinter[WithAttributes]`.
+- Package-local diagnostics record physical workflow start, pass-through, and failure/cancel.
 
 ### 7.4 `PrintSink.App` — Reactor shell + activation router
 
@@ -646,10 +642,10 @@ keys or mouse input, capturing terminal output, and scripting assertions.
   UI marshals via the WinUI dispatcher.
 - **Error model:** transform failures → `CompleteJob(Failed)` / `AbortPrintFlow(JobFailed)`; user cancel
   → `Canceled`/`UserCanceled`. No exception is allowed to escape an in-process handler.
-- **Security:** least-privilege capabilities (`runFullTrust` required for PSA;
-  `privateNetworkClientServer` only if a sink does network I/O). Job passwords encrypted before being
-  placed in IPP operation attributes and cleared from settings immediately after use. Target files are
-  only those the user selected via the OS Save-As broker (no arbitrary path access).
+- **Security:** least-privilege capabilities (`runFullTrust` for the packaged PSA process and
+  `privateNetworkClientServer` for IPP printer communication). Target files are only those the user
+  selected via the OS Save-As broker (no arbitrary path access). The reserved job-password settings
+  model stores encrypted values, but PrintSink does not apply them to a physical workflow target stream.
 - **Localization:** queue display names and custom PDC features via `.resw` (`ms-resource:`), resolved
   against `ResourceLanguage`.
 - **Observability:** `EventSource`/ETW tracing in `PrintSink.Core` (provider `PrintSink-Diagnostics`) for
@@ -676,8 +672,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      reject). Table-driven `[DataRow]`.
    - `PrintDeviceCapabilitiesEditor`: golden-file tests — input PDC + custom features → expected PDC
      XML (custom media size/type/resolution/bins/staple/page-order; namespace injection; idempotency).
-   - `IppAttributeMapper`: print-ticket → attributes; `media-size` removal; merge-policy behavior;
-     encrypted job-password collection shape.
+   - `IppAttributeMapper`: print-ticket → attributes; `media-size` removal; merge-policy behavior.
    - `WatermarkOptions` round-trip through `ISettingsStore` (in-memory + local).
    - Manifest lint: validate `PreferredInputFormat` ∈ allowed set, `MaxVersion` numeric, `PdcFile`
      present, `OutputFileTypes` ↔ endpoint kind consistency (a unit test over the shipped manifest +
@@ -713,9 +708,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      `document-format-supported` entries for a real virtual queue so package behavior is documented.
    - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect a local
      Microsoft IPP Class Driver queue to the in-process E2E IPP printer, assert the installed PSA AUMID
-     device property, and prove the extension task validates real print tickets for that queue. This is
-     an association and ticket-validation probe; document-output assertions run through the PrintSink
-     virtual queues.
+     device property, prove the extension task validates real print tickets for that queue, and submit a
+     real print job that records physical workflow pass-through. Document-output assertions run through
+     the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.

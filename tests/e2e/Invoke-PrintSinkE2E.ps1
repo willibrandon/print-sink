@@ -268,6 +268,7 @@ function Assert-InstalledPackageShape {
     [System.Xml.XmlNamespaceManager] $namespaceManager = New-AppxNamespaceManager -Manifest $manifest
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//uap3:Extension[@Category="windows.appExecutionAlias"]/uap3:AppExecutionAlias/desktop:ExecutionAlias[@Alias="printsink-app.exe"]' -Description 'the printsink-app.exe execution alias' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//appx:Application[@uap10:SupportsMultipleInstances="true"]' -Description 'multiple-instance application support' | Out-Null
+    Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//appx:Capability[@Name="privateNetworkClientServer"]' -Description 'private network client/server capability for IPP communication' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportWorkflow" and @EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask"]' -Description 'the print support workflow extension' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportExtension" and @EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask"]' -Description 'the print support extension background task' | Out-Null
     Assert-ManifestNode -Manifest $manifest -NamespaceManager $namespaceManager -XPath '//printsupport:Extension[@Category="windows.printSupportSettingsUI" and @EntryPoint="PrintSink.App.App"]' -Description 'the settings UI extension' | Out-Null
@@ -1353,6 +1354,7 @@ function Get-WindowsSdkToolPath {
 function Start-PrintSinkIppPrinterServer {
     param(
         [string] $PrinterName,
+        [string] $HostName,
         [string] $OutputDirectory
     )
 
@@ -1376,6 +1378,8 @@ function Start-PrintSinkIppPrinterServer {
         $PrinterName,
         '--port',
         '631',
+        '--host',
+        $HostName,
         '--output',
         $OutputDirectory,
         '--ready-file',
@@ -1407,6 +1411,38 @@ function Start-PrintSinkIppPrinterServer {
     }
 
     throw 'Timed out waiting for the E2E IPP printer to start.'
+}
+
+function Get-PrintSinkIppHost {
+    $interfaces = @{}
+    foreach ($interface in Get-NetIPInterface -AddressFamily IPv4 -ErrorAction SilentlyContinue) {
+        $interfaces[$interface.InterfaceIndex] = $interface
+    }
+
+    $address = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.IPAddress -notlike '127.*' `
+                -and $_.AddressState -eq 'Preferred' `
+                -and $_.IPAddress -notlike '169.254.*'
+        } |
+        Sort-Object `
+            @{ Expression = { if ($_.PrefixOrigin -eq 'Dhcp') { 0 } else { 1 } } }, `
+            @{ Expression = {
+                if ($interfaces.ContainsKey($_.InterfaceIndex)) {
+                    $interfaces[$_.InterfaceIndex].InterfaceMetric
+                }
+                else {
+                    [int]::MaxValue
+                }
+            } }, `
+            InterfaceIndex |
+        Select-Object -First 1
+
+    if ($null -eq $address) {
+        return '127.0.0.1'
+    }
+
+    return [string]$address.IPAddress
 }
 
 function New-PrintSinkPsaExtensionInf {
@@ -1573,6 +1609,51 @@ function Get-PrintSinkIppPrinterDevice {
     return $null
 }
 
+function Invoke-PrintSinkIppWorkflowActivationPrint {
+    param(
+        [string] $PrinterName,
+        [string] $PackageFamilyName
+    )
+
+    $startedUtc = [DateTimeOffset]::UtcNow
+    $printProcess = Start-PrintSinkWin32PrintProcess `
+        -PrinterName $PrinterName `
+        -DocumentName 'PrintSink E2E IPP Workflow' `
+        -Text 'foo workflow ipp'
+    $process = $printProcess.process
+
+    try {
+        if (-not $process.WaitForExit(45000)) {
+            throw "IPP workflow print process did not exit for $PrinterName. $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
+        }
+
+        if ($process.ExitCode -ne 0) {
+            throw "IPP workflow print process for $PrinterName exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $printProcess)"
+        }
+
+        $workflow = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $PrinterName `
+            -Message 'Workflow job passed through' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('target=system') `
+            -TimeoutSeconds 60
+        return [ordered]@{
+            printer = $PrinterName
+            workflow = $workflow
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+
+        Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-PrintSinkIppAssociation {
     param(
         [string] $OutputDirectory,
@@ -1583,11 +1664,13 @@ function Invoke-PrintSinkIppAssociation {
         throw 'IPP association E2E requires an elevated shell to install the temporary signed extension INF.'
     }
 
-    $printerName = 'PrintSink-E2E-IPP-Probe'
+    $probeId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $printerName = "PrintSink-E2E-IPP-$probeId"
     $hardwareId = 'PSA_PrintSinkE2E_IPP_Pri21CF'
     $aumid = "$PackageFamilyName!App"
     $testDirectory = Join-Path $OutputDirectory 'ipp-association'
     $infDirectory = Join-Path $testDirectory 'inf'
+    $ippHost = Get-PrintSinkIppHost
     $serverProcess = $null
     $publishedName = $null
     $certificateThumbprint = $null
@@ -1611,9 +1694,18 @@ function Invoke-PrintSinkIppAssociation {
 
         $serverProcess = Start-PrintSinkIppPrinterServer `
             -PrinterName $printerName `
+            -HostName $ippHost `
             -OutputDirectory $testDirectory
         $startedUtc = [DateTimeOffset]::UtcNow
-        Add-Printer -Name $printerName -IppURL "http://127.0.0.1:631/ipp/printer/$printerName" -ErrorAction Stop
+        try {
+            Add-Printer -Name $printerName -IppURL "ipp://${ippHost}:631/ipp/printer/$printerName" -ErrorAction Stop
+        }
+        catch {
+            $createdPrinter = Get-Printer -Name $printerName -ErrorAction SilentlyContinue
+            if ($null -eq $createdPrinter) {
+                throw
+            }
+        }
 
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
         $device = $null
@@ -1659,6 +1751,10 @@ function Invoke-PrintSinkIppAssociation {
             throw "The E2E IPP printer did not write evidence: $evidencePath"
         }
 
+        $workflowActivationPrint = Invoke-PrintSinkIppWorkflowActivationPrint `
+            -PrinterName $printerName `
+            -PackageFamilyName $PackageFamilyName
+
         $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
         $requests = @($evidence.requests)
         if ($requests.Count -eq 0) {
@@ -1668,6 +1764,7 @@ function Invoke-PrintSinkIppAssociation {
         return [ordered]@{
             printer = $printerName
             hardwareId = $hardwareId
+            ippHost = $ippHost
             aumid = $aumid
             deviceInstanceId = $device.InstanceId
             workflowPolicy = [string]$workflowPolicy
@@ -1678,6 +1775,7 @@ function Invoke-PrintSinkIppAssociation {
             ippOperations = @($requests | ForEach-Object { $_.operation } | Select-Object -Unique)
             ippJobCount = @($evidence.jobs).Count
             ticketValidation = $ticketValidation
+            workflowActivationPrint = $workflowActivationPrint
         }
     }
     finally {
@@ -3481,17 +3579,6 @@ try {
             -Context 'after virtual-printer attribute-read assertion'
     })
 
-    Write-E2EProgress 'Verifying IPP PSA association'
-    $ippAssociationResult = Invoke-PrintSinkIppAssociation `
-        -OutputDirectory $OutputDirectory `
-        -PackageFamilyName $package.PackageFamilyName
-    $queueSnapshots.Add([ordered]@{
-        context = 'after IPP PSA association'
-        queues = Assert-PrintSinkQueuesInstalled `
-            -ExpectedQueues $expectedQueues `
-            -Context 'after IPP PSA association'
-    })
-
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
         Write-E2EProgress "Printing real document to $($printCase.queue)"
@@ -3607,6 +3694,17 @@ try {
     })
     Write-E2EProgress 'Disabling foreground job UI after job UI checks'
     Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI after the Job UI E2E path'
+
+    Write-E2EProgress 'Verifying IPP PSA association'
+    $ippAssociationResult = Invoke-PrintSinkIppAssociation `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after IPP PSA association'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after IPP PSA association'
+    })
 
     $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
     $result = [ordered]@{

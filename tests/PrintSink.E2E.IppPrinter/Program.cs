@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     Args = [],
 });
 builder.Logging.ClearProviders();
-builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
+builder.WebHost.UseUrls($"http://{options.Host}:{options.Port}");
 builder.WebHost.ConfigureKestrel(kestrelOptions => kestrelOptions.AllowSynchronousIO = true);
 
 IppPrinterServer printerServer = new(options);

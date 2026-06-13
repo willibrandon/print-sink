@@ -82,6 +82,11 @@ internal static class ManifestLinter
             messages.Add("error: runFullTrust capability is required for the packaged foreground app.");
         }
 
+        if (!capabilities.Contains("privateNetworkClientServer"))
+        {
+            messages.Add("error: privateNetworkClientServer capability is required for IPP print workflow communication.");
+        }
+
         if (capabilities.Contains("systemAIModels"))
         {
             messages.Add("error: systemAIModels capability is not part of the PrintSink package shape.");

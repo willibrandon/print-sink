@@ -6,6 +6,8 @@ internal sealed class IppPrinterOptions
 
     internal int Port { get; private set; } = 18631;
 
+    internal string Host { get; private set; } = "127.0.0.1";
+
     internal string OutputDirectory { get; private set; } =
         Path.Combine(Path.GetTempPath(), "PrintSink.E2E.IppPrinter");
 
@@ -13,7 +15,7 @@ internal sealed class IppPrinterOptions
 
     internal string? ReadyFile { get; private set; }
 
-    internal Uri PrinterUri => new($"ipp://127.0.0.1:{Port}/ipp/printer/{Uri.EscapeDataString(PrinterName)}");
+    internal Uri PrinterUri => new($"ipp://{Host}:{Port}/ipp/printer/{Uri.EscapeDataString(PrinterName)}");
 
     internal string HttpRequestLogPath => Path.Combine(OutputDirectory, "http-requests.log");
 
@@ -34,6 +36,9 @@ internal sealed class IppPrinterOptions
                     break;
                 case "--port":
                     options.Port = GetRequiredPort(args, ref index, argument);
+                    break;
+                case "--host":
+                    options.Host = GetRequiredValue(args, ref index, argument);
                     break;
                 case "--output":
                     options.OutputDirectory = GetRequiredValue(args, ref index, argument);

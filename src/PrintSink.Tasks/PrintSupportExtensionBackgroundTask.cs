@@ -22,6 +22,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
     private const string PrintSupportCapabilitiesChangedEventArgsType =
         "Windows.Graphics.Printing.PrintSupport.PrintSupportPrintDeviceCapabilitiesChangedEventArgs";
     private const string PrintSinkFeatureResourceSubtree = "PrintSinkFeatures";
+    private static readonly TimeSpan AttributeCommunicationTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan JobCommunicationTimeout = TimeSpan.FromSeconds(120);
 
     private static readonly PrintDeviceCapabilitiesEditor CapabilitiesEditor = new();
     private static readonly IReadOnlyList<PrintSchemaQualifiedName> CustomResourceNames = BuildCustomResourceNames();
@@ -48,6 +50,11 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         if (ApiInformation.IsEventPresent(PrintSupportExtensionSessionType, "PrinterSelected"))
         {
             session.PrinterSelected += OnPrinterSelected;
+        }
+
+        if (ApiInformation.IsEventPresent(PrintSupportExtensionSessionType, "CommunicationErrorDetected"))
+        {
+            session.CommunicationErrorDetected += OnCommunicationErrorDetected;
         }
 
         session.Start();
@@ -109,6 +116,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
             {
                 bool mxdcConfigured = false;
                 bool pdrUpdated = false;
+                bool ippTimeoutsConfigured = false;
                 int resourceCount = 0;
 
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
@@ -134,6 +142,13 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     }
                 }
 
+                if (ApiInformation.IsPropertyPresent(
+                    PrintSupportCapabilitiesChangedEventArgsType,
+                    "CommunicationConfiguration"))
+                {
+                    ippTimeoutsConfigured = ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration);
+                }
+
                 AppendDiagnostic(
                     "Capabilities updated",
                     sender.Printer.PrinterName,
@@ -142,6 +157,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                         $"features={FormatBuiltInFeatureNames()}",
                         $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
                         $"pdr={(pdrUpdated ? "updated" : "skipped")}",
+                        $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
                         $"pdrResources={resourceCount}"));
             });
         }
@@ -173,6 +189,27 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         configuration.PhotographicOutputQuality = XpsImageQuality.Png;
         configuration.AutomaticOutputQuality = XpsImageQuality.JpegMediumCompression;
         configuration.FaxOutputQuality = XpsImageQuality.JpegHighCompression;
+    }
+
+    private static bool ConfigureIppCommunicationTimeouts(PrintSupportIppCommunicationConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        if (!configuration.CanModifyTimeouts)
+        {
+            return false;
+        }
+
+        SetTimeouts(configuration.IppAttributeTimeouts, AttributeCommunicationTimeout);
+        SetTimeouts(configuration.IppJobTimeouts, JobCommunicationTimeout);
+        return true;
+    }
+
+    private static void SetTimeouts(PrintSupportIppCommunicationTimeouts timeouts, TimeSpan timeout)
+    {
+        timeouts.ConnectTimeout = timeout;
+        timeouts.SendTimeout = timeout;
+        timeouts.ReceiveTimeout = timeout;
     }
 
     private static XmlDocument ApplyPrintSinkResources(
@@ -278,6 +315,33 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     "Printer selected",
                     sender.Printer.PrinterName,
                     $"adaptiveCard=set; {requestDetail}");
+            });
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private void OnCommunicationErrorDetected(
+        PrintSupportExtensionSession sender,
+        PrintSupportCommunicationErrorDetectedEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+        try
+        {
+            state.Run(() =>
+            {
+                bool timeoutsConfigured = false;
+                if (args.ErrorKind == IppCommunicationErrorKind.Timeout)
+                {
+                    timeoutsConfigured = ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration);
+                }
+
+                AppendDiagnostic(
+                    "IPP communication error",
+                    sender.Printer.PrinterName,
+                    $"kind={args.ErrorKind}; timeouts={(timeoutsConfigured ? "configured" : "skipped")}");
             });
         }
         finally

@@ -60,6 +60,11 @@ internal sealed class IppPrinterEvidenceWriter
                     static pair => pair.Value.Order(StringComparer.OrdinalIgnoreCase),
                     StringComparer.OrdinalIgnoreCase),
                 jobAttributes = request.JobAttributes.Order(StringComparer.OrdinalIgnoreCase),
+                responsePrinterAttributes = request.ResponsePrinterAttributes.Order(StringComparer.OrdinalIgnoreCase),
+                responsePrinterAttributeValues = request.ResponsePrinterAttributeValues.ToDictionary(
+                    static pair => pair.Key,
+                    static pair => pair.Value.Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase),
             }),
         };
 
