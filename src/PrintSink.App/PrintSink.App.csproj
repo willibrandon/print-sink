@@ -8,11 +8,13 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <!--
             x64 first so an unqualified `dotnet build` / F5 picks the right default on the
-            majority of dev machines. ARM64 second for Snapdragon X. X86 retained for parity
-            with the WinUI 3 templates even though Reactor itself is only tested on x64 / ARM64.
+            majority of dev machines. ARM64 second for Snapdragon X. X86 is retained for
+            32-bit package coverage on x64 Windows runners.
         -->
         <Platforms>x64;ARM64;X86</Platforms>
         <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU' Or '$(Platform)' == 'Any CPU'">x64</Platform>
+        <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
+        <PrintSinkXpsPlatform Condition="'$(Platform)' == 'X86'">Win32</PrintSinkXpsPlatform>
         <UseWinUI>true</UseWinUI>
         <WindowsPackageType>MSIX</WindowsPackageType>
         <!--
@@ -101,10 +103,10 @@
         <AppxPackagePayload Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd">
             <TargetPath>PrintSink.Tasks.winmd</TargetPath>
         </AppxPackagePayload>
-        <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.dll">
+        <AppxPackagePayload Include="..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.dll">
             <TargetPath>PrintSink.Xps.dll</TargetPath>
         </AppxPackagePayload>
-        <AppxPackagePayload Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd">
+        <AppxPackagePayload Include="..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.winmd">
             <TargetPath>PrintSink.Xps.winmd</TargetPath>
         </AppxPackagePayload>
         <AppxPackagePayload Include="..\PrintSink.Xps\PrintSink.Xps.dll.manifest">
@@ -140,8 +142,8 @@
 
     <Target Name="IncludePrintSinkXpsAssets" AfterTargets="Build">
         <ItemGroup>
-            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.dll" />
-            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(Platform)\$(Configuration)\PrintSink.Xps.winmd" />
+            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.dll" />
+            <_PrintSinkXpsAsset Include="..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.winmd" />
             <_PrintSinkXpsAsset Include="..\PrintSink.Xps\PrintSink.Xps.dll.manifest" />
         </ItemGroup>
         <Copy

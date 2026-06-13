@@ -26,6 +26,7 @@ not call `dotnet test` on the solution file because the solution also contains t
 `.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then builds a signed MSIX and runs the real print-stack E2E suite:
 
 - `x64` on `windows-2025-vs2026`
+- `X86` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`
 
 ## CLI Validation
