@@ -1276,6 +1276,376 @@ Add-Type -AssemblyName System.Drawing
     }
 }
 
+function Test-CurrentProcessIsElevated {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-WindowsSdkToolPath {
+    param(
+        [string] $ToolName
+    )
+
+    $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+    if (-not (Test-Path -LiteralPath $kitsRoot)) {
+        throw "Windows SDK bin directory was not found: $kitsRoot"
+    }
+
+    $tool = Get-ChildItem -LiteralPath $kitsRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\x64\\[^\\]+$' } |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if ($null -eq $tool) {
+        throw "$ToolName was not found under $kitsRoot."
+    }
+
+    return $tool.FullName
+}
+
+function Start-PrintSinkIppPrinterServer {
+    param(
+        [string] $PrinterName,
+        [string] $OutputDirectory
+    )
+
+    $projectPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\PrintSink.E2E.IppPrinter.csproj'
+    $assemblyPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\bin\Debug\net10.0\PrintSink.E2E.IppPrinter.dll'
+    if (-not (Test-Path -LiteralPath $assemblyPath)) {
+        $buildOutput = & dotnet build $projectPath --configuration Debug 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Building the E2E IPP printer failed. $($buildOutput -join [Environment]::NewLine)"
+        }
+    }
+
+    $readyFile = Join-Path $OutputDirectory 'ipp-printer.ready'
+    Remove-Item -LiteralPath $readyFile -ErrorAction SilentlyContinue
+
+    $processStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $processStartInfo.FileName = (Get-Command dotnet -ErrorAction Stop).Source
+    foreach ($argument in @(
+        $assemblyPath,
+        '--printer-name',
+        $PrinterName,
+        '--port',
+        '631',
+        '--output',
+        $OutputDirectory,
+        '--ready-file',
+        $readyFile)) {
+        [void] $processStartInfo.ArgumentList.Add($argument)
+    }
+
+    $processStartInfo.WorkingDirectory = (Get-Location).Path
+    $processStartInfo.UseShellExecute = $false
+    $processStartInfo.CreateNoWindow = $true
+    $process = [System.Diagnostics.Process]::Start($processStartInfo)
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(20)
+    do {
+        if (Test-Path -LiteralPath $readyFile) {
+            return $process
+        }
+
+        if ($process.HasExited) {
+            throw "The E2E IPP printer exited with $($process.ExitCode) before it became ready."
+        }
+
+        Start-Sleep -Milliseconds 200
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    if (-not $process.HasExited) {
+        $process.Kill($true)
+        $process.WaitForExit(5000) | Out-Null
+    }
+
+    throw 'Timed out waiting for the E2E IPP printer to start.'
+}
+
+function New-PrintSinkPsaExtensionInf {
+    param(
+        [string] $PackageFamilyName,
+        [string] $Aumid,
+        [string] $HardwareId,
+        [string] $OutputDirectory
+    )
+
+    New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+    $infPath = Join-Path $OutputDirectory 'psa.inf'
+    $catPath = Join-Path $OutputDirectory 'psa.cat'
+    $inf = @"
+[Version]
+Signature = "`$WINDOWS NT`$"
+Class = Extension
+ClassGuid = {e2f84ce7-8efa-411c-aa69-97454ca4cb57}
+Provider = %ManufacturerName%
+ExtensionId = {6E660901-13C9-4436-A4E4-00000000E2E1}
+CatalogFile = psa.cat
+DriverVer = 06/13/2026,1.0.0.0
+PnpLockdown = 1
+
+[Manufacturer]
+%ManufacturerName% = PrintSink, NTamd64.6.3
+
+[PrintSink.NTamd64.6.3]
+%Device.ExtensionDesc% = PSA-Install, %PrinterHardwareId%
+
+[PSA-Install.NT]
+AddProperty = Add-PSA-Property
+
+[PSA-Install.NT.Software]
+AddSoftware = %SoftwareName%,, Microsoft-PSA-SoftwareInstall
+
+[Microsoft-PSA-SoftwareInstall]
+SoftwareType = %MicrosoftStoreType%
+SoftwareID = pfn://%PackageFamilyName%
+
+[Add-PSA-Property]
+{A925764B-88E0-426D-AFC5-B39768BE59EB}, 1, 0x12,, %AUMID%
+
+[Strings]
+ManufacturerName = "PrintSink"
+SoftwareName = "PrintSink"
+Device.ExtensionDesc = "PrintSink E2E PSA Extension"
+MicrosoftStoreType = 2
+PackageFamilyName = "$PackageFamilyName"
+AUMID = "$Aumid"
+PrinterHardwareId = "$HardwareId"
+"@
+
+    Set-Content -LiteralPath $infPath -Value $inf -Encoding ASCII
+    $catalogScriptPath = Join-Path $OutputDirectory 'new-catalog.ps1'
+    $catalogScript = @'
+param(
+    [string] $InfPath,
+    [string] $CatalogPath
+)
+
+$ErrorActionPreference = 'Stop'
+New-FileCatalog -Path $InfPath -CatalogFilePath $CatalogPath -CatalogVersion 2 | Out-Null
+'@
+    Set-Content -LiteralPath $catalogScriptPath -Value $catalogScript -Encoding UTF8
+    $catalogHost = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if ($null -eq $catalogHost) {
+        $catalogHost = Get-Command powershell.exe -ErrorAction Stop
+    }
+
+    $catalogOutput = & $catalogHost.Source `
+        -NoProfile `
+        -ExecutionPolicy Bypass `
+        -File $catalogScriptPath `
+        $infPath `
+        $catPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Generating PSA extension catalog failed with exit code $LASTEXITCODE. $($catalogOutput -join [Environment]::NewLine)"
+    }
+
+    return [ordered]@{
+        infPath = $infPath
+        catPath = $catPath
+    }
+}
+
+function Install-PrintSinkPsaExtensionInf {
+    param(
+        [string] $InfPath,
+        [string] $CatalogPath,
+        [string] $CertificateSubject
+    )
+
+    $certificate = New-SelfSignedCertificate `
+        -Type CodeSigningCert `
+        -Subject $CertificateSubject `
+        -CertStoreLocation Cert:\LocalMachine\My `
+        -KeyExportPolicy Exportable `
+        -NotAfter (Get-Date).AddDays(2)
+    $certificatePath = Join-Path (Split-Path -Parent $InfPath) 'psa-signing.cer'
+    Export-Certificate -Cert $certificate -FilePath $certificatePath | Out-Null
+    Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+    Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+
+    $signToolPath = Get-WindowsSdkToolPath -ToolName 'signtool.exe'
+    & $signToolPath sign /fd SHA256 /sha1 $certificate.Thumbprint /sm $CatalogPath | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Signing PSA extension catalog failed with exit code $LASTEXITCODE."
+    }
+
+    $pnputilOutput = & pnputil.exe /add-driver $InfPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installing PSA extension INF failed with exit code $LASTEXITCODE. $($pnputilOutput -join [Environment]::NewLine)"
+    }
+
+    $publishedName = ($pnputilOutput |
+        Select-String -Pattern 'Published Name:\s*(\S+)' |
+        ForEach-Object { $_.Matches[0].Groups[1].Value } |
+        Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($publishedName)) {
+        throw "Installing PSA extension INF did not report a published driver name. $($pnputilOutput -join [Environment]::NewLine)"
+    }
+
+    return [ordered]@{
+        publishedName = $publishedName
+        certificateThumbprint = $certificate.Thumbprint
+    }
+}
+
+function Remove-PrintSinkPsaExtensionInf {
+    param(
+        [string] $PublishedName,
+        [string] $CertificateThumbprint
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($PublishedName)) {
+        & pnputil.exe /delete-driver $PublishedName /uninstall /force | Out-Null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        foreach ($store in 'Cert:\LocalMachine\My', 'Cert:\LocalMachine\Root', 'Cert:\LocalMachine\TrustedPublisher') {
+            Get-ChildItem $store -ErrorAction SilentlyContinue |
+                Where-Object { $_.Thumbprint -eq $CertificateThumbprint } |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Get-PrintSinkIppPrinterDevice {
+    param(
+        [string] $HardwareId
+    )
+
+    foreach ($device in Get-PnpDevice -Class Printer -ErrorAction SilentlyContinue) {
+        $property = Get-PnpDeviceProperty `
+            -InstanceId $device.InstanceId `
+            -KeyName 'DEVPKEY_Device_HardwareIds' `
+            -ErrorAction SilentlyContinue
+        if (@($property.Data) -contains $HardwareId) {
+            return $device
+        }
+    }
+
+    return $null
+}
+
+function Invoke-PrintSinkIppAssociation {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    if (-not (Test-CurrentProcessIsElevated)) {
+        throw 'IPP association E2E requires an elevated shell to install the temporary signed extension INF.'
+    }
+
+    $printerName = 'PrintSink-E2E-IPP-Probe'
+    $hardwareId = 'PSA_PrintSinkE2E_IPP_Pri21CF'
+    $aumid = "$PackageFamilyName!App"
+    $testDirectory = Join-Path $OutputDirectory 'ipp-association'
+    $infDirectory = Join-Path $testDirectory 'inf'
+    $serverProcess = $null
+    $publishedName = $null
+    $certificateThumbprint = $null
+
+    Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $testDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $testDirectory | Out-Null
+
+    try {
+        $inf = New-PrintSinkPsaExtensionInf `
+            -PackageFamilyName $PackageFamilyName `
+            -Aumid $aumid `
+            -HardwareId $hardwareId `
+            -OutputDirectory $infDirectory
+        $installedInf = Install-PrintSinkPsaExtensionInf `
+            -InfPath $inf.infPath `
+            -CatalogPath $inf.catPath `
+            -CertificateSubject 'CN=PrintSink E2E Driver Signing'
+        $publishedName = $installedInf.publishedName
+        $certificateThumbprint = $installedInf.certificateThumbprint
+
+        $serverProcess = Start-PrintSinkIppPrinterServer `
+            -PrinterName $printerName `
+            -OutputDirectory $testDirectory
+        $startedUtc = [DateTimeOffset]::UtcNow
+        Add-Printer -Name $printerName -IppURL "http://127.0.0.1:631/ipp/printer/$printerName" -ErrorAction Stop
+
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+        $device = $null
+        do {
+            $device = Get-PrintSinkIppPrinterDevice -HardwareId $hardwareId
+            if ($null -ne $device) {
+                break
+            }
+
+            Start-Sleep -Milliseconds 500
+        }
+        while ([DateTimeOffset]::UtcNow -lt $deadline)
+        if ($null -eq $device) {
+            throw "The IPP printer device with hardware ID '$hardwareId' was not found."
+        }
+
+        $psaProperty = Get-PnpDeviceProperty `
+            -InstanceId $device.InstanceId `
+            -KeyName '{A925764B-88E0-426D-AFC5-B39768BE59EB} 1' `
+            -ErrorAction Stop
+        if ([string]$psaProperty.Data -ne $aumid) {
+            throw "PSA association property was '$($psaProperty.Data)'; expected '$aumid'."
+        }
+
+        $workflowPolicy = $null
+        try {
+            Set-Printer -Name $printerName -WorkflowPolicy Enabled -ErrorAction Stop
+            $workflowPolicy = (Get-Printer -Name $printerName).WorkflowPolicy
+        }
+        catch {
+            $workflowPolicy = "unsupported: $($_.Exception.Message)"
+        }
+
+        $ticketValidation = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printerName `
+            -Message 'Print ticket validated' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('status=Resolved')
+
+        $evidencePath = Join-Path $testDirectory 'ipp-jobs.json'
+        if (-not (Test-Path -LiteralPath $evidencePath)) {
+            throw "The E2E IPP printer did not write evidence: $evidencePath"
+        }
+
+        $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+        $requests = @($evidence.requests)
+        if ($requests.Count -eq 0) {
+            throw 'The E2E IPP printer did not receive any IPP requests.'
+        }
+
+        return [ordered]@{
+            printer = $printerName
+            hardwareId = $hardwareId
+            aumid = $aumid
+            deviceInstanceId = $device.InstanceId
+            workflowPolicy = [string]$workflowPolicy
+            publishedDriver = $publishedName
+            certificateThumbprint = $certificateThumbprint
+            ippEvidencePath = $evidencePath
+            ippRequestCount = $requests.Count
+            ippOperations = @($requests | ForEach-Object { $_.operation } | Select-Object -Unique)
+            ippJobCount = @($evidence.jobs).Count
+            ticketValidation = $ticketValidation
+        }
+    }
+    finally {
+        Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
+        if ($serverProcess -and -not $serverProcess.HasExited) {
+            $serverProcess.Kill($true)
+            $serverProcess.WaitForExit(5000) | Out-Null
+        }
+
+        Remove-PrintSinkPsaExtensionInf `
+            -PublishedName $publishedName `
+            -CertificateThumbprint $certificateThumbprint
+    }
+}
+
 function Invoke-PrintSinkRealPrint {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintCase,
@@ -1334,29 +1704,6 @@ function Invoke-PrintSinkRealPrint {
         }
 
         if ($PrintCase.requiresSaveAs) {
-            $deadline = [DateTime]::UtcNow.AddSeconds(30)
-            do {
-                if (Test-Path -LiteralPath $outputPath) {
-                    $file = Get-Item -LiteralPath $outputPath
-                    if ($file.Length -gt 0) {
-                        break
-                    }
-                }
-
-                Start-Sleep -Milliseconds 500
-            }
-            while ([DateTime]::UtcNow -lt $deadline)
-
-            if (-not (Test-Path -LiteralPath $outputPath)) {
-                throw "Output was not written for ${printerName}: $outputPath"
-            }
-
-            $file = Get-Item -LiteralPath $outputPath
-            if ($file.Length -le 0) {
-                throw "Output is empty for ${printerName}: $outputPath"
-            }
-
-            Assert-DocumentOutput -PrintCase $PrintCase -OutputPath $outputPath
             $diagnostic = Wait-ForPrintSinkJobCompleted `
                 -PackageFamilyName $PackageFamilyName `
                 -Endpoint $printerName `
@@ -1368,6 +1715,10 @@ function Invoke-PrintSinkRealPrint {
                 -Message 'Print ticket validated' `
                 -StartedUtc $startedUtc `
                 -DetailContains @('status=Resolved')
+
+            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+            Assert-DocumentOutput -PrintCase $PrintCase -OutputPath $outputPath
+            $file = Get-Item -LiteralPath $outputPath
 
             return [ordered]@{
                 queue = $printerName
@@ -1490,14 +1841,14 @@ function Invoke-PrintSinkConcurrentPrints {
                 throw "Concurrent print process for $($printCase.queue) exited with $($process.ExitCode)."
             }
 
-            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 60
-            Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
             $diagnostic = Wait-ForPrintSinkJobCompleted `
                 -PackageFamilyName $PackageFamilyName `
                 -Endpoint $printCase.queue `
                 -StartedUtc $startedUtc `
                 -ExpectedRouteDetail $printCase.expectedRoute
 
+            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 60
+            Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
             $file = Get-Item -LiteralPath $outputPath
             $results += [ordered]@{
                 queue = $printCase.queue
@@ -1586,15 +1937,15 @@ function Invoke-PrintSinkPdfPassthroughPrint {
             throw "PDF passthrough command process exited with $($process.ExitCode)."
         }
 
-        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
-        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
-        Assert-FileBytesEqual -ExpectedPath $sourcePath -ActualPath $outputPath
-
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $printCase.queue `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $printCase.expectedRoute
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+        Assert-FileBytesEqual -ExpectedPath $sourcePath -ActualPath $outputPath
 
         $file = Get-Item -LiteralPath $outputPath
         return [ordered]@{
@@ -1699,14 +2050,14 @@ function Invoke-PrintSinkWinRtSourcePrint {
             throw "WinRT source print process exited with $($process.ExitCode). $diagnostic"
         }
 
-        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
-        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
-
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $printCase.queue `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $printCase.expectedRoute
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
 
         $file = Get-Item -LiteralPath $outputPath
         return [ordered]@{
@@ -2242,13 +2593,14 @@ Add-Type -AssemblyName System.Drawing
             throw "Job UI watermark print process exited with $($process.ExitCode)."
         }
 
-        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
-        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint $printerName `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $printCase.expectedRoute
+
+        Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
+        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
 
         $file = Get-Item -LiteralPath $outputPath
         return [ordered]@{
@@ -2620,6 +2972,47 @@ function Assert-DocumentOutput {
     }
 }
 
+function Test-PrintSinkDiagnosticStartedAfter {
+    param(
+        [object] $Event,
+        [DateTimeOffset] $StartedUtc,
+        [double] $SkewSeconds = 0
+    )
+
+    $timestamp = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse([string]$Event.timestamp, [ref]$timestamp)) {
+        return $false
+    }
+
+    return $timestamp -ge $StartedUtc.AddSeconds(-$SkewSeconds)
+}
+
+function Write-E2EProgress {
+    param(
+        [string] $Message
+    )
+
+    Write-Host "[$([DateTimeOffset]::Now.ToString('O'))] $Message"
+}
+
+function Read-PrintSinkDiagnosticEvents {
+    param(
+        [string] $DiagnosticPath
+    )
+
+    $json = Get-Content -LiteralPath $DiagnosticPath -Raw | ConvertFrom-Json
+    if ($null -eq $json) {
+        return @()
+    }
+
+    $events = @()
+    foreach ($event in $json) {
+        $events += $event
+    }
+
+    return $events
+}
+
 function Wait-ForPrintSinkJobCompleted {
     param(
         [string] $PackageFamilyName,
@@ -2633,7 +3026,7 @@ function Wait-ForPrintSinkJobCompleted {
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             try {
-                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+                $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
             }
             catch [System.IO.IOException] {
                 Start-Sleep -Milliseconds 250
@@ -2648,7 +3041,7 @@ function Wait-ForPrintSinkJobCompleted {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Route resolved' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
 
@@ -2656,16 +3049,17 @@ function Wait-ForPrintSinkJobCompleted {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job completed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $match) {
                 if (-not [string]::IsNullOrWhiteSpace($ExpectedRouteDetail)) {
                     if ($null -eq $route) {
-                        throw "PrintSink route diagnostic was not recorded for $Endpoint."
+                        if ([string]$match.detail -notlike "*route=$ExpectedRouteDetail*") {
+                            throw "PrintSink route diagnostic was not recorded for $Endpoint."
+                        }
                     }
-
-                    if ($route.detail -ne $ExpectedRouteDetail) {
+                    elseif ($route.detail -ne $ExpectedRouteDetail) {
                         throw "PrintSink route diagnostic differed for ${Endpoint}. Expected '$ExpectedRouteDetail'; actual '$($route.detail)'."
                     }
                 }
@@ -2675,7 +3069,7 @@ function Wait-ForPrintSinkJobCompleted {
                     message = $match.message
                     detail = $match.detail
                     routeTimestamp = if ($null -eq $route) { $null } else { $route.timestamp }
-                    route = if ($null -eq $route) { $null } else { $route.detail }
+                    route = if ($null -eq $route) { $ExpectedRouteDetail } else { $route.detail }
                 }
             }
 
@@ -2683,7 +3077,7 @@ function Wait-ForPrintSinkJobCompleted {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job failed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $failure) {
@@ -2711,7 +3105,7 @@ function Wait-ForPrintSinkJobFailed {
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             try {
-                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+                $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
             }
             catch [System.IO.IOException] {
                 Start-Sleep -Milliseconds 250
@@ -2726,7 +3120,7 @@ function Wait-ForPrintSinkJobFailed {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Route resolved' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
 
@@ -2734,7 +3128,7 @@ function Wait-ForPrintSinkJobFailed {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job failed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $failure) {
@@ -2766,7 +3160,7 @@ function Wait-ForPrintSinkJobFailed {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job completed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $completion) {
@@ -2777,7 +3171,7 @@ function Wait-ForPrintSinkJobFailed {
                 Where-Object {
                     ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace([string]$_.endpoint)) `
                         -and $_.message -eq 'Job canceled' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $cancellation) {
@@ -2808,7 +3202,7 @@ function Wait-ForPrintSinkDiagnostic {
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             try {
-                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+                $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
             }
             catch [System.IO.IOException] {
                 Start-Sleep -Milliseconds 250
@@ -2823,7 +3217,7 @@ function Wait-ForPrintSinkDiagnostic {
                 Where-Object {
                     ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
                         -and $_.message -eq $Message `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds 5)
                 })
 
             foreach ($candidate in $candidates) {
@@ -2865,7 +3259,7 @@ function Wait-ForPrintSinkJobCanceled {
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             try {
-                $events = @(Get-Content -LiteralPath $diagnosticPath -Raw | ConvertFrom-Json)
+                $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
             }
             catch [System.IO.IOException] {
                 Start-Sleep -Milliseconds 250
@@ -2880,7 +3274,7 @@ function Wait-ForPrintSinkJobCanceled {
                 Where-Object {
                     ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace([string]$_.endpoint)) `
                         -and $_.message -eq 'Job canceled' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $match) {
@@ -2897,7 +3291,7 @@ function Wait-ForPrintSinkJobCanceled {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job completed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $completion) {
@@ -2908,7 +3302,7 @@ function Wait-ForPrintSinkJobCanceled {
                 Where-Object {
                     $_.endpoint -eq $Endpoint `
                         -and $_.message -eq 'Job failed' `
-                        -and ([DateTimeOffset]::Parse($_.timestamp) -ge $StartedUtc)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc)
                 } |
                 Select-Object -Last 1
             if ($null -ne $failure) {
@@ -2932,10 +3326,12 @@ if (-not $SkipPackageInstall) {
         throw "Package path was not found: $PackagePath"
     }
 
+    Write-E2EProgress "Installing package from $PackagePath"
     Get-AppxPackage -Name $PackageName | Remove-AppxPackage -ErrorAction Stop
     Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ForceUpdateFromAnyVersion
 }
 
+Write-E2EProgress "Inspecting installed package $PackageName"
 $package = Get-InstalledPackage -Name $PackageName
 $packageShape = Assert-InstalledPackageShape -Package $package -ExpectedVirtualPrinters $expectedVirtualPrinters
 $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\Settings\diagnostic-events.json"
@@ -2949,10 +3345,13 @@ if ($null -eq $alias) {
 $completedSuccessfully = $false
 $e2eStartedUtc = [DateTimeOffset]::UtcNow
 
+Write-E2EProgress 'Disabling foreground job UI'
 Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
 try {
+    Write-E2EProgress 'Verifying CLI queue lifecycle'
     $cliQueueLifecycle = Invoke-PrintSinkCliQueueLifecycle -ExpectedQueues $expectedQueues
 
+    Write-E2EProgress 'Provisioning virtual printer queues'
     Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
 
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -2966,6 +3365,7 @@ try {
             -Context 'after provisioning'
     })
 
+    Write-E2EProgress 'Verifying print support extension capabilities'
     $extensionCapabilitiesResult = Invoke-PrintSinkExtensionCapabilities `
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
@@ -2976,6 +3376,7 @@ try {
             -Context 'after extension capability refresh'
     })
 
+    Write-E2EProgress 'Verifying user default print ticket activation'
     $userDefaultPrintTicketResult = Invoke-PrintSinkUserDefaultPrintTicket `
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
@@ -2986,6 +3387,7 @@ try {
             -Context 'after user default print ticket update'
     })
 
+    Write-E2EProgress 'Verifying virtual-printer attribute reads'
     $virtualAttributeReadResult = Invoke-PrintSinkVirtualAttributeRead `
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
@@ -2996,8 +3398,20 @@ try {
             -Context 'after virtual-printer attribute-read assertion'
     })
 
+    Write-E2EProgress 'Verifying IPP PSA association'
+    $ippAssociationResult = Invoke-PrintSinkIppAssociation `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after IPP PSA association'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after IPP PSA association'
+    })
+
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
+        Write-E2EProgress "Printing real document to $($printCase.queue)"
         $realPrintResults += Invoke-PrintSinkRealPrint `
             -PrintCase $printCase `
             -OutputDirectory $OutputDirectory `
@@ -3006,10 +3420,11 @@ try {
             context = "after printing $($printCase.queue)"
             queues = Assert-PrintSinkQueuesInstalled `
                 -ExpectedQueues $expectedQueues `
-                -Context "after printing $($printCase.queue)"
+            -Context "after printing $($printCase.queue)"
         })
     }
 
+    Write-E2EProgress 'Printing concurrent real documents'
     $concurrentPrintResult = Invoke-PrintSinkConcurrentPrints `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3020,6 +3435,7 @@ try {
             -Context 'after concurrent real prints'
     })
 
+    Write-E2EProgress 'Verifying PDF passthrough'
     $pdfPassthroughResult = Invoke-PrintSinkPdfPassthroughPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3030,6 +3446,7 @@ try {
             -Context 'after PDF passthrough'
     })
 
+    Write-E2EProgress 'Verifying WinRT source print'
     $winRtSourceResult = Invoke-PrintSinkWinRtSourcePrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3040,6 +3457,7 @@ try {
             -Context 'after WinRT source print'
     })
 
+    Write-E2EProgress 'Verifying settings UI ownership'
     $settingsUiOwnerResult = Invoke-PrintSinkSettingsUiOwner `
         -PackageFamilyName $package.PackageFamilyName
     $queueSnapshots.Add([ordered]@{
@@ -3049,6 +3467,7 @@ try {
             -Context 'after settings UI owner check'
     })
 
+    Write-E2EProgress 'Verifying settings text watermark print'
     $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3059,6 +3478,7 @@ try {
             -Context 'after settings text watermark print'
     })
 
+    Write-E2EProgress 'Verifying settings image watermark print'
     $settingsImageWatermarkResult = Invoke-PrintSinkSettingsImageWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3069,6 +3489,7 @@ try {
             -Context 'after settings image watermark print'
     })
 
+    Write-E2EProgress 'Verifying invalid image watermark failure path'
     $failedImageWatermarkResult = Invoke-PrintSinkFailedImageWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3079,7 +3500,9 @@ try {
             -Context 'after failed image watermark print'
     })
 
+    Write-E2EProgress 'Enabling foreground job UI'
     Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Enabling foreground job UI for the Job UI E2E path'
+    Write-E2EProgress 'Verifying job UI watermark print'
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3089,6 +3512,7 @@ try {
             -ExpectedQueues $expectedQueues `
             -Context 'after job UI watermark print'
     })
+    Write-E2EProgress 'Verifying job UI cancellation'
     $jobUiCancelResult = Invoke-PrintSinkJobUiCancelPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
@@ -3098,6 +3522,7 @@ try {
             -ExpectedQueues $expectedQueues `
             -Context 'after job UI cancel'
     })
+    Write-E2EProgress 'Disabling foreground job UI after job UI checks'
     Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI after the Job UI E2E path'
 
     $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
@@ -3120,6 +3545,7 @@ try {
         extensionCapabilities = $extensionCapabilitiesResult
         userDefaultPrintTicket = $userDefaultPrintTicketResult
         virtualAttributeRead = $virtualAttributeReadResult
+        ippAssociation = $ippAssociationResult
         realPrints = $realPrintResults
         concurrentPrints = $concurrentPrintResult
         pdfPassthrough = $pdfPassthroughResult
@@ -3134,6 +3560,7 @@ try {
 
     $resultJson = $result | ConvertTo-Json -Depth 8
     Set-Content -LiteralPath $resultPath -Value $resultJson -Encoding UTF8
+    Write-E2EProgress "Wrote E2E result to $resultPath"
     $resultJson
     $completedSuccessfully = $true
 }
@@ -3142,6 +3569,7 @@ finally {
 
     if ($Cleanup) {
         try {
+            Write-E2EProgress 'Cleaning up virtual printer queues'
             Invoke-PrintSinkAppCommand -Arguments @('--remove-virtual-printers') -Description 'Headless virtual-printer cleanup'
             Wait-ForQueueInstalledState `
                 -ExpectedQueues $expectedQueues `
@@ -3156,6 +3584,7 @@ finally {
     }
 
     try {
+        Write-E2EProgress 'Restoring foreground job UI'
         Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Restoring foreground job UI'
     }
     catch {

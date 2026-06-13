@@ -66,7 +66,10 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 
 ## Print-Stack E2E Automation
 
-Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Build a signed MSIX, install it, provision the queues through `dotnet run --project src\PrintSink.Cli -- queues install` or the packaged app execution alias, and assert the queues through the scriptable print stack.
+Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Run the E2E script from elevated PowerShell 7
+(`pwsh`): it installs a temporary signed extension INF for the local IPP association check. Build a signed
+MSIX, install it, provision the queues through `dotnet run --project src\PrintSink.Cli -- queues install` or
+the packaged app execution alias, and assert the queues through the scriptable print stack.
 
 ```powershell
 tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -OutputDirectory artifacts\e2e\x64
@@ -79,7 +82,7 @@ tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
 ```
 
 `-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
-The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue.
+The default run prints through all six real queues. A short STA print harness submits real Windows print jobs, UI Automation fills the Windows `Save Print Output As` dialog for file-backed queues, and the package-local diagnostics must report `Job completed` for each queue before the script validates the output file.
 The harness drives the Save-As broker by setting the native filename control and accepting the dialog through window messages, so it does not rely on keyboard focus in CI.
 
 To remove the queues after assertion:
@@ -117,8 +120,10 @@ The required E2E suite proves the current installed-package behavior:
    then assert both outputs and overlapping route/completion diagnostics.
 4. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
    the real Windows printer list.
-5. Assert the package-local route diagnostic for every real job: source content type, target format,
-   action, conversion kind, and route reason must match the expected endpoint behavior.
+5. Assert package-local route evidence for every real job: source content type, target format,
+   action, conversion kind, and route reason must match the expected endpoint behavior. The standalone
+   `Route resolved` event is preferred; the `Job completed` event also carries the route so completion
+   evidence remains self-contained.
 6. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, and MXDC
    configuration, and printer selection records the adaptive-card/additional-field request.
@@ -126,28 +131,33 @@ The required E2E suite proves the current installed-package behavior:
    verify the persisted copy count, and restore it before output tests continue.
 8. Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
    `document-format-supported` entries for a real virtual queue.
-9. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+9. Generate, sign, install, and remove a temporary PSA extension INF for a local IPP class-driver
+   queue. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
+   `GetPrinterAttributes` traffic, and the real `PrintSupportExtensionBackgroundTask` validates print
+   tickets for that IPP queue. This is an association/ticket-validation probe; real document output is
+   covered by the PrintSink virtual queues.
+10. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
    copy route.
-10. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+11. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-11. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+12. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
    and assert the owner is restored when Settings closes.
-12. Set package-local default text and image watermarks, call
+13. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-13. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
+14. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-14. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
-15. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
-16. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+15. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+16. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
+17. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
-17. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+18. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-18. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+19. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
-19. Assert all six queues are removed when `-Cleanup` is used.
+20. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change.
@@ -160,7 +170,7 @@ Real output assertions:
 - PWG Raster has a valid raster magic value and non-blank page body.
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output and must still report `Job completed` from the real background task.
-- Route diagnostics must prove the expected copy or conversion path for the source content type.
+- Route diagnostics, or the route carried by `Job completed`, must prove the expected copy or conversion path for the source content type.
 - Concurrent output diagnostics must prove two real jobs overlapped by comparing route and completion
   timestamps for the two activated queues.
 - Extension diagnostics must prove real ticket validation for every queue, PDC/PDR refresh, MXDC image
@@ -169,6 +179,9 @@ Real output assertions:
   `IppPrintDevice.UserDefaultPrintTicket`.
 - Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` returns document-format
   entries for the real installed virtual queue.
+- IPP PSA association must prove a signed extension INF can associate the installed package AUMID
+  with a real Microsoft IPP Class Driver device, trigger ticket validation for that queue, and produce
+  local IPP request evidence.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows

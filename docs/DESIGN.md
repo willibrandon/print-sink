@@ -543,6 +543,9 @@ and `PdlModificationRequested`:
 - Optional encrypted `job-password` via `msft-operation-attribute-col`.
 - `CreateJobOnPrinter[WithAttributes]` → convert/copy to target stream →
   `CompleteStreamSubmission(Succeeded)`; abort via `AbortPrintFlow(reason)` on failure/cancel.
+- Package-local diagnostics record physical workflow start, route, IPP attribute preparation, and
+  completion/failure. Headless automation can stage the next workflow job password with
+  `printsink-app.exe --set-job-password --password <value>`.
 
 ### 7.4 `PrintSink.App` — Reactor shell + activation router
 
@@ -648,7 +651,9 @@ keys or mouse input, capturing terminal output, and scripting assertions.
   against `ResourceLanguage`.
 - **Observability:** `EventSource`/ETW tracing in `PrintSink.Core` (provider `PrintSink-Diagnostics`) for
   job lifecycle, format decisions, conversion timings — usable with WPR/PerfView for field diagnosis.
-  A small package-local JSON event store keeps recent job diagnostics available to the Hex1b TUI.
+  A small package-local JSON event store keeps recent job diagnostics available to the Hex1b TUI and
+  serializes writes across the app, extension task, workflow task, and virtual-printer task so concurrent
+  activations do not lose route or completion evidence.
 - **Versioning:** package `Version` Major.Minor.Build.Revision; `AppxAutoIncrementPackageRevision` on
   publish.
 
@@ -694,7 +699,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      real print jobs so concurrent activations are proven by output files and diagnostics.
    - Print from a real Win32 print harness to every endpoint.
    - Assert route diagnostics for every real job, including source content type, target format, copy
-     versus conversion action, and route reason.
+     versus conversion action, and route reason. Output validation waits for the package-local
+     `Job completed` event; the event carries route details so completion evidence is self-contained.
    - Assert `PrintSupportExtensionBackgroundTask` diagnostics from real OS activations: ticket
      validation on every queue, capability refresh with custom features, PDR update, MXDC image
      quality configuration, and printer-selected adaptive-card/additional-field setup.
@@ -702,6 +708,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      persisted default copy count through package-local diagnostics.
    - Assert `IppPrintDevice.GetPrinterAttributes` returns `document-format-default` and
      `document-format-supported` entries for a real virtual queue so package behavior is documented.
+   - Generate and sign a temporary PSA extension INF, install it with `pnputil`, connect a local
+     Microsoft IPP Class Driver queue to the in-process E2E IPP printer, assert the installed PSA AUMID
+     device property, and prove the extension task validates real print tickets for that queue. This is
+     an association and ticket-validation probe; document-output assertions run through the PrintSink
+     virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
      package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
      raster magic and non-blank page body; cloud has no Save-As output but reports `Job completed`.

@@ -103,6 +103,44 @@ public sealed class LocalDiagnosticEventStoreTests
         }
     }
 
+    /// <summary>
+    /// Verifies concurrent store instances preserve all appended diagnostics.
+    /// </summary>
+    [TestMethod]
+    public async Task AppendAsync_preserves_events_from_concurrent_store_instances()
+    {
+        string directory = CreateTestDirectory();
+        const int EventCount = 32;
+
+        try
+        {
+            Task[] appendTasks = [.. Enumerable.Range(0, EventCount).Select(index =>
+            {
+                LocalDiagnosticEventStore store = new(directory, EventCount);
+                return store.AppendAsync(
+                    CreateRecord($"Event {index}", DateTimeOffset.UtcNow.AddSeconds(index)),
+                    TestContext.CancellationToken);
+            })];
+            await Task.WhenAll(appendTasks).ConfigureAwait(false);
+
+            LocalDiagnosticEventStore reader = new(directory, EventCount);
+            IReadOnlyList<DiagnosticEventRecord> records = await reader
+                .ReadRecentAsync(EventCount, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            HashSet<string> messages = [.. records.Select(record => record.Message)];
+            Assert.HasCount(EventCount, records);
+            for (int index = 0; index < EventCount; index++)
+            {
+                Assert.Contains($"Event {index}", messages);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static DiagnosticEventRecord CreateRecord(string message, DateTimeOffset timestamp)
     {
         return new DiagnosticEventRecord(

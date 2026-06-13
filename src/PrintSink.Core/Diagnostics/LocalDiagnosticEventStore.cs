@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace PrintSink.Core.Diagnostics;
@@ -18,6 +20,7 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string rootDirectory;
     private readonly int maximumStoredEvents;
+    private readonly string semaphoreName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LocalDiagnosticEventStore"/> class.
@@ -40,6 +43,7 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
 
         this.rootDirectory = rootDirectory;
         this.maximumStoredEvents = maximumStoredEvents;
+        semaphoreName = CreateSemaphoreName(rootDirectory);
     }
 
     /// <inheritdoc />
@@ -50,8 +54,16 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
         ArgumentNullException.ThrowIfNull(record);
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using Semaphore semaphore = new(1, 1, semaphoreName);
+        bool semaphoreAcquired = false;
         try
         {
+            semaphoreAcquired = WaitForSemaphore(semaphore);
+            if (!semaphoreAcquired)
+            {
+                throw new TimeoutException("Timed out waiting for the diagnostics event store lock.");
+            }
+
             Directory.CreateDirectory(rootDirectory);
             string path = GetEventsPath(rootDirectory);
             List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
@@ -70,6 +82,11 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
         }
         finally
         {
+            if (semaphoreAcquired)
+            {
+                semaphore.Release();
+            }
+
             gate.Release();
         }
     }
@@ -82,8 +99,16 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using Semaphore semaphore = new(1, 1, semaphoreName);
+        bool semaphoreAcquired = false;
         try
         {
+            semaphoreAcquired = WaitForSemaphore(semaphore);
+            if (!semaphoreAcquired)
+            {
+                throw new TimeoutException("Timed out waiting for the diagnostics event store lock.");
+            }
+
             string path = GetEventsPath(rootDirectory);
             List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
                 .ConfigureAwait(false);
@@ -93,8 +118,18 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
         }
         finally
         {
+            if (semaphoreAcquired)
+            {
+                semaphore.Release();
+            }
+
             gate.Release();
         }
+    }
+
+    private static bool WaitForSemaphore(Semaphore semaphore)
+    {
+        return semaphore.WaitOne(TimeSpan.FromSeconds(10));
     }
 
     private static async Task<List<DiagnosticEventRecord>> ReadAllUnsafeAsync(
@@ -117,5 +152,12 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
     private static string GetEventsPath(string rootDirectory)
     {
         return Path.Combine(rootDirectory, EventsFileName);
+    }
+
+    private static string CreateSemaphoreName(string rootDirectory)
+    {
+        string normalizedPath = Path.GetFullPath(rootDirectory).ToUpperInvariant();
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath));
+        return $@"Local\PrintSink.Diagnostics.{Convert.ToHexString(hash)}";
     }
 }

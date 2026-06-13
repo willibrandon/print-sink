@@ -21,9 +21,17 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         ArgumentNullException.ThrowIfNull(taskInstance);
 
         state.Attach(taskInstance);
+        AppendDiagnostic(
+            "Virtual printer task activated",
+            string.Empty,
+            $"trigger={taskInstance.TriggerDetails?.GetType().FullName ?? "<null>"}");
 
         if (taskInstance.TriggerDetails is not PrintWorkflowVirtualPrinterTriggerDetails virtualPrinterDetails)
         {
+            AppendDiagnostic(
+                "Virtual printer task ignored",
+                string.Empty,
+                $"trigger={taskInstance.TriggerDetails?.GetType().FullName ?? "<null>"}");
             state.CompleteWhenIdle();
             return;
         }
@@ -31,6 +39,10 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterSession session = virtualPrinterDetails.VirtualPrinterSession;
         session.VirtualPrinterDataAvailable += OnVirtualPrinterDataAvailable;
         session.Start();
+        AppendDiagnostic(
+            "Virtual printer session started",
+            GetPrinterName(session),
+            $"uri={session.Printer.PrinterUri}");
     }
 
     private void OnVirtualPrinterDataAvailable(
@@ -41,11 +53,26 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         {
             bool handled = state.Run(() =>
             {
-                ProcessJobAsync(sender, args).GetAwaiter().GetResult();
+                try
+                {
+                    ProcessJobAsync(sender, args).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    AppendDiagnostic(
+                        "Virtual printer job failed",
+                        GetPrinterName(sender),
+                        ex.ToString());
+                    args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
+                }
             });
 
             if (!handled)
             {
+                AppendDiagnostic(
+                    "Virtual printer job failed",
+                    GetPrinterName(sender),
+                    "Background handler was already busy.");
                 args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
             }
         }
@@ -59,8 +86,19 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterSession session,
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args)
     {
-        if (!EndpointCatalog.TryResolve(session.Printer.PrinterUri, out VirtualEndpoint? endpoint) || endpoint is null)
+        Uri printerUri = session.Printer.PrinterUri;
+        string printerName = session.Printer.PrinterName;
+        AppendDiagnostic(
+            "Virtual printer data received",
+            printerName,
+            $"uri={printerUri}; contentType={args.SourceContent.ContentType}");
+
+        if (!EndpointCatalog.TryResolve(printerUri, out VirtualEndpoint? endpoint) || endpoint is null)
         {
+            AppendDiagnostic(
+                "Virtual printer endpoint unresolved",
+                printerName,
+                $"uri={printerUri}; contentType={args.SourceContent.ContentType}");
             args.CompleteJob(PrintWorkflowSubmittedStatus.Failed);
             return;
         }
@@ -179,6 +217,41 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         CancellationToken cancellationToken)
     {
         await pdl.CopyToAsync(Stream.Null, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string GetPrinterName(PrintWorkflowVirtualPrinterSession session)
+    {
+        try
+        {
+            return session.Printer.PrinterName;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static void AppendDiagnostic(string message, string endpoint, string detail)
+    {
+        try
+        {
+            PackagedSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(VirtualPrinterBackgroundTask),
+                        message,
+                        endpoint,
+                        detail))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception)
+        {
+            // Diagnostics must not make the virtual-printer contract fail.
+        }
     }
 
 }

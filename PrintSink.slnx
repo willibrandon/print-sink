@@ -53,6 +53,7 @@
     <Project Path="tests/PrintSink.Cli.Tests/PrintSink.Cli.Tests.csproj" />
     <Project Path="tests/PrintSink.Core.Tests/PrintSink.Core.Tests.csproj" />
     <Project Path="tests/PrintSink.E2E.Assertions/PrintSink.E2E.Assertions.csproj" />
+    <Project Path="tests/PrintSink.E2E.IppPrinter/PrintSink.E2E.IppPrinter.csproj" />
     <Project Path="tests/PrintSink.Xps.Tests/PrintSink.Xps.Tests.csproj">
       <Platform Solution="*|ARM64" Project="ARM64" />
       <Platform Solution="*|x64" Project="x64" />

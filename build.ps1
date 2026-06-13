@@ -5,9 +5,22 @@ param(
     [ValidateSet('x64', 'ARM64', 'X86')]
     [string] $Platform = 'x64',
 
-    [string] $Target = 'Build'
+    [string] $Target = 'Build',
+
+    [switch] $NoRestore
 )
 
 $ErrorActionPreference = 'Stop'
 
-msbuild .\PrintSink.slnx /t:$Target /p:Configuration=$Configuration /p:Platform=$Platform
+$arguments = @(
+    '.\PrintSink.slnx',
+    "/t:$Target",
+    "/p:Configuration=$Configuration",
+    "/p:Platform=$Platform"
+)
+
+if (-not $NoRestore) {
+    $arguments = @('/restore') + $arguments
+}
+
+msbuild @arguments

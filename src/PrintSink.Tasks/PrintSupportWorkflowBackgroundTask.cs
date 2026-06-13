@@ -2,6 +2,7 @@ using Windows.ApplicationModel.Background;
 using Windows.Devices.Printers;
 using Windows.Graphics.Printing.Workflow;
 using Windows.Storage.Streams;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Pdl;
 using PrintSink.Core.Settings;
 using PrintSink.Core.Tickets;
@@ -42,6 +43,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         var deferral = args.GetDeferral();
         try
         {
+            AppendDiagnostic("Workflow job starting", string.Empty, "skipSystemRendering=set");
             state.Run(args.SetSkipSystemRendering);
         }
         finally
@@ -71,19 +73,26 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                     .GetResult();
                 PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
                 PrinterDocumentFormatPlan plan = GetDocumentFormatPlan(args, sourceContent.ContentType);
+                AppendDiagnostic(
+                    "Workflow route resolved",
+                    GetPrinterName(args),
+                    FormatRouteDetail(plan));
                 PrintWorkflowPdlTargetStream targetStream = CreateJobOnPrinter(args, plan.TargetContentType, jobProcessingOptions);
                 SubmitPdl(args, sourceContent, targetStream, plan);
 
                 targetStream.CompleteStreamSubmission(PrintWorkflowSubmittedStatus.Succeeded);
+                AppendDiagnostic("Workflow job completed", GetPrinterName(args), $"target={plan.TargetContentType}");
             });
 
             if (!succeeded)
             {
+                AppendDiagnostic("Workflow job failed", GetPrinterName(args), "Background handler was already busy.");
                 args.Configuration.AbortPrintFlow(PrintWorkflowJobAbortReason.JobFailed);
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            AppendDiagnostic("Workflow job failed", GetPrinterName(args), ex.ToString());
             args.Configuration.AbortPrintFlow(PrintWorkflowJobAbortReason.JobFailed);
         }
         finally
@@ -168,6 +177,10 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             jobAttributes,
             AttributeMergePolicyOptions.RemovePdlEmbeddedMediaSize);
         Dictionary<string, WinRtIppAttributeValue> operationAttributes = BuildOperationAttributes(jobProcessingOptions);
+        AppendDiagnostic(
+            "Workflow job attributes prepared",
+            GetPrinterName(args),
+            FormatAttributePreparationDetail(filteredAttributes, operationAttributes));
 
         return args.CreateJobOnPrinterWithAttributes(
             filteredAttributes,
@@ -196,6 +209,30 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 
         operationAttributes["msft-operation-attribute-col"] = WinRtIppAttributeValue.CreateCollection(passwordCollection);
         return operationAttributes;
+    }
+
+    private static string FormatAttributePreparationDetail(
+        IDictionary<string, WinRtIppAttributeValue> jobAttributes,
+        IDictionary<string, WinRtIppAttributeValue> operationAttributes)
+    {
+        string jobAttributeNames = string.Join(
+            ',',
+            jobAttributes.Keys.Order(StringComparer.OrdinalIgnoreCase));
+        string operationAttributeNames = string.Join(
+            ',',
+            operationAttributes.Keys.Order(StringComparer.OrdinalIgnoreCase));
+        string passwordStatus = operationAttributes.ContainsKey("msft-operation-attribute-col")
+            ? "job-password=present; job-password-encryption=present"
+            : "job-password=absent";
+
+        return $"jobAttributes={jobAttributeNames}; operationAttributes={operationAttributeNames}; {passwordStatus}; mergePolicy=RemovePdlEmbeddedMediaSize";
+    }
+
+    private static string FormatRouteDetail(PrinterDocumentFormatPlan plan)
+    {
+        string action = plan.ConversionKind is null ? "Copy" : "Convert";
+        string conversion = plan.ConversionKind?.ToString() ?? "none";
+        return $"{plan.SourceContentType} -> {plan.TargetContentType}; {action}; conversion={conversion}";
     }
 
     private static void SubmitPdl(
@@ -293,5 +330,40 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
             PdlConversionKind.XpsToPclm => PrintWorkflowPdlConversionType.XpsToPclm,
             _ => throw new ArgumentOutOfRangeException(nameof(conversionKind), conversionKind, "Unknown PDL conversion kind."),
         };
+    }
+
+    private static string GetPrinterName(PrintWorkflowPdlModificationRequestedEventArgs args)
+    {
+        try
+        {
+            return args.PrinterJob.Printer.PrinterName;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static void AppendDiagnostic(string message, string endpoint, string detail)
+    {
+        try
+        {
+            PackagedSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(PrintSupportWorkflowBackgroundTask),
+                        message,
+                        endpoint,
+                        detail))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception)
+        {
+            // Diagnostics must not make the PSA workflow contract fail.
+        }
     }
 }

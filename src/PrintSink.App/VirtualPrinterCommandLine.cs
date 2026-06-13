@@ -1,6 +1,7 @@
 using Microsoft.Windows.AppLifecycle;
 using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Endpoints;
+using PrintSink.Core.Settings;
 using PrintSink.Core.Watermark;
 using System.Text;
 using Windows.ApplicationModel.Activation;
@@ -36,6 +37,7 @@ internal static class VirtualPrinterCommandLine
         bool printPdfPassthrough = Contains(commandArgs, "--print-pdf-passthrough");
         bool setDefaultCopies = Contains(commandArgs, "--set-default-copies");
         bool assertVirtualAttributeRead = Contains(commandArgs, "--assert-virtual-attribute-read");
+        bool setJobPassword = Contains(commandArgs, "--set-job-password");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
         if (!install
             && !remove
@@ -48,6 +50,7 @@ internal static class VirtualPrinterCommandLine
             && !printPdfPassthrough
             && !setDefaultCopies
             && !assertVirtualAttributeRead
+            && !setJobPassword
             && !help)
         {
             return null;
@@ -64,7 +67,8 @@ internal static class VirtualPrinterCommandLine
             && !refreshCapabilities
             && !printPdfPassthrough
             && !setDefaultCopies
-            && !assertVirtualAttributeRead)
+            && !assertVirtualAttributeRead
+            && !setJobPassword)
         {
             WriteHelp();
             SetCommandLineExitCode(activationArguments, Success);
@@ -124,6 +128,26 @@ internal static class VirtualPrinterCommandLine
             if (clearWatermark)
             {
                 await SaveWatermarkAsync(endpointKind, WatermarkOptions.Disabled, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (setJobPassword)
+            {
+                string encryptionMethod = GetOptionValueOrDefault(commandArgs, "--encryption", "sha2-256");
+                JobProcessingOptions options = new(
+                    WatermarkOptions.Disabled,
+                    JobPasswordOptions.FromPassword(
+                        GetRequiredOptionValue(commandArgs, "--password"),
+                        encryptionMethod));
+                await AppSettingsStoreFactory
+                    .Create()
+                    .SaveJobProcessingOptionsAsync(options, cancellationToken)
+                    .ConfigureAwait(false);
+                await AppendDiagnosticAsync(
+                        "Pending job password configured",
+                        string.Empty,
+                        $"job-password=present; job-password-encryption={encryptionMethod}",
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (refreshCapabilities)
@@ -245,6 +269,23 @@ internal static class VirtualPrinterCommandLine
         }
 
         throw new ArgumentException($"Missing required {option} value.");
+    }
+
+    private static string GetOptionValueOrDefault(IReadOnlyList<string> args, string option, string defaultValue)
+    {
+        for (int index = 0; index < args.Count - 1; index++)
+        {
+            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase))
+            {
+                string value = args[index + 1];
+                if (!string.IsNullOrWhiteSpace(value) && !value.StartsWith("--", StringComparison.Ordinal))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return defaultValue;
     }
 
     internal static string[] GetActivationArguments(AppActivationArguments activationArguments)
@@ -379,12 +420,15 @@ internal static class VirtualPrinterCommandLine
             "  --print-pdf-passthrough     Send a PDF through IppPrintDevice PDL passthrough.",
             "  --set-default-copies        Set default ticket copies for --endpoint.",
             "  --assert-virtual-attribute-read  Assert virtual-printer IPP attributes can be read.",
+            "  --set-job-password          Stage job-password operation attributes for the next workflow job.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",
             "  --image <path>              Image file used with --set-image-watermark.",
             "  --source <path>             Source file used with --print-pdf-passthrough.",
             "  --copies <count>            Copy count used with --set-default-copies.",
+            "  --password <value>          Password used with --set-job-password.",
+            "  --encryption <method>       Password encryption keyword; defaults to sha2-256.",
             "",
             "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
         Console.Out.WriteLine(help);

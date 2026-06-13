@@ -139,6 +139,7 @@ public sealed class VirtualPrinterJobProcessor
 
         long started = Stopwatch.GetTimestamp();
         PdlPlan plan = router.Resolve(job.ContentType, job.Endpoint);
+        string routeDetail = FormatRouteDetail(job.ContentType, plan);
         PrintSinkDiagnostics.Log.JobRouteResolved(
             job.Endpoint.QueueName,
             job.ContentType,
@@ -154,7 +155,7 @@ public sealed class VirtualPrinterJobProcessor
                 nameof(VirtualPrinterJobProcessor),
                 "Route resolved",
                 job.Endpoint.QueueName,
-                $"{job.ContentType} -> {plan.TargetFormat}; {plan.ActionKind}; {plan.Reason}"),
+                routeDetail),
             cancellationToken)
             .ConfigureAwait(false);
 
@@ -193,7 +194,7 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job completed",
                     job.Endpoint.QueueName,
-                    $"{VirtualPrinterJobStatus.Succeeded}; {GetElapsedMilliseconds(started)} ms"),
+                    $"{VirtualPrinterJobStatus.Succeeded}; {GetElapsedMilliseconds(started)} ms; route={routeDetail}"),
                 CancellationToken.None)
                 .ConfigureAwait(false);
 
@@ -322,6 +323,11 @@ public sealed class VirtualPrinterJobProcessor
     private static long GetElapsedMilliseconds(long started)
     {
         return (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+    }
+
+    private static string FormatRouteDetail(string contentType, PdlPlan plan)
+    {
+        return $"{contentType} -> {plan.TargetFormat}; {plan.ActionKind}; {plan.Reason}";
     }
 
     private static string FormatExceptionDetail(Exception exception)
