@@ -712,6 +712,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      the default watermarks appear in the outputs.
    - Job UI: assert watermark changes are applied, and assert cancel aborts the real print flow while
      leaving the selected target empty and recording `Job canceled`.
+   - Queue persistence: after provisioning, extension refresh, default-ticket edits, every real print
+     path, Settings UI, Job UI complete, and Job UI cancel, assert all six queues still appear in
+     `Get-Printer`.
    - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough,
      source printing, or a new sink behavior changes, add the corresponding real E2E assertion in the
      same commit.

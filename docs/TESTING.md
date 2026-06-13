@@ -134,7 +134,9 @@ The required E2E suite proves the current installed-package behavior:
 11. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
 12. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
 13. Assert package shape, virtual-printer declarations, PDC/PDR assets, app execution alias, WinRT host files, and activatable classes.
-14. Assert all six queues are installed through the signed package and are removed when `-Cleanup` is used.
+14. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+    every real print path, Settings UI, Job UI complete, and Job UI cancel.
+15. Assert all six queues are removed when `-Cleanup` is used.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
 same change.
@@ -162,5 +164,8 @@ Real output assertions:
 - Package-local default image watermark settings add PDF image content after a capability refresh.
 - Watermark text appears on rendered pages when enabled.
 - Job UI cancel leaves the selected target empty and records `Job canceled` before aborting the real print flow.
+- Queue persistence is checked against the real Windows printer list after every major E2E step; a job
+  that removes, loses, or unregisters a PrintSink queue fails CI.
 
-The CI job records the package version, Windows build, architecture, source application, target queue, and output result for each run.
+The CI job records the package version, Windows build, architecture, source application, target queue,
+queue snapshots, and output result for each run.

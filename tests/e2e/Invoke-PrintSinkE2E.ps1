@@ -782,6 +782,36 @@ function Wait-ForQueueInstalledState {
     throw "Timed out waiting for PrintSink queues to be $expectedStatus."
 }
 
+function Get-PrintSinkQueueSnapshot {
+    param(
+        [string[]] $ExpectedQueues
+    )
+
+    $printers = @(Get-Printer)
+    $installedNames = @($printers | ForEach-Object Name)
+    return @($ExpectedQueues | ForEach-Object {
+        [ordered]@{
+            name = $_
+            installed = $installedNames -contains $_
+        }
+    })
+}
+
+function Assert-PrintSinkQueuesInstalled {
+    param(
+        [string[]] $ExpectedQueues,
+        [string] $Context
+    )
+
+    $snapshot = @(Get-PrintSinkQueueSnapshot -ExpectedQueues $ExpectedQueues)
+    $missingQueues = @($snapshot | Where-Object { -not $_.installed } | ForEach-Object { $_.name })
+    if ($missingQueues.Count -gt 0) {
+        throw "Missing PrintSink queues ${Context}: $($missingQueues -join ', ')"
+    }
+
+    return $snapshot
+}
+
 function Invoke-PrintSinkCliQueueLifecycle {
     param(
         [string[]] $ExpectedQueues
@@ -2525,21 +2555,33 @@ try {
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
     Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
-    $printers = Get-Printer
-    $installedNames = @($printers | ForEach-Object Name)
-    $missingQueues = @($expectedQueues | Where-Object { $installedNames -notcontains $_ })
-
-    if ($missingQueues.Count -gt 0) {
-        throw "Missing PrintSink queues: $($missingQueues -join ', ')"
-    }
+    $queueSnapshots = [System.Collections.Generic.List[object]]::new()
+    $queueSnapshots.Add([ordered]@{
+        context = 'after provisioning'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after provisioning'
+    })
 
     $extensionCapabilitiesResult = Invoke-PrintSinkExtensionCapabilities `
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
+    $queueSnapshots.Add([ordered]@{
+        context = 'after extension capability refresh'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after extension capability refresh'
+    })
 
     $userDefaultPrintTicketResult = Invoke-PrintSinkUserDefaultPrintTicket `
         -PackageFamilyName $package.PackageFamilyName `
         -StartedUtc $e2eStartedUtc
+    $queueSnapshots.Add([ordered]@{
+        context = 'after user default print ticket update'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after user default print ticket update'
+    })
 
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
@@ -2547,34 +2589,82 @@ try {
             -PrintCase $printCase `
             -OutputDirectory $OutputDirectory `
             -PackageFamilyName $package.PackageFamilyName
+        $queueSnapshots.Add([ordered]@{
+            context = "after printing $($printCase.queue)"
+            queues = Assert-PrintSinkQueuesInstalled `
+                -ExpectedQueues $expectedQueues `
+                -Context "after printing $($printCase.queue)"
+        })
     }
 
     $pdfPassthroughResult = Invoke-PrintSinkPdfPassthroughPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after PDF passthrough'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after PDF passthrough'
+    })
 
     $winRtSourceResult = Invoke-PrintSinkWinRtSourcePrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after WinRT source print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after WinRT source print'
+    })
 
     $settingsUiOwnerResult = Invoke-PrintSinkSettingsUiOwner `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after settings UI owner check'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after settings UI owner check'
+    })
 
     $settingsWatermarkResult = Invoke-PrintSinkSettingsWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after settings text watermark print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after settings text watermark print'
+    })
 
     $settingsImageWatermarkResult = Invoke-PrintSinkSettingsImageWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after settings image watermark print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after settings image watermark print'
+    })
 
     Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Enabling foreground job UI for the Job UI E2E path'
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after job UI watermark print'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after job UI watermark print'
+    })
     $jobUiCancelResult = Invoke-PrintSinkJobUiCancelPrint `
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
+    $queueSnapshots.Add([ordered]@{
+        context = 'after job UI cancel'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after job UI cancel'
+    })
     Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI after the Job UI E2E path'
 
     $result = [ordered]@{
@@ -2589,6 +2679,7 @@ try {
         }
         packageShape = $packageShape
         queues = @($expectedQueues)
+        queueSnapshots = @($queueSnapshots)
         cliQueueLifecycle = $cliQueueLifecycle
         outputDirectory = $OutputDirectory
         extensionCapabilities = $extensionCapabilitiesResult
