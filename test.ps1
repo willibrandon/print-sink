@@ -24,6 +24,10 @@ $testProjects = @(
         UsePlatform = $false
     },
     @{
+        Path = 'tests\PrintSink.E2E.Assertions.Tests\PrintSink.E2E.Assertions.Tests.csproj'
+        UsePlatform = $false
+    },
+    @{
         Path = 'tests\PrintSink.Xps.Tests\PrintSink.Xps.Tests.csproj'
         UsePlatform = $true
     }
