@@ -359,6 +359,116 @@ internal sealed class CliApplicationTests
     }
 
     /// <summary>
+    /// Verifies manifest linting rejects manifests without the packaged app execution alias.
+    /// </summary>
+    [TestMethod]
+    public async Task ManifestLintRejectsMissingAppExecutionAlias()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            """
+                    <uap3:Extension Category="windows.appExecutionAlias">
+                      <uap3:AppExecutionAlias>
+                        <desktop:ExecutionAlias Alias="printsink-app.exe" />
+                      </uap3:AppExecutionAlias>
+                    </uap3:Extension>
+            """,
+            string.Empty,
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("printsink-app.exe app execution alias", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies manifest linting rejects manifests that do not support concurrent print activations.
+    /// </summary>
+    [TestMethod]
+    public async Task ManifestLintRejectsMissingMultipleInstanceSupport()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            " uap10:SupportsMultipleInstances=\"true\"",
+            string.Empty,
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("SupportsMultipleInstances", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies manifest linting rejects background print-support extensions with the wrong entry point.
+    /// </summary>
+    [TestMethod]
+    public async Task ManifestLintRejectsWrongBackgroundExtensionEntryPoint()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            """<printsupport:Extension Category="windows.printSupportWorkflow" EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" />""",
+            """<printsupport:Extension Category="windows.printSupportWorkflow" EntryPoint="PrintSink.Tasks.WrongTask" />""",
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("EntryPoint=\"PrintSink.Tasks.PrintSupportWorkflowBackgroundTask\"", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
+    /// Verifies manifest linting rejects missing WinRT activatable classes.
+    /// </summary>
+    [TestMethod]
+    public async Task ManifestLintRejectsMissingActivatableClass()
+    {
+        string invalidManifest = ValidManifest.Replace(
+            """<ActivatableClass ActivatableClassId="PrintSink.Xps.XpsSequentialDocument" ThreadingModel="both" />""",
+            string.Empty,
+            StringComparison.Ordinal);
+        string directory = await CreateManifestFixtureAsync(invalidManifest).ConfigureAwait(false);
+
+        try
+        {
+            string manifestPath = Path.Combine(directory, "Package.appxmanifest");
+            (int exitCode, string output, _) = await InvokeAsync("manifest", "lint", "--manifest", manifestPath).ConfigureAwait(false);
+
+            Assert.AreEqual(CliExitCodes.ValidationFailed, exitCode);
+            Assert.Contains("PrintSink.Xps.XpsSequentialDocument", output);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies PDC validation rejects files that are not Print Schema Framework v2 PDC documents.
     /// </summary>
     [TestMethod]
@@ -589,10 +699,13 @@ internal sealed class CliApplicationTests
         <Package
           xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
           xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+          xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+          xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+          xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
           xmlns:printsupport="http://schemas.microsoft.com/appx/manifest/printsupport/windows10"
           xmlns:printsupport2="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
           xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-          IgnorableNamespaces="uap printsupport printsupport2 rescap">
+          IgnorableNamespaces="uap uap3 uap10 desktop printsupport printsupport2 rescap">
           <Identity Name="PrintSink" Publisher="CN=PrintSink" Version="1.0.0.0" />
           <Properties>
             <DisplayName>PrintSink</DisplayName>
@@ -600,9 +713,14 @@ internal sealed class CliApplicationTests
             <Logo>Assets\StoreLogo.png</Logo>
           </Properties>
           <Applications>
-            <Application Id="App" Executable="PrintSink.App.exe" EntryPoint="PrintSink.App">
+            <Application Id="App" Executable="PrintSink.App.exe" EntryPoint="PrintSink.App" uap10:SupportsMultipleInstances="true">
               <uap:VisualElements DisplayName="PrintSink" Description="Virtual printer management" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent" />
               <Extensions>
+                <uap3:Extension Category="windows.appExecutionAlias">
+                  <uap3:AppExecutionAlias>
+                    <desktop:ExecutionAlias Alias="printsink-app.exe" />
+                  </uap3:AppExecutionAlias>
+                </uap3:Extension>
                 <printsupport:Extension Category="windows.printSupportWorkflow" EntryPoint="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" />
                 <printsupport:Extension Category="windows.printSupportExtension" EntryPoint="PrintSink.Tasks.PrintSupportExtensionBackgroundTask" />
                 <printsupport:Extension Category="windows.printSupportSettingsUI" EntryPoint="PrintSink.App.App" />
@@ -649,6 +767,23 @@ internal sealed class CliApplicationTests
             <Capability Name="privateNetworkClientServer" />
             <rescap:Capability Name="runFullTrust" />
           </Capabilities>
+          <Extensions>
+            <Extension Category="windows.activatableClass.inProcessServer">
+              <InProcessServer>
+                <Path>WinRT.Host.dll</Path>
+                <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportWorkflowBackgroundTask" ThreadingModel="both" />
+                <ActivatableClass ActivatableClassId="PrintSink.Tasks.PrintSupportExtensionBackgroundTask" ThreadingModel="both" />
+                <ActivatableClass ActivatableClassId="PrintSink.Tasks.VirtualPrinterBackgroundTask" ThreadingModel="both" />
+              </InProcessServer>
+            </Extension>
+            <Extension Category="windows.activatableClass.inProcessServer">
+              <InProcessServer>
+                <Path>PrintSink.Xps.dll</Path>
+                <ActivatableClass ActivatableClassId="PrintSink.Xps.XpsPageWatermarker" ThreadingModel="both" />
+                <ActivatableClass ActivatableClassId="PrintSink.Xps.XpsSequentialDocument" ThreadingModel="both" />
+              </InProcessServer>
+            </Extension>
+          </Extensions>
         </Package>
         """;
 

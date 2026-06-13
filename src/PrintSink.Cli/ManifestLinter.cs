@@ -11,13 +11,24 @@ namespace PrintSink.Cli;
 /// </summary>
 internal static class ManifestLinter
 {
-    private static readonly string[] RequiredExtensionCategories =
+    private const string AppExecutionAlias = "printsink-app.exe";
+
+    private static readonly (string Category, string EntryPoint)[] RequiredPrintSupportExtensions =
     [
-        "windows.printSupportVirtualPrinterWorkflow",
-        "windows.printSupportWorkflow",
-        "windows.printSupportExtension",
-        "windows.printSupportSettingsUI",
-        "windows.printSupportJobUI",
+        ("windows.printSupportVirtualPrinterWorkflow", "PrintSink.Tasks.VirtualPrinterBackgroundTask"),
+        ("windows.printSupportWorkflow", "PrintSink.Tasks.PrintSupportWorkflowBackgroundTask"),
+        ("windows.printSupportExtension", "PrintSink.Tasks.PrintSupportExtensionBackgroundTask"),
+        ("windows.printSupportSettingsUI", "PrintSink.App.App"),
+        ("windows.printSupportJobUI", "PrintSink.App.App"),
+    ];
+
+    private static readonly string[] RequiredActivatableClasses =
+    [
+        "PrintSink.Tasks.PrintSupportWorkflowBackgroundTask",
+        "PrintSink.Tasks.PrintSupportExtensionBackgroundTask",
+        "PrintSink.Tasks.VirtualPrinterBackgroundTask",
+        "PrintSink.Xps.XpsPageWatermarker",
+        "PrintSink.Xps.XpsSequentialDocument",
     ];
 
     /// <summary>
@@ -92,22 +103,9 @@ internal static class ManifestLinter
             messages.Add("error: systemAIModels capability is not part of the PrintSink package shape.");
         }
 
-        HashSet<string> extensionCategories = package
-            .Descendants()
-            .Where(element => element.Name.LocalName == "Extension")
-            .Select(element => (string?)element.Attribute("Category"))
-            .Where(category => !string.IsNullOrWhiteSpace(category))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
-
-        foreach (string category in RequiredExtensionCategories)
-        {
-            if (!extensionCategories.Contains(category))
-            {
-                messages.Add($"error: missing {category} extension.");
-            }
-        }
-
-        ValidateForegroundPrintSupportExtensions(package, messages);
+        ValidateApplicationShape(package, messages);
+        ValidatePrintSupportExtensions(package, messages);
+        ValidateActivatableClasses(package, messages);
         ValidateVirtualPrinters(package, Path.GetDirectoryName(Path.GetFullPath(manifestPath))!, messages);
 
         if (messages.Count == 0)
@@ -118,19 +116,73 @@ internal static class ManifestLinter
         return new ManifestLintResult(messages.All(message => !message.StartsWith("error:", StringComparison.Ordinal)), messages);
     }
 
-    private static void ValidateForegroundPrintSupportExtensions(XElement package, List<string> messages)
+    private static void ValidateApplicationShape(XElement package, List<string> messages)
     {
-        foreach (string category in new[] { "windows.printSupportSettingsUI", "windows.printSupportJobUI" })
+        XElement? application = package
+            .Descendants()
+            .FirstOrDefault(element => element.Name.LocalName == "Application");
+        if (application is null)
         {
-            XElement? extension = package
-                .Descendants()
-                .FirstOrDefault(element =>
-                    element.Name.LocalName == "Extension"
-                    && string.Equals((string?)element.Attribute("Category"), category, StringComparison.OrdinalIgnoreCase));
+            messages.Add("error: package must declare an Application.");
+            return;
+        }
 
-            if (extension is not null && string.IsNullOrWhiteSpace((string?)extension.Attribute("EntryPoint")))
+        string? supportsMultipleInstances = GetAttributeValue(application, "SupportsMultipleInstances");
+        if (!string.Equals(supportsMultipleInstances, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            messages.Add("error: Application must declare uap10:SupportsMultipleInstances=\"true\".");
+        }
+
+        bool hasExecutionAlias = application
+            .Descendants()
+            .Where(element => element.Name.LocalName == "ExecutionAlias")
+            .Any(element => string.Equals(GetAttributeValue(element, "Alias"), AppExecutionAlias, StringComparison.OrdinalIgnoreCase));
+        if (!hasExecutionAlias)
+        {
+            messages.Add($"error: Application must expose the {AppExecutionAlias} app execution alias.");
+        }
+    }
+
+    private static void ValidatePrintSupportExtensions(XElement package, List<string> messages)
+    {
+        foreach ((string category, string entryPoint) in RequiredPrintSupportExtensions)
+        {
+            XElement[] extensions = [.. package
+                .Descendants()
+                .Where(element =>
+                    element.Name.LocalName == "Extension"
+                    && string.Equals(GetAttributeValue(element, "Category"), category, StringComparison.OrdinalIgnoreCase))];
+            if (extensions.Length == 0)
             {
-                messages.Add($"error: {category} extension must declare EntryPoint.");
+                messages.Add($"error: missing {category} extension.");
+                continue;
+            }
+
+            foreach (XElement extension in extensions)
+            {
+                string? declaredEntryPoint = GetAttributeValue(extension, "EntryPoint");
+                if (!string.Equals(declaredEntryPoint, entryPoint, StringComparison.Ordinal))
+                {
+                    messages.Add($"error: {category} extension must declare EntryPoint=\"{entryPoint}\".");
+                }
+            }
+        }
+    }
+
+    private static void ValidateActivatableClasses(XElement package, List<string> messages)
+    {
+        HashSet<string> activatableClasses = package
+            .Descendants()
+            .Where(element => element.Name.LocalName == "ActivatableClass")
+            .Select(element => GetAttributeValue(element, "ActivatableClassId"))
+            .Where(classId => !string.IsNullOrWhiteSpace(classId))
+            .ToHashSet(StringComparer.Ordinal)!;
+
+        foreach (string requiredClass in RequiredActivatableClasses)
+        {
+            if (!activatableClasses.Contains(requiredClass))
+            {
+                messages.Add($"error: missing activatable class '{requiredClass}'.");
             }
         }
     }
@@ -168,7 +220,7 @@ internal static class ManifestLinter
         HashSet<string> declaredUris,
         List<string> messages)
     {
-        string? printerUriText = (string?)printerElement.Attribute("PrinterUri");
+        string? printerUriText = GetAttributeValue(printerElement, "PrinterUri");
         if (string.IsNullOrWhiteSpace(printerUriText) || !Uri.TryCreate(printerUriText, UriKind.Absolute, out Uri? printerUri))
         {
             messages.Add("error: virtual printer PrinterUri must be an absolute URI.");
@@ -197,7 +249,7 @@ internal static class ManifestLinter
 
     private static void ValidatePreferredInputFormat(XElement printerElement, VirtualEndpoint endpoint, List<string> messages)
     {
-        string? preferredInputFormat = (string?)printerElement.Attribute("PreferredInputFormat");
+        string? preferredInputFormat = GetAttributeValue(printerElement, "PreferredInputFormat");
         if (string.IsNullOrWhiteSpace(preferredInputFormat))
         {
             preferredInputFormat = PdlFormatInfo.OxpsContentType;
@@ -218,7 +270,7 @@ internal static class ManifestLinter
 
     private static void ValidateOutputFileTypes(XElement printerElement, VirtualEndpoint endpoint, List<string> messages)
     {
-        string? outputFileTypes = (string?)printerElement.Attribute("OutputFileTypes");
+        string? outputFileTypes = GetAttributeValue(printerElement, "OutputFileTypes");
         if (!endpoint.RequiresTargetFile)
         {
             if (!string.IsNullOrWhiteSpace(outputFileTypes))
@@ -254,7 +306,7 @@ internal static class ManifestLinter
         Dictionary<PdlFormat, XElement> declaredFormats = printerElement
             .Descendants()
             .Where(element => element.Name.LocalName == "SupportedFormat")
-            .Select(element => ((string?)element.Attribute("Type"), Element: element))
+            .Select(element => (GetAttributeValue(element, "Type"), Element: element))
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Item1))
             .Select(pair => (Parsed: PdlFormatInfo.TryParseContentType(pair.Item1!, out PdlFormat format), Format: format, pair.Element))
             .Where(pair => pair.Parsed)
@@ -263,14 +315,14 @@ internal static class ManifestLinter
 
         foreach (XElement supportedFormat in printerElement.Descendants().Where(element => element.Name.LocalName == "SupportedFormat"))
         {
-            string? type = (string?)supportedFormat.Attribute("Type");
+            string? type = GetAttributeValue(supportedFormat, "Type");
             if (string.IsNullOrWhiteSpace(type) || !PdlFormatInfo.TryParseContentType(type, out PdlFormat format))
             {
                 messages.Add($"error: '{endpoint.QueueName}' has an unsupported SupportedFormat Type '{type}'.");
                 continue;
             }
 
-            string? maxVersion = (string?)supportedFormat.Attribute("MaxVersion");
+            string? maxVersion = GetAttributeValue(supportedFormat, "MaxVersion");
             if (string.IsNullOrWhiteSpace(maxVersion))
             {
                 messages.Add($"error: '{endpoint.QueueName}' SupportedFormat {type} must declare MaxVersion.");
@@ -306,7 +358,7 @@ internal static class ManifestLinter
         bool required,
         List<string> messages)
     {
-        string? value = (string?)printerElement.Attribute(attributeName);
+        string? value = GetAttributeValue(printerElement, attributeName);
         if (string.IsNullOrWhiteSpace(value))
         {
             if (required)
@@ -374,9 +426,17 @@ internal static class ManifestLinter
         string displayName,
         List<string> messages)
     {
-        if (string.IsNullOrWhiteSpace((string?)element?.Attribute(attributeName)))
+        if (string.IsNullOrWhiteSpace(element is null ? null : GetAttributeValue(element, attributeName)))
         {
             messages.Add($"error: {displayName} is required.");
         }
+    }
+
+    private static string? GetAttributeValue(XElement element, string localName)
+    {
+        return element
+            .Attributes()
+            .FirstOrDefault(attribute => attribute.Name.LocalName == localName)
+            ?.Value;
     }
 }
