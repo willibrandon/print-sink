@@ -2758,6 +2758,17 @@ Add-Type -AssemblyName System.Drawing
             -TimeoutSeconds 45 `
             -Description 'the PrintSink Job preview window'
 
+        $jobUiPdl = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Job UI PDL received' `
+            -StartedUtc $startedUtc `
+            -DetailContains @(
+                'kind=virtual-printer',
+                'jobTitle=PrintSink E2E Job UI Watermark',
+                'source=powershell.exe',
+                'contentType=application/oxps')
+
         Set-ToggleSwitch -Root $jobWindow -Name 'Text watermark' -ExpectedState $true
         Set-TextBoxValue -Root $jobWindow -Name 'Watermark text' -Value 'CI WATERMARK'
         Set-TextBoxValue -Root $jobWindow -Name 'Job password' -Value 'ci-password'
@@ -2795,6 +2806,7 @@ Add-Type -AssemblyName System.Drawing
             mode = 'job-ui-watermark'
             jobPassword = 'present-not-applicable'
             jobPasswordSecretExposed = $false
+            jobUiPdl = $jobUiPdl
             diagnostic = $diagnostic
         }
     }
@@ -2867,6 +2879,17 @@ Add-Type -AssemblyName System.Drawing
             -TimeoutSeconds 45 `
             -Description 'the PrintSink Job preview window for cancel'
 
+        $jobUiPdl = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Job UI PDL received' `
+            -StartedUtc $startedUtc `
+            -DetailContains @(
+                'kind=virtual-printer',
+                'jobTitle=PrintSink E2E Job UI Cancel',
+                'source=powershell.exe',
+                'contentType=application/oxps')
+
         Invoke-Button -Root $jobWindow -Name 'Cancel' -TimeoutSeconds 30
 
         if (-not $process.WaitForExit(30000)) {
@@ -2910,6 +2933,7 @@ Add-Type -AssemblyName System.Drawing
             outputExists = $outputExists
             bytes = $bytes
             mode = 'job-ui-cancel'
+            jobUiPdl = $jobUiPdl
             diagnostic = $diagnostic
         }
     }
@@ -3578,8 +3602,14 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 10 `
         -Feature 'Per-job UI preview launched from background' `
-        -Passed ($JobUiWatermark.mode -eq 'job-ui-watermark' -and $JobUiWatermark.bytes -gt 0) `
-        -Evidence 'The E2E run opened the packaged Job UI, changed the watermark through UI Automation, continued the job, and validated the output.' `
+        -Passed (
+            $JobUiWatermark.mode -eq 'job-ui-watermark' `
+                -and $JobUiWatermark.bytes -gt 0 `
+                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*kind=virtual-printer*' `
+                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*jobTitle=PrintSink E2E Job UI Watermark*' `
+                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*source=powershell.exe*' `
+                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*contentType=application/oxps*') `
+        -Evidence 'The E2E run opened the packaged Job UI, proved it received virtual-printer PDL metadata, changed the watermark through UI Automation, continued the job, and validated the output.' `
         -Artifact $JobUiWatermark
 
     Add-PrintSinkFeatureEvidence `

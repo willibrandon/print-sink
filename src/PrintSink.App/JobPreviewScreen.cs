@@ -82,6 +82,11 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 try
                 {
                     jobState.Current.SetPdl(args.Configuration, deferral);
+                    _ = AppendPdlDataDiagnosticAsync(
+                        "virtual-printer",
+                        args.Configuration.JobTitle,
+                        args.Configuration.SourceAppDisplayName,
+                        args.SourceContent.ContentType);
                     UiDispatch.Post(() =>
                     {
                         setStatus("Virtual printer PDL received.");
@@ -106,6 +111,11 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 try
                 {
                     jobState.Current.SetPdl(args.Configuration, deferral);
+                    _ = AppendPdlDataDiagnosticAsync(
+                        "printer-workflow",
+                        args.Configuration.JobTitle,
+                        args.Configuration.SourceAppDisplayName,
+                        args.SourceContent.ContentType);
                     UiDispatch.Post(() =>
                     {
                         setStatus("Printer workflow PDL received.");
@@ -439,4 +449,29 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         }
     }
 
+    private static async Task AppendPdlDataDiagnosticAsync(
+        string kind,
+        string jobTitle,
+        string sourceAppDisplayName,
+        string contentType)
+    {
+        try
+        {
+            await AppSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(JobPreviewScreen),
+                        "Job UI PDL received",
+                        null,
+                        $"kind={kind}; jobTitle={jobTitle}; source={sourceAppDisplayName}; contentType={contentType}"))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Job UI interaction must keep running even if local diagnostics are temporarily locked.
+        }
+    }
 }

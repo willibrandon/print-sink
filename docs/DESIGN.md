@@ -558,10 +558,11 @@ instead of XAML pages:
   `Win32Interop.GetWindowFromWindowId` (the v4 WinAppSDK requirement).
 - `PrintSupportJobUI` → **JobPreviewScreen**; subscribes
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
-  `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
-  persists user choices (watermark options and job-password metadata) to `ISettingsStore` for the
-  background task to read back. Virtual file outputs record password metadata as not applicable instead
-  of sending it anywhere, and the secret must not appear in diagnostics or generated documents.
+  `session.Start()`. `VirtualPrinterUIDataAvailable` records the real job title, source application,
+  and source PDL content type, renders a preview from `args.SourceContent`, and persists user choices
+  (watermark options and job-password metadata) to `ISettingsStore` for the background task to read
+  back. Virtual file outputs record password metadata as not applicable instead of sending it anywhere,
+  and the secret must not appear in diagnostics or generated documents.
   `JobNotification` records job status/error context if Windows activates the app from a job
   notification toast; it is a tracked deferred compatibility hook, not part of the supported
   virtual-printer flow.
@@ -737,8 +738,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      the default watermarks appear in the outputs.
    - Failure path: configure a corrupt package-local image watermark, print a real PDF job with Job UI
      disabled, and assert `Job failed` with exception/HRESULT detail, no output, and queue persistence.
-   - Job UI: assert watermark changes are applied, and assert cancel aborts the real print flow while
-     leaving the selected target empty and recording `Job canceled`.
+   - Job UI: assert virtual-printer PDL metadata for the real job title, source application, and OXPS
+     content type is received; assert watermark changes are applied; and assert cancel aborts the real
+     print flow while leaving the selected target empty and recording `Job canceled`.
    - Queue persistence: after provisioning, extension refresh, default-ticket edits, every real print
      path, Settings UI, Job UI complete, and Job UI cancel, assert all six queues still appear in
      `Get-Printer`.
