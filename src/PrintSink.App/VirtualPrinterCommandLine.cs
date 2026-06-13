@@ -29,6 +29,7 @@ internal static class VirtualPrinterCommandLine
         bool enableJobUi = Contains(commandArgs, "--enable-job-ui");
         bool disableJobUi = Contains(commandArgs, "--disable-job-ui");
         bool setTextWatermark = Contains(commandArgs, "--set-text-watermark");
+        bool setImageWatermark = Contains(commandArgs, "--set-image-watermark");
         bool clearWatermark = Contains(commandArgs, "--clear-watermark");
         bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
@@ -37,6 +38,7 @@ internal static class VirtualPrinterCommandLine
             && !enableJobUi
             && !disableJobUi
             && !setTextWatermark
+            && !setImageWatermark
             && !clearWatermark
             && !refreshCapabilities
             && !help)
@@ -50,6 +52,7 @@ internal static class VirtualPrinterCommandLine
             && !enableJobUi
             && !disableJobUi
             && !setTextWatermark
+            && !setImageWatermark
             && !clearWatermark
             && !refreshCapabilities)
         {
@@ -58,7 +61,7 @@ internal static class VirtualPrinterCommandLine
             return Success;
         }
 
-        if ((install && remove) || (enableJobUi && disableJobUi) || (setTextWatermark && clearWatermark))
+        if ((install && remove) || (enableJobUi && disableJobUi) || ((setTextWatermark || setImageWatermark) && clearWatermark))
         {
             SetCommandLineExitCode(activationArguments, Failure);
             return Failure;
@@ -69,7 +72,7 @@ internal static class VirtualPrinterCommandLine
         try
         {
             EndpointKind endpointKind = EndpointKind.Pdf;
-            bool needsEndpoint = setTextWatermark || clearWatermark || refreshCapabilities;
+            bool needsEndpoint = setTextWatermark || setImageWatermark || clearWatermark || refreshCapabilities;
             if (needsEndpoint)
             {
                 endpointKind = GetRequiredEndpointKind(commandArgs);
@@ -83,10 +86,23 @@ internal static class VirtualPrinterCommandLine
                     .ConfigureAwait(false);
             }
 
-            if (setTextWatermark)
+            if (setTextWatermark || setImageWatermark)
             {
-                string text = GetRequiredOptionValue(commandArgs, "--text");
-                await SaveTextWatermarkAsync(endpointKind, text, cancellationToken).ConfigureAwait(false);
+                TextWatermark? text = setTextWatermark
+                    ? CreateTextWatermark(GetRequiredOptionValue(commandArgs, "--text"))
+                    : null;
+                ImageWatermark? image = setImageWatermark
+                    ? await CreateImageWatermarkAsync(
+                            GetRequiredOptionValue(commandArgs, "--image"),
+                            cancellationToken)
+                        .ConfigureAwait(false)
+                    : null;
+
+                await SaveWatermarkAsync(
+                        endpointKind,
+                        new WatermarkOptions(true, text, image),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (clearWatermark)
@@ -124,18 +140,18 @@ internal static class VirtualPrinterCommandLine
         }
     }
 
-    private static async Task SaveTextWatermarkAsync(
-        EndpointKind endpointKind,
-        string text,
-        CancellationToken cancellationToken)
+    private static TextWatermark CreateTextWatermark(string text)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-        WatermarkOptions options = new(
-            true,
-            new TextWatermark(text.Trim(), "Segoe UI", 48, 0.28, -30, 0, 0),
-            null);
-        await SaveWatermarkAsync(endpointKind, options, cancellationToken).ConfigureAwait(false);
+        return new TextWatermark(text.Trim(), "Segoe UI", 48, 0.28, -30, 0, 0);
+    }
+
+    private static Task<ImageWatermark> CreateImageWatermarkAsync(
+        string imagePath,
+        CancellationToken cancellationToken)
+    {
+        return WatermarkImageStorage.CreateImageWatermarkAsync(imagePath, 96, 96, 0.45, 0, 0, 0, cancellationToken);
     }
 
     private static async Task SaveWatermarkAsync(
@@ -301,11 +317,13 @@ internal static class VirtualPrinterCommandLine
             "  --disable-job-ui            Process jobs without launching the foreground Job UI.",
             "  --enable-job-ui             Restore foreground Job UI launch behavior.",
             "  --set-text-watermark        Set a default text watermark for --endpoint.",
+            "  --set-image-watermark       Set a default image watermark for --endpoint.",
             "  --clear-watermark           Clear the default watermark for --endpoint.",
             "  --refresh-capabilities      Refresh print capabilities for --endpoint.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
             "  --text <value>              Text used with --set-text-watermark.",
+            "  --image <path>              Image file used with --set-image-watermark.",
             "",
             "For visible operator help, run: dotnet run --project src\\PrintSink.Cli -- --help");
         Console.Out.WriteLine(help);

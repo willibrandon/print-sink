@@ -321,35 +321,36 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
             return;
         }
 
-        TextWatermark? textWatermark = textEnabled
-            ? new TextWatermark(
-                text.Trim(),
-                "Segoe UI",
-                Clamp(fontSize, 8, 200),
-                Clamp(opacity, 0.05, 1),
-                Clamp(rotation, -180, 180),
-                0,
-                0)
-            : null;
-        ImageWatermark? imageWatermark = imageEnabled
-            ? new ImageWatermark(
-                imagePath.Trim(),
-                Clamp(imageWidth, 1, 4096),
-                Clamp(imageHeight, 1, 4096),
-                Clamp(imageOpacity, 0.05, 1),
-                Clamp(imageRotation, -180, 180),
-                0,
-                0)
-            : null;
-        WatermarkOptions watermarkOptions = textWatermark is null && imageWatermark is null
-            ? WatermarkOptions.Disabled
-            : new WatermarkOptions(true, textWatermark, imageWatermark);
-        JobPasswordOptions? jobPasswordOptions = string.IsNullOrWhiteSpace(jobPassword)
-            ? null
-            : JobPasswordOptions.FromPassword(jobPassword, passwordEncryptionMethod);
-
         try
         {
+            TextWatermark? textWatermark = textEnabled
+                ? new TextWatermark(
+                    text.Trim(),
+                    "Segoe UI",
+                    Clamp(fontSize, 8, 200),
+                    Clamp(opacity, 0.05, 1),
+                    Clamp(rotation, -180, 180),
+                    0,
+                    0)
+                : null;
+            ImageWatermark? imageWatermark = imageEnabled
+                ? await WatermarkImageStorage
+                    .CreateImageWatermarkAsync(
+                        imagePath.Trim(),
+                        Clamp(imageWidth, 1, 4096),
+                        Clamp(imageHeight, 1, 4096),
+                        Clamp(imageOpacity, 0.05, 1),
+                        Clamp(imageRotation, -180, 180),
+                        0,
+                        0)
+                    .ConfigureAwait(false)
+                : null;
+            WatermarkOptions watermarkOptions = textWatermark is null && imageWatermark is null
+                ? WatermarkOptions.Disabled
+                : new WatermarkOptions(true, textWatermark, imageWatermark);
+            JobPasswordOptions? jobPasswordOptions = string.IsNullOrWhiteSpace(jobPassword)
+                ? null
+                : JobPasswordOptions.FromPassword(jobPassword, passwordEncryptionMethod);
             JobProcessingOptions options = new(watermarkOptions, jobPasswordOptions);
             await AppSettingsStoreFactory
                 .Create()

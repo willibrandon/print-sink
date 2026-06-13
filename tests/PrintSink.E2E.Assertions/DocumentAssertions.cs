@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Core;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace PrintSink.E2E.Assertions;
@@ -16,19 +17,20 @@ internal static class DocumentAssertions
             string format = GetRequired(options, "format");
             string path = GetRequired(options, "path");
             options.TryGetValue("contains", out string? expectedText);
+            bool requireImage = GetOptionalBoolean(options, "requires-image");
 
-            AssertDocument(format, path, expectedText);
+            AssertDocument(format, path, expectedText, requireImage);
             output.WriteLine($"ok: {format} output is valid: {path}");
             return 0;
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or InvalidDataException)
+        catch (Exception ex) when (ex is ArgumentException or IOException or InvalidDataException or PdfDocumentFormatException)
         {
             error.WriteLine(ex.Message);
             return 1;
         }
     }
 
-    private static void AssertDocument(string format, string path, string? expectedText)
+    private static void AssertDocument(string format, string path, string? expectedText, bool requireImage)
     {
         FileInfo file = new(path);
         if (!file.Exists)
@@ -44,7 +46,7 @@ internal static class DocumentAssertions
         switch (format.ToLowerInvariant())
         {
             case "pdf":
-                AssertPdf(path, expectedText, true);
+                AssertPdf(path, expectedText, true, requireImage);
                 break;
             case "xps":
             case "oxps":
@@ -59,14 +61,14 @@ internal static class DocumentAssertions
                 AssertPwgRaster(path);
                 break;
             case "pclm":
-                AssertPdf(path, null, false);
+                AssertPdf(path, null, false, false);
                 break;
             default:
                 throw new ArgumentException($"Unsupported document format '{format}'.");
         }
     }
 
-    private static void AssertPdf(string path, string? expectedText, bool requireText)
+    private static void AssertPdf(string path, string? expectedText, bool requireText, bool requireImage)
     {
         using PdfDocument document = PdfDocument.Open(path);
         if (document.NumberOfPages < 1)
@@ -85,6 +87,11 @@ internal static class DocumentAssertions
         {
             throw new InvalidDataException($"PDF text did not contain '{expectedText}'. Extracted text: {text}");
         }
+
+        if (requireImage && !ContainsPdfImage(document, path))
+        {
+            throw new InvalidDataException($"PDF did not contain image content: {path}");
+        }
     }
 
     private static string ExtractPdfText(PdfDocument document)
@@ -102,6 +109,21 @@ internal static class DocumentAssertions
         }
 
         return text.ToString();
+    }
+
+    private static bool ContainsPdfImage(PdfDocument document, string path)
+    {
+        foreach (Page page in document.GetPages())
+        {
+            if (page.NumberOfImages > 0 || page.GetImages().Any())
+            {
+                return true;
+            }
+        }
+
+        string pdfSource = File.ReadAllText(path, Encoding.Latin1);
+        return pdfSource.Contains("/Subtype/Image", StringComparison.Ordinal)
+            || pdfSource.Contains("/Subtype /Image", StringComparison.Ordinal);
     }
 
     private static void AssertXps(string path, string? expectedText)
@@ -221,5 +243,17 @@ internal static class DocumentAssertions
         return options.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"Missing required --{name} option.");
+    }
+
+    private static bool GetOptionalBoolean(IReadOnlyDictionary<string, string> options, string name)
+    {
+        if (!options.TryGetValue(name, out string? value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out bool result)
+            ? result
+            : throw new ArgumentException($"Invalid boolean value for --{name}: '{value}'.");
     }
 }

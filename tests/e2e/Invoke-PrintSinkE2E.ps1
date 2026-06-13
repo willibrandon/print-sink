@@ -396,6 +396,47 @@ function Invoke-PrintSinkAppCommand {
     throw "$Description failed after $maxAttempts attempt(s). $diagnostic"
 }
 
+function Close-SavePrintOutputDialogs {
+    try {
+        Add-Type -AssemblyName UIAutomationClient
+        Add-DialogNativeMethods
+
+        $dialogs = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'Save Print Output As'))
+
+        foreach ($dialog in $dialogs) {
+            try {
+                [object] $windowPattern = $null
+                if ($dialog.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$windowPattern)) {
+                    $windowPattern.Close()
+                    continue
+                }
+
+                $dialogHandle = [IntPtr]$dialog.Current.NativeWindowHandle
+                if ($dialogHandle -ne [IntPtr]::Zero) {
+                    [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+                }
+            }
+            catch {
+                Write-Verbose "Failed to close a Save Print Output As dialog: $($_.Exception.Message)"
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Failed to inspect Save Print Output As dialogs: $($_.Exception.Message)"
+    }
+}
+
+function Stop-PrintSinkE2ERuntime {
+    Close-SavePrintOutputDialogs
+
+    Get-Process -Name 'PrintSink*', 'PrintDialog' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
 function Invoke-PrintSinkCliCommand {
     param(
         [string[]] $Arguments,
@@ -936,6 +977,7 @@ Add-Type -AssemblyName System.Drawing
             Stop-Process -Id $process.Id -Force
         }
 
+        Close-SavePrintOutputDialogs
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
     }
 }
@@ -977,6 +1019,51 @@ function Invoke-PrintSinkSettingsWatermarkPrint {
         Invoke-PrintSinkAppCommand `
             -Arguments @('--clear-watermark', '--endpoint', 'Pdf', '--refresh-capabilities') `
             -Description 'Clearing default PDF watermark and refreshing capabilities'
+    }
+}
+
+function Invoke-PrintSinkSettingsImageWatermarkPrint {
+    param(
+        [string] $OutputDirectory,
+        [string] $PackageFamilyName
+    )
+
+    $watermarkImagePath = Join-Path $OutputDirectory 'PrintSink-Watermark.png'
+    [System.IO.File]::WriteAllBytes(
+        $watermarkImagePath,
+        [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lX8xjAAAAABJRU5ErkJggg=='))
+
+    Invoke-PrintSinkAppCommand `
+        -Arguments @(
+            '--set-image-watermark',
+            '--endpoint',
+            'Pdf',
+            '--image',
+            $watermarkImagePath,
+            '--refresh-capabilities') `
+        -Description 'Setting default PDF image watermark and refreshing capabilities'
+
+    try {
+        $printCase = [ordered]@{
+            queue = 'PrintSink - PDF'
+            format = 'pdf'
+            extension = '.pdf'
+            requiresSaveAs = $true
+            requiresImage = $true
+            expectedText = 'foo'
+            expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+            outputName = 'PrintSink-Settings-Image-Watermark'
+        }
+
+        return Invoke-PrintSinkRealPrint `
+            -PrintCase $printCase `
+            -OutputDirectory $OutputDirectory `
+            -PackageFamilyName $PackageFamilyName
+    }
+    finally {
+        Invoke-PrintSinkAppCommand `
+            -Arguments @('--clear-watermark', '--endpoint', 'Pdf', '--refresh-capabilities') `
+            -Description 'Clearing default PDF image watermark and refreshing capabilities'
     }
 }
 
@@ -1081,6 +1168,7 @@ Add-Type -AssemblyName System.Drawing
             Stop-Process -Id $process.Id -Force
         }
 
+        Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
     }
@@ -1195,6 +1283,7 @@ Add-Type -AssemblyName System.Drawing
             Stop-Process -Id $process.Id -Force
         }
 
+        Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
         Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
     }
@@ -1324,6 +1413,10 @@ function Assert-DocumentOutput {
 
     if (-not [string]::IsNullOrWhiteSpace($PrintCase.expectedText)) {
         $arguments += @('--contains', $PrintCase.expectedText)
+    }
+
+    if ($PrintCase.Contains('requiresImage') -and $PrintCase.requiresImage) {
+        $arguments += @('--requires-image', 'true')
     }
 
     $assertionOutput = & dotnet @arguments 2>&1
@@ -1478,6 +1571,8 @@ if ($null -eq $alias) {
     throw 'printsink-app.exe was not registered. Install the signed MSIX package before running E2E.'
 }
 
+$completedSuccessfully = $false
+
 Invoke-PrintSinkAppCommand -Arguments @('--disable-job-ui') -Description 'Disabling foreground job UI'
 try {
     $cliQueueLifecycle = Invoke-PrintSinkCliQueueLifecycle -ExpectedQueues $expectedQueues
@@ -1507,6 +1602,10 @@ try {
         -OutputDirectory $OutputDirectory `
         -PackageFamilyName $package.PackageFamilyName
 
+    $settingsImageWatermarkResult = Invoke-PrintSinkSettingsImageWatermarkPrint `
+        -OutputDirectory $OutputDirectory `
+        -PackageFamilyName $package.PackageFamilyName
+
     Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Enabling foreground job UI for the Job UI E2E path'
     $jobUiResult = Invoke-PrintSinkJobUiWatermarkPrint `
         -OutputDirectory $OutputDirectory `
@@ -1532,16 +1631,45 @@ try {
         outputDirectory = $OutputDirectory
         realPrints = $realPrintResults
         settingsWatermark = $settingsWatermarkResult
+        settingsImageWatermark = $settingsImageWatermarkResult
         jobUiWatermark = $jobUiResult
         jobUiCancel = $jobUiCancelResult
     }
 
-    if ($Cleanup) {
-        Invoke-PrintSinkAppCommand -Arguments @('--remove-virtual-printers') -Description 'Headless virtual-printer cleanup'
-    }
-
     $result | ConvertTo-Json -Depth 8
+    $completedSuccessfully = $true
 }
 finally {
-    Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Restoring foreground job UI'
+    $cleanupFailures = [System.Collections.Generic.List[string]]::new()
+
+    if ($Cleanup) {
+        try {
+            Invoke-PrintSinkAppCommand -Arguments @('--remove-virtual-printers') -Description 'Headless virtual-printer cleanup'
+            Wait-ForQueueInstalledState `
+                -ExpectedQueues $expectedQueues `
+                -ExpectedInstalled $false `
+                -TimeoutSeconds 30
+        }
+        catch {
+            $cleanupFailures.Add("Virtual-printer cleanup failed: $($_.Exception.Message)")
+        }
+
+        Stop-PrintSinkE2ERuntime
+    }
+
+    try {
+        Invoke-PrintSinkAppCommand -Arguments @('--enable-job-ui') -Description 'Restoring foreground job UI'
+    }
+    catch {
+        $cleanupFailures.Add("Restoring foreground job UI failed: $($_.Exception.Message)")
+    }
+
+    if ($cleanupFailures.Count -gt 0) {
+        $message = $cleanupFailures -join [Environment]::NewLine
+        if ($completedSuccessfully) {
+            throw $message
+        }
+
+        Write-Warning $message
+    }
 }

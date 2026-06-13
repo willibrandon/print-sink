@@ -78,6 +78,7 @@ printsink-app.exe --remove-virtual-printers
 printsink-app.exe --disable-job-ui
 printsink-app.exe --enable-job-ui
 printsink-app.exe --set-text-watermark --endpoint Pdf --text "Draft"
+printsink-app.exe --set-image-watermark --endpoint Pdf --image "C:\Path\To\Watermark.png"
 printsink-app.exe --clear-watermark --endpoint Pdf
 printsink-app.exe --refresh-capabilities --endpoint Pdf
 ```
