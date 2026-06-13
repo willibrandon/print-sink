@@ -719,9 +719,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      real print job that records physical workflow pass-through. Document-output assertions run through
      the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; XPS/OXPS is an OPC
-     package with fixed pages and `foo`; PS starts with `%!PS` and declares pages; PWG Raster has valid
-     raster magic and non-blank page body; cloud has no Save-As output but writes a package-local sink
-     artifact that is validated as PDF output.
+     package with fixed pages and `foo`; PS starts with `%!PS` and has resolved page count, bounding box,
+     page trailer, trailer, and EOF markers; PWG Raster has valid raster magic and non-blank page body;
+     cloud has no Save-As output but writes a package-local sink artifact that is validated as PDF output.
    - Send a real source PDF through Windows' PDL passthrough provider and assert the output is
      byte-for-byte identical to the input PDF.
    - Launch the packaged WinRT print-source harness, drive the real Windows print dialog to

@@ -173,7 +173,7 @@ Real output assertions:
 
 - PDF opens with PDFPig, has at least one page, and extracted text contains `foo`.
 - XPS/OXPS is an OPC package, supports interleaved OXPS pieces, has at least one fixed page, and contains `foo`.
-- PostScript starts with `%!PS` and declares pages.
+- PostScript starts with `%!PS` and has resolved page count, bounding box, page trailer, trailer, and EOF markers.
 - PWG Raster has a valid raster magic value and non-blank page body.
 - PCLm opens with PDFPig and has at least one page.
 - Cloud produces no Save-As output, must still report `Job completed` from the real background task,

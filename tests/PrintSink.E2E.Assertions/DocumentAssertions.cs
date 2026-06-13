@@ -207,6 +207,23 @@ internal static class DocumentAssertions
             throw new InvalidDataException($"PostScript output does not declare pages: {path}");
         }
 
+        if (!HasResolvedDscLine(text, "%%Pages:"))
+        {
+            throw new InvalidDataException($"PostScript output does not contain a resolved page count: {path}");
+        }
+
+        if (!HasResolvedDscLine(text, "%%BoundingBox:"))
+        {
+            throw new InvalidDataException($"PostScript output does not contain a resolved bounding box: {path}");
+        }
+
+        if (!text.Contains("%%PageTrailer", StringComparison.Ordinal)
+            || !text.Contains("%%Trailer", StringComparison.Ordinal)
+            || !text.Contains("%%EOF", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"PostScript output is missing required DSC closing markers: {path}");
+        }
+
         if (!string.IsNullOrWhiteSpace(expectedText)
             && !text.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
         {
@@ -218,6 +235,21 @@ internal static class DocumentAssertions
         {
             throw new InvalidDataException("PostScript output contained a forbidden value.");
         }
+    }
+
+    private static bool HasResolvedDscLine(string text, string prefix)
+    {
+        using StringReader reader = new(text);
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.StartsWith(prefix, StringComparison.Ordinal)
+                && !line.Contains("(atend)", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AssertPwgRaster(string path)
