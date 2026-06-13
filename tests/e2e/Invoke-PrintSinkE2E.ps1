@@ -2686,6 +2686,7 @@ function Invoke-PrintSinkJobUiWatermarkPrint {
         extension = '.pdf'
         requiresSaveAs = $true
         expectedText = 'CI WATERMARK'
+        notExpectedText = 'ci-password'
         expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
     }
     $printerName = $printCase.queue
@@ -2740,6 +2741,7 @@ Add-Type -AssemblyName System.Drawing
 
         Set-ToggleSwitch -Root $jobWindow -Name 'Text watermark' -ExpectedState $true
         Set-TextBoxValue -Root $jobWindow -Name 'Watermark text' -Value 'CI WATERMARK'
+        Set-TextBoxValue -Root $jobWindow -Name 'Job password' -Value 'ci-password'
         Invoke-Button -Root $jobWindow -Name 'Continue' -TimeoutSeconds 30
 
         if (-not $process.WaitForExit(30000)) {
@@ -2755,6 +2757,12 @@ Add-Type -AssemblyName System.Drawing
             -Endpoint $printerName `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $printCase.expectedRoute
+        if ([string]$diagnostic.detail -notlike '*job-password=present-not-applicable*') {
+            throw "Job UI password metadata was not consumed by the virtual-printer processor. Detail: $($diagnostic.detail)"
+        }
+        if ([string]$diagnostic.detail -like '*ci-password*') {
+            throw 'Job UI password secret leaked into diagnostics.'
+        }
 
         Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
         Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
@@ -2766,6 +2774,8 @@ Add-Type -AssemblyName System.Drawing
             outputPath = $outputPath
             bytes = $file.Length
             mode = 'job-ui-watermark'
+            jobPassword = 'present-not-applicable'
+            jobPasswordSecretExposed = $false
             diagnostic = $diagnostic
         }
     }
@@ -3119,6 +3129,10 @@ function Assert-DocumentOutput {
         $arguments += @('--contains', $PrintCase.expectedText)
     }
 
+    if ($PrintCase.Contains('notExpectedText') -and -not [string]::IsNullOrWhiteSpace($PrintCase.notExpectedText)) {
+        $arguments += @('--not-contains', $PrintCase.notExpectedText)
+    }
+
     if ($PrintCase.Contains('requiresImage') -and $PrintCase.requiresImage) {
         $arguments += @('--requires-image', 'true')
     }
@@ -3282,6 +3296,7 @@ function Assert-PrintSinkFeatureEvidenceComplete {
     $expectedNumbers = @()
     $expectedNumbers += 1..21
     $expectedNumbers += 23
+    $expectedNumbers += 24
     $expectedNumbers += 25
 
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ObjectPropertyValue -Object $_ -Name 'number') })
@@ -3581,6 +3596,24 @@ function New-PrintSinkFeatureEvidence {
         -Artifact ([ordered]@{
             failed = $FailedImageWatermark
             canceled = $JobUiCancel
+        })
+
+    Add-PrintSinkFeatureEvidence `
+        -FeatureEvidence $featureEvidence `
+        -Number 24 `
+        -Feature 'Job password option model' `
+        -Passed (
+            [string]$JobUiWatermark.jobPassword -eq 'present-not-applicable' `
+                -and [string]$JobUiWatermark.diagnostic.detail -like '*job-password=present-not-applicable*' `
+                -and [string]$JobUiWatermark.diagnostic.detail -notlike '*ci-password*' `
+                -and $JobUiWatermark.jobPasswordSecretExposed -eq $false) `
+        -Evidence 'The real Job UI captured job-password metadata and the virtual-printer processor consumed it without applying it to virtual file output.' `
+        -Artifact ([ordered]@{
+            queue = $JobUiWatermark.queue
+            mode = $JobUiWatermark.mode
+            jobPassword = $JobUiWatermark.jobPassword
+            jobPasswordSecretExposed = $JobUiWatermark.jobPasswordSecretExposed
+            diagnostic = $JobUiWatermark.diagnostic
         })
 
     Add-PrintSinkFeatureEvidence `

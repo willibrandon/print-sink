@@ -203,7 +203,7 @@ virtual-printer feature.
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
 | 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Defensive handler for OS error-toast activation; not a supported virtual-printer behavior until a deterministic toast E2E exists. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
-| 24 | Job password option model | `JobPasswordOptions` settings model | Core | Reserved model; no physical workflow target-stream application |
+| 24 | Job password option model | `JobPasswordOptions` settings model | Core + Job UI | Job UI capture is tested; virtual file output records metadata as not applicable without exposing the secret; no physical target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 
 ---
@@ -558,7 +558,9 @@ instead of XAML pages:
 - `PrintSupportJobUI` → **JobPreviewScreen**; subscribes
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
   `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
-  persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
+  persists user choices (watermark options and job-password metadata) to `ISettingsStore` for the
+  background task to read back. Virtual file outputs record password metadata as not applicable instead
+  of sending it anywhere, and the secret must not appear in diagnostics or generated documents.
   `JobNotification` records job status/error context if Windows activates the app from a job
   notification toast; it is a compatibility hook, not part of the supported virtual-printer flow.
 - Headless automation sets package-local `JobUiOptions` through `printsink-app.exe --disable-job-ui`.
@@ -645,8 +647,9 @@ keys or mouse input, capturing terminal output, and scripting assertions.
   → `Canceled`/`UserCanceled`. No exception is allowed to escape an in-process handler.
 - **Security:** least-privilege capabilities (`runFullTrust` for the packaged PSA process and
   `privateNetworkClientServer` for IPP printer communication). Target files are only those the user
-  selected via the OS Save-As broker (no arbitrary path access). The reserved job-password settings
-  model stores encrypted values, but PrintSink does not apply them to a physical workflow target stream.
+  selected via the OS Save-As broker (no arbitrary path access). Job-password settings store only
+  encrypted/hash-ready values; virtual file output records their presence without applying or exposing
+  them, and PrintSink does not apply them to a physical workflow target stream.
 - **Localization:** queue display names and custom PDC features via `.resw` (`ms-resource:`), resolved
   against `ResourceLanguage`.
 - **Observability:** `EventSource`/ETW tracing in `PrintSink.Core` (provider `PrintSink-Diagnostics`) for
@@ -820,7 +823,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M | Deliverable |
 | --- | --- |
 | M0 | Repo scaffolding: `PrintSink.slnx`, `Directory.Build/Packages.props`, `.editorconfig`, `global.json`, analyzer/doc gates, Reactor MSIX shell, CLI package wiring. |
-| M1 | `PrintSink.Core` + full unit tests (router, PDC editor, IPP mapper, settings), plus `PrintSink.Cli` command skeleton and tests. |
+| M1 | `PrintSink.Core` + full unit tests (router, PDC editor, IPP mapper, settings), plus `PrintSink.Cli` commands and tests. |
 | M2 | `PrintSink.Xps` + `PrintSink.Xps.Projections` + component tests (watermark fidelity). |
 | M3 | `PrintSink.Tasks`: VirtualPrinter + Extension + Workflow background tasks (adapters over Core). |
 | M4 | `PrintSink.App`: Reactor activation router, Settings UI (modal), Job UI/preview, Management UI; `PrintSink.Cli tui` Hex1b dashboard. |

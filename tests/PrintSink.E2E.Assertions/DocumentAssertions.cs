@@ -17,9 +17,10 @@ internal static class DocumentAssertions
             string format = GetRequired(options, "format");
             string path = GetRequired(options, "path");
             options.TryGetValue("contains", out string? expectedText);
+            options.TryGetValue("not-contains", out string? forbiddenText);
             bool requireImage = GetOptionalBoolean(options, "requires-image");
 
-            AssertDocument(format, path, expectedText, requireImage);
+            AssertDocument(format, path, expectedText, forbiddenText, requireImage);
             output.WriteLine($"ok: {format} output is valid: {path}");
             return 0;
         }
@@ -30,7 +31,12 @@ internal static class DocumentAssertions
         }
     }
 
-    private static void AssertDocument(string format, string path, string? expectedText, bool requireImage)
+    private static void AssertDocument(
+        string format,
+        string path,
+        string? expectedText,
+        string? forbiddenText,
+        bool requireImage)
     {
         FileInfo file = new(path);
         if (!file.Exists)
@@ -46,29 +52,34 @@ internal static class DocumentAssertions
         switch (format.ToLowerInvariant())
         {
             case "pdf":
-                AssertPdf(path, expectedText, true, requireImage);
+                AssertPdf(path, expectedText, forbiddenText, true, requireImage);
                 break;
             case "xps":
             case "oxps":
-                AssertXps(path, expectedText);
+                AssertXps(path, expectedText, forbiddenText);
                 break;
             case "postscript":
             case "ps":
-                AssertPostScript(path, expectedText);
+                AssertPostScript(path, expectedText, forbiddenText);
                 break;
             case "pwg":
             case "pwgraster":
                 AssertPwgRaster(path);
                 break;
             case "pclm":
-                AssertPdf(path, null, false, false);
+                AssertPdf(path, null, forbiddenText, false, false);
                 break;
             default:
                 throw new ArgumentException($"Unsupported document format '{format}'.");
         }
     }
 
-    private static void AssertPdf(string path, string? expectedText, bool requireText, bool requireImage)
+    private static void AssertPdf(
+        string path,
+        string? expectedText,
+        string? forbiddenText,
+        bool requireText,
+        bool requireImage)
     {
         using PdfDocument document = PdfDocument.Open(path);
         if (document.NumberOfPages < 1)
@@ -86,6 +97,12 @@ internal static class DocumentAssertions
             && !text.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException($"PDF text did not contain '{expectedText}'. Extracted text: {text}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(forbiddenText)
+            && text.Contains(forbiddenText, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("PDF text contained a forbidden value.");
         }
 
         if (requireImage && !ContainsPdfImage(document, path))
@@ -126,7 +143,7 @@ internal static class DocumentAssertions
             || pdfSource.Contains("/Subtype /Image", StringComparison.Ordinal);
     }
 
-    private static void AssertXps(string path, string? expectedText)
+    private static void AssertXps(string path, string? expectedText, string? forbiddenText)
     {
         using ZipArchive archive = ZipFile.OpenRead(path);
         if (!HasPackagePart(archive, "[Content_Types].xml"))
@@ -143,20 +160,28 @@ internal static class DocumentAssertions
             throw new InvalidDataException($"XPS package contains no fixed pages: {path}");
         }
 
-        if (string.IsNullOrWhiteSpace(expectedText))
-        {
-            return;
-        }
-
+        bool foundExpectedText = false;
         foreach (ZipArchiveEntry entry in fixedPages)
         {
             using Stream stream = entry.Open();
             using StreamReader reader = new(stream, Encoding.UTF8, true);
             string fixedPageXml = reader.ReadToEnd();
-            if (fixedPageXml.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(forbiddenText)
+                && fixedPageXml.Contains(forbiddenText, StringComparison.OrdinalIgnoreCase))
             {
-                return;
+                throw new InvalidDataException("XPS fixed pages contained a forbidden value.");
             }
+
+            if (!string.IsNullOrWhiteSpace(expectedText)
+                && fixedPageXml.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
+            {
+                foundExpectedText = true;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(expectedText) || foundExpectedText)
+        {
+            return;
         }
 
         throw new InvalidDataException($"XPS fixed pages did not contain '{expectedText}': {path}");
@@ -168,7 +193,7 @@ internal static class DocumentAssertions
             || archive.Entries.Any(entry => entry.FullName.StartsWith($"{partName}/", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static void AssertPostScript(string path, string? expectedText)
+    private static void AssertPostScript(string path, string? expectedText, string? forbiddenText)
     {
         string text = File.ReadAllText(path, Encoding.Latin1);
         if (!text.StartsWith("%!PS", StringComparison.Ordinal))
@@ -186,6 +211,12 @@ internal static class DocumentAssertions
             && !text.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException($"PostScript output did not contain '{expectedText}': {path}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(forbiddenText)
+            && text.Contains(forbiddenText, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("PostScript output contained a forbidden value.");
         }
     }
 

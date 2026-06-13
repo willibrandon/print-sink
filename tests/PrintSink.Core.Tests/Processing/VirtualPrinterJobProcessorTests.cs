@@ -374,6 +374,47 @@ public sealed class VirtualPrinterJobProcessorTests
         Assert.AreSame(WatermarkOptions.Disabled, sink.Context?.WatermarkOptions);
     }
 
+    /// <summary>
+    /// Verifies job password metadata is recorded without exposing the password.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_records_job_password_metadata_without_secret()
+    {
+        string diagnosticDirectory = Path.Combine(TestContext.TestRunResultsDirectory!, Guid.NewGuid().ToString("N"));
+        LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.PdfContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("%PDF-1.7"),
+            false);
+        CapturingSink sink = new();
+        VirtualPrinterJobProcessor processor = new(
+            new PdlRouter(),
+            new TestPdlConverter([]),
+            new EndpointSinkResolver(new Dictionary<EndpointKind, ISink>
+            {
+                [EndpointKind.Pdf] = sink,
+            }),
+            null,
+            new JobProcessingOptions(
+                WatermarkOptions.Disabled,
+                JobPasswordOptions.FromPassword("secret", "sha2-256")),
+            PassThroughPdlTransformer.Instance,
+            diagnosticEventStore);
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<DiagnosticEventRecord> events = await diagnosticEventStore
+            .ReadRecentAsync(8, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        DiagnosticEventRecord completion = events.Single(entry => entry.Message == "Job completed");
+        string detail = completion.Detail ?? string.Empty;
+        Assert.AreEqual(VirtualPrinterJobStatus.Succeeded, result.Status);
+        Assert.Contains("job-password=present-not-applicable", detail);
+        Assert.DoesNotContain("secret", detail);
+    }
+
     private static VirtualPrinterJobProcessor CreateProcessor(ISink sink, IPdlConverter converter)
     {
         return new VirtualPrinterJobProcessor(

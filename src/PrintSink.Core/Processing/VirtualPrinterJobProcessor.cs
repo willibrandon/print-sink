@@ -194,7 +194,7 @@ public sealed class VirtualPrinterJobProcessor
                     nameof(VirtualPrinterJobProcessor),
                     "Job completed",
                     job.Endpoint.QueueName,
-                    $"{VirtualPrinterJobStatus.Succeeded}; {GetElapsedMilliseconds(started)} ms; route={routeDetail}"),
+                    $"{VirtualPrinterJobStatus.Succeeded}; {GetElapsedMilliseconds(started)} ms; route={routeDetail}; {FormatJobPasswordDetail()}"),
                 CancellationToken.None)
                 .ConfigureAwait(false);
 
@@ -337,6 +337,13 @@ public sealed class VirtualPrinterJobProcessor
         return string.IsNullOrWhiteSpace(exception.Message)
             ? $"{exceptionType} ({hresult})"
             : $"{exceptionType} ({hresult}): {exception.Message}";
+    }
+
+    private string FormatJobPasswordDetail()
+    {
+        return jobProcessingOptions?.JobPasswordOptions is null
+            ? "job-password=absent"
+            : "job-password=present-not-applicable";
     }
 
     private static void RewindIfSeekable(Stream stream)

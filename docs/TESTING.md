@@ -150,7 +150,9 @@ The required E2E suite proves the current installed-package behavior:
 14. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-15. Launch Job UI, change watermark options, complete the job, and assert the output reflects the choice.
+15. Launch Job UI, change watermark options, fill the job-password field, complete the job, assert the
+    output reflects the watermark choice, assert the output does not contain the password, and assert
+    diagnostics record the password metadata as not applicable to virtual file output.
 16. Launch Job UI, cancel the job, and assert the target remains empty while package-local diagnostics record `Job canceled`.
 17. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
@@ -195,6 +197,8 @@ Real output assertions:
 - A corrupt image watermark causes a real background-task failure, records `Job failed` with an
   exception/HRESULT detail, and leaves the target file empty or absent.
 - Watermark text appears on rendered pages when enabled.
+- Job UI password metadata is consumed by the virtual-printer processor without exposing the secret in
+  diagnostics or applying it to virtual file output.
 - Job UI cancel leaves the selected target empty and records `Job canceled` before aborting the real print flow.
 - Queue persistence is checked against the real Windows printer list after every major E2E step; a job
   that removes, loses, or unregisters a PrintSink queue fails CI.
