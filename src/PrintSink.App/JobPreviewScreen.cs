@@ -130,6 +130,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 try
                 {
                     jobState.Current.SetNotification(deferral);
+                    AppendJobNotificationDiagnostic(args);
                     UiDispatch.Post(() => setStatus("Job notification received."));
                 }
                 catch
@@ -412,6 +413,30 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         }
 
         return Math.Min(Math.Max(value, min), max);
+    }
+
+    private static void AppendJobNotificationDiagnostic(PrintWorkflowJobNotificationEventArgs args)
+    {
+        try
+        {
+            string jobStatus = args.PrinterJob.GetJobStatus().ToString();
+            AppSettingsStoreFactory
+                .CreateDiagnosticEventStore()
+                .AppendAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(JobPreviewScreen),
+                        "Job notification received",
+                        null,
+                        $"status={jobStatus}"))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The Job UI still has to complete its deferral even if diagnostics cannot be written.
+        }
     }
 
 }

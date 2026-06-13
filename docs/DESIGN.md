@@ -198,7 +198,7 @@ Every capability exposed by the PSA v4 Virtual Printer surface is implemented. N
 | 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
 | 20 | IPP attribute get for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert `document-format-*` entries from real queue |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
-| 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | |
+| 22 | Job notifications | `PrintWorkflowJobUISession.JobNotification` | `PrintSink.App` Job UI | Raised when a user opens a job notification toast. |
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Encrypted job password (operation attrs) | `msft-operation-attribute-col`, `job-password` / `job-password-encryption` | Workflow task + Core | Parity path |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
@@ -562,6 +562,8 @@ instead of XAML pages:
   `PrintWorkflowJobUISession.{PdlDataAvailable, JobNotification, VirtualPrinterUIDataAvailable}` then
   `session.Start()`. `VirtualPrinterUIDataAvailable` renders a preview from `args.SourceContent` and
   persists user choices (watermark options) to `ISettingsStore` for the background task to read back.
+  `JobNotification` records job status/error context when Windows activates the app from a job
+  notification toast.
 - Headless automation sets package-local `JobUiOptions` through `printsink-app.exe --disable-job-ui`.
   Background tasks then skip `LaunchAndCompleteUIAsync` and process jobs directly. The normal default is
   restored with `printsink-app.exe --enable-job-ui`.
