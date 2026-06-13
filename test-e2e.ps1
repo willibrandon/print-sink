@@ -254,3 +254,18 @@ if (-not $KeepQueues) {
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
+
+$resultAssertionScript = Join-Path $PSScriptRoot 'tests\e2e\Assert-PrintSinkE2EResult.ps1'
+$resultAssertionParameters = @{
+    ResultPath = (Join-Path $OutputDirectory 'e2e-result.json')
+}
+
+if (-not $KeepQueues) {
+    $resultAssertionParameters.RequireCleanup = $true
+}
+
+& $resultAssertionScript @resultAssertionParameters
+
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}

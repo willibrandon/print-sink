@@ -44,6 +44,9 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("HasPrivateKey", script);
         Assert.Contains("NotAfter", script);
         Assert.Contains("TrustedPeople", script);
+        Assert.Contains("Assert-PrintSinkE2EResult.ps1", script);
+        Assert.Contains("ResultPath = (Join-Path $OutputDirectory 'e2e-result.json')", script);
+        Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", script);
         Assert.Contains("$KeepQueues", script);
         Assert.Contains("Cleanup = $true", script);
         Assert.Contains("$LASTEXITCODE -ne 0", script);

@@ -4126,7 +4126,13 @@ function Assert-CloudSinkArtifact {
         [System.IO.Path]::GetExtension($artifactPath)
     }
 
-    $copyPath = Join-Path $OutputDirectory "PrintSink-Cloud-Sink$extension"
+    $copyName = if ($PrintCase.Contains('outputName') -and -not [string]::IsNullOrWhiteSpace($PrintCase.outputName)) {
+        "$($PrintCase.outputName)-Sink"
+    }
+    else {
+        'PrintSink-Cloud-Sink'
+    }
+    $copyPath = Join-Path $OutputDirectory "$copyName$extension"
     Copy-Item -LiteralPath $artifactPath -Destination $copyPath -Force
 
     $assertionCase = [ordered]@{
