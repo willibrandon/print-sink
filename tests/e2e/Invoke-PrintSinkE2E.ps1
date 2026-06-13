@@ -2411,7 +2411,7 @@ function Invoke-PrintSinkExtensionCapabilities {
         -Message 'Capabilities updated' `
         -StartedUtc $StartedUtc `
         -DetailContains @(
-            'features=PageMediaSize,PageResolution,JobWatermarkMode',
+            'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
             'mxdc=configured',
             'pdr=updated',
             'pdrResources=') `
@@ -3510,7 +3510,7 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 13 `
         -Feature 'PDC regeneration and custom features' `
-        -Passed ([string]$ExtensionCapabilities.detail -like '*features=PageMediaSize,PageResolution,JobWatermarkMode*') `
+        -Passed ([string]$ExtensionCapabilities.detail -like '*features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode*') `
         -Evidence 'A real capability refresh updated the installed queue PDC with the built-in PrintSink feature set.' `
         -Artifact $ExtensionCapabilities
 

@@ -63,6 +63,27 @@
     </printsink:Receipt80Millimeter>
   </psk:PageMediaSize>
 
+  <psk:PageMediaType psf2:psftype="Feature">
+    <printsink:ArchivePaper psf2:psftype="Option"/>
+    <printsink:ThermalReceiptMedia psf2:psftype="Option"/>
+  </psk:PageMediaType>
+
+  <psk:JobInputBin psf2:psftype="Feature">
+    <printsink:AutomationInputBin psf2:psftype="Option"/>
+  </psk:JobInputBin>
+
+  <psk:JobOutputBin psf2:psftype="Feature">
+    <printsink:AutomationOutputBin psf2:psftype="Option"/>
+  </psk:JobOutputBin>
+
+  <psk:JobPageOrder psf2:psftype="Feature">
+    <printsink:OddPagesThenEvenPages psf2:psftype="Option"/>
+  </psk:JobPageOrder>
+
+  <psk:JobStapleAllDocuments psf2:psftype="Feature">
+    <printsink:StapleUpperLeft psf2:psftype="Option"/>
+  </psk:JobStapleAllDocuments>
+
   <psk:PageOrientation psf2:psftype="Feature">
     <psk:Landscape psf2:psftype="Option"/>
     <psk:Portrait psf2:psftype="Option" psf2:default="true"/>

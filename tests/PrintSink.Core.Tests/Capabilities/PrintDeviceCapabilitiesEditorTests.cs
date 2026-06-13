@@ -131,6 +131,22 @@ public sealed class PrintDeviceCapabilitiesEditorTests
         Assert.AreEqual("80000", receipt80Millimeter.Element(Psk + "MediaSizeWidth")?.Value);
         Assert.AreEqual("200000", receipt80Millimeter.Element(Psk + "MediaSizeHeight")?.Value);
 
+        XElement pageMediaType = result.Root.Element(Psk + "PageMediaType")!;
+        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ArchivePaper"));
+        Assert.IsNotNull(pageMediaType.Element(PrintSink + "ThermalReceiptMedia"));
+
+        XElement jobInputBin = result.Root.Element(Psk + "JobInputBin")!;
+        Assert.IsNotNull(jobInputBin.Element(PrintSink + "AutomationInputBin"));
+
+        XElement jobOutputBin = result.Root.Element(Psk + "JobOutputBin")!;
+        Assert.IsNotNull(jobOutputBin.Element(PrintSink + "AutomationOutputBin"));
+
+        XElement jobPageOrder = result.Root.Element(Psk + "JobPageOrder")!;
+        Assert.IsNotNull(jobPageOrder.Element(PrintSink + "OddPagesThenEvenPages"));
+
+        XElement jobStaple = result.Root.Element(Psk + "JobStapleAllDocuments")!;
+        Assert.IsNotNull(jobStaple.Element(PrintSink + "StapleUpperLeft"));
+
         XElement pageResolution = result.Root!.Element(Psk + "PageResolution")!;
         XElement dpi600 = pageResolution.Element(PrintSink + "Dpi600")!;
         Assert.IsNotNull(dpi600);

@@ -24,6 +24,32 @@ public static class PrintSinkCapabilityFeatures
                         ]),
                 ]),
             new(
+                PrintSchemaQualifiedName.Keyword("PageMediaType"),
+                [
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("ArchivePaper"), false, []),
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("ThermalReceiptMedia"), false, []),
+                ]),
+            new(
+                PrintSchemaQualifiedName.Keyword("JobInputBin"),
+                [
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("AutomationInputBin"), false, []),
+                ]),
+            new(
+                PrintSchemaQualifiedName.Keyword("JobOutputBin"),
+                [
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("AutomationOutputBin"), false, []),
+                ]),
+            new(
+                PrintSchemaQualifiedName.Keyword("JobPageOrder"),
+                [
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("OddPagesThenEvenPages"), false, []),
+                ]),
+            new(
+                PrintSchemaQualifiedName.Keyword("JobStapleAllDocuments"),
+                [
+                    new CustomFeatureOption(PrintSchemaQualifiedName.PrintSink("StapleUpperLeft"), false, []),
+                ]),
+            new(
                 PrintSchemaQualifiedName.Keyword("PageResolution"),
                 [
                     new CustomFeatureOption(
