@@ -175,9 +175,9 @@ operator workflows; it references the same core library but is not an OS print a
 
 Rows 1-21 and 23-25 are supported PrintSink capabilities. Each supported row is implemented and covered
 by CI. The E2E run writes `featureEvidence` for the print-stack rows it proves. Pure model behavior is
-covered by unit tests. Row 22 is tracked separately as a deferred compatibility hook until Windows can
-deliver it through a deterministic E2E path. The physical IPP path is limited to PSA association and
-activation evidence; document output is a virtual-printer feature.
+covered by unit tests. Rows 22 and 26 are tracked separately as deferred compatibility hooks until
+Windows can deliver them through deterministic E2E paths. The physical IPP path is limited to PSA
+association and activation evidence; document output is a virtual-printer feature.
 
 | # | Feature | Contract / API | Component | Notes |
 | --- | --- | --- | --- | --- |
@@ -206,6 +206,7 @@ activation evidence; document output is a virtual-printer feature.
 | 23 | Graceful cancel / abort / fail | `PrintWorkflowSubmittedStatus`, `AbortPrintFlow(PrintWorkflowJobAbortReason.*)` | All tasks | E2E asserts Job UI cancel and corrupt-image transform failure |
 | 24 | Job password option model | `JobPasswordOptions` settings model | Core + Job UI | Job UI capture is tested; virtual file output records metadata as not applicable without exposing the secret; no physical target-stream application |
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
+| 26 | IPP communication-error timeout recovery | `PrintSupportExtensionSession.CommunicationErrorDetected`, `PrintSupportIppCommunicationConfiguration` | `PrintSupportExtensionBackgroundTask` | Tracked only. Defensive handler configures IPP timeouts when Windows reports a timeout; not a supported feature claim until a deterministic real-device E2E can trigger the event. |
 
 ---
 
@@ -513,7 +514,7 @@ only marshals WinRT objects into and out of the core.
 ### 7.2 `PrintSink.Tasks.PrintSupportExtensionBackgroundTask`
 
 Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapabilitiesChanged`, and
-(API-gated) `PrinterSelected`. Implements:
+(API-gated) `PrinterSelected` and `CommunicationErrorDetected`. Implements:
 
 - **Print-ticket validation** → `SetPrintTicketValidationStatus(WorkflowPrintTicketValidationStatus.Resolved)`
   after running `PrintSink.Core.Tickets` constraint checks.
@@ -528,6 +529,9 @@ Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapab
   to chosen `XpsImageQuality` values driven by current print quality.
 - **Printer-selected adaptive card** — builds an Adaptive Card and requests additional features/parameters
   within `AllowedAdditionalFeaturesAndParametersCount`.
+- **IPP communication timeout recovery** — when Windows raises `CommunicationErrorDetected` for a
+  timeout, updates `PrintSupportIppCommunicationConfiguration` timeouts when the platform allows it and
+  records diagnostic evidence.
 
 **Concurrency hardening** (carried from the reference sample, mandatory in-process): a
 `RunHandlerSafely` wrapper with a `volatile bool _isCancelled`, an `Interlocked` active-handler counter,

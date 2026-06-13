@@ -3431,6 +3431,12 @@ function New-PrintSinkDeferredFeatureEvidence {
             feature = 'Job notification compatibility hook'
             status = 'deferred'
             evidence = 'Windows did not deliver a deterministic PrintWorkflowJobUISession.JobNotification activation in the supported virtual-printer E2E flow. The handler records diagnostics if the OS activates it, but PrintSink does not claim this as a supported feature until a real E2E can trigger it.'
+        },
+        [ordered]@{
+            number = 26
+            feature = 'IPP communication-error timeout recovery'
+            status = 'deferred'
+            evidence = 'Windows did not deliver a deterministic PrintSupportExtensionSession.CommunicationErrorDetected activation in the supported E2E flow. The extension handler configures IPP timeouts when the OS reports timeout errors, but PrintSink does not claim this as supported behavior until a real-device E2E can trigger it.'
         }
     )
 }
