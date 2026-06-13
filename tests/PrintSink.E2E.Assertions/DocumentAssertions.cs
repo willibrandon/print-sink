@@ -51,24 +51,24 @@ internal static class DocumentAssertions
             throw new InvalidDataException($"Output file is empty: {path}");
         }
 
-        switch (format.ToLowerInvariant())
+        switch (format.ToUpperInvariant())
         {
-            case "pdf":
+            case "PDF":
                 AssertPdf(path, expectedText, forbiddenText, true, requireImage);
                 break;
-            case "xps":
-            case "oxps":
+            case "XPS":
+            case "OXPS":
                 AssertXps(path, expectedText, forbiddenText);
                 break;
-            case "postscript":
-            case "ps":
+            case "POSTSCRIPT":
+            case "PS":
                 AssertPostScript(path, expectedText, forbiddenText);
                 break;
-            case "pwg":
-            case "pwgraster":
+            case "PWG":
+            case "PWGRASTER":
                 AssertPwgRaster(path);
                 break;
-            case "pclm":
+            case "PCLM":
                 AssertPclm(path, forbiddenText);
                 break;
             default:
@@ -439,14 +439,14 @@ internal static class DocumentAssertions
         return options;
     }
 
-    private static string GetRequired(IReadOnlyDictionary<string, string> options, string name)
+    private static string GetRequired(Dictionary<string, string> options, string name)
     {
         return options.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"Missing required --{name} option.");
     }
 
-    private static bool GetOptionalBoolean(IReadOnlyDictionary<string, string> options, string name)
+    private static bool GetOptionalBoolean(Dictionary<string, string> options, string name)
     {
         if (!options.TryGetValue(name, out string? value))
         {

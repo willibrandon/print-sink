@@ -92,32 +92,35 @@ internal static class PdlPassthroughPrintCommand
         IOutputStream output,
         CancellationToken cancellationToken)
     {
-        await using FileStream source = File.OpenRead(sourcePath);
+        FileStream source = File.OpenRead(sourcePath);
         using DataWriter writer = new(output);
-        byte[] buffer = new byte[BufferSize];
-        while (true)
+        await using (source.ConfigureAwait(false))
         {
-            int read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0)
+            byte[] buffer = new byte[BufferSize];
+            while (true)
             {
-                break;
+                int read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (read == buffer.Length)
+                {
+                    writer.WriteBytes(buffer);
+                }
+                else
+                {
+                    byte[] slice = new byte[read];
+                    System.Buffer.BlockCopy(buffer, 0, slice, 0, read);
+                    writer.WriteBytes(slice);
+                }
+
+                await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
             }
 
-            if (read == buffer.Length)
-            {
-                writer.WriteBytes(buffer);
-            }
-            else
-            {
-                byte[] slice = new byte[read];
-                System.Buffer.BlockCopy(buffer, 0, slice, 0, read);
-                writer.WriteBytes(slice);
-            }
-
-            await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            writer.DetachStream();
         }
-
-        await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        writer.DetachStream();
     }
 }

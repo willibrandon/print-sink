@@ -7,13 +7,13 @@ namespace PrintSink.Core.Tests.Capabilities;
 /// Tests Print Device Capabilities validation.
 /// </summary>
 [TestClass]
-public sealed class PrintDeviceCapabilitiesValidatorTests
+internal sealed class PrintDeviceCapabilitiesValidatorTests
 {
     /// <summary>
     /// Verifies that a valid minimal PDC passes validation.
     /// </summary>
     [TestMethod]
-    public void Validate_accepts_minimal_pdc()
+    public void ValidateAcceptsMinimalPdc()
     {
         XDocument document = XDocument.Parse(
             """
@@ -34,7 +34,7 @@ public sealed class PrintDeviceCapabilitiesValidatorTests
     /// Verifies that malformed PDC shape returns validation messages.
     /// </summary>
     [TestMethod]
-    public void Validate_reports_shape_errors()
+    public void ValidateReportsShapeErrors()
     {
         XDocument document = XDocument.Parse(
             """
@@ -53,7 +53,7 @@ public sealed class PrintDeviceCapabilitiesValidatorTests
     /// Verifies that each feature has at most one default option.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_multiple_default_options()
+    public void ValidateRejectsMultipleDefaultOptions()
     {
         XDocument document = XDocument.Parse(
             """
@@ -75,7 +75,7 @@ public sealed class PrintDeviceCapabilitiesValidatorTests
     /// Verifies that non-job root custom features are rejected before package provisioning.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_non_job_root_custom_features()
+    public void ValidateRejectsNonJobRootCustomFeatures()
     {
         XDocument document = XDocument.Parse(
             """
@@ -96,7 +96,7 @@ public sealed class PrintDeviceCapabilitiesValidatorTests
     /// Verifies that media-size option properties use the order accepted by Windows provisioning.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_media_size_properties_in_unsupported_order()
+    public void ValidateRejectsMediaSizePropertiesInUnsupportedOrder()
     {
         XDocument document = XDocument.Parse(
             """

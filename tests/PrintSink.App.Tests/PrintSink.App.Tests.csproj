@@ -15,15 +15,17 @@
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>MSIX</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <EnableTypeInfoReflection>false</EnableTypeInfoReflection>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
     <Page Remove="UnitTestApp.xaml" />
-    <ApplicationDefinition Include="UnitTestApp.xaml" />
+    <Page Remove="UnitTestAppWindow.xaml" />
     <ProjectCapability Include="TestContainer" />
   </ItemGroup>
 
@@ -63,6 +65,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\PrintSink.Core\PrintSink.Core.csproj" />
     <ProjectReference Include="..\..\src\PrintSink.App\PrintSink.App.csproj" Aliases="PrintSinkApp" />
+    <Compile Include="..\..\src\PrintSink.App\WindowsAppSdkUndockedRegFreeWinRTInitializer.cs" Link="WindowsAppSdkUndockedRegFreeWinRTInitializer.cs" />
+    <Compile Include="..\..\src\PrintSink.App\WindowsAppRuntimeEnsureIsLoadedCallback.cs" Link="WindowsAppRuntimeEnsureIsLoadedCallback.cs" />
   </ItemGroup>
 
   <!--

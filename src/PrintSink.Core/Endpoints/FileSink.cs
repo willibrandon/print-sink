@@ -16,7 +16,10 @@ public sealed class FileSink : ISink
             throw new InvalidOperationException("A file sink requires a target path.");
         }
 
-        await using FileStream output = File.Create(context.TargetPath);
-        await pdl.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+        FileStream output = File.Create(context.TargetPath);
+        await using (output.ConfigureAwait(false))
+        {
+            await pdl.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+        }
     }
 }

@@ -49,18 +49,24 @@ internal static class WatermarkImageStorage
         string destinationDirectory = Path.Combine(AppSettingsStoreFactory.GetRootDirectory(), WatermarkImagesDirectoryName);
         Directory.CreateDirectory(destinationDirectory);
 
-        await using FileStream input = File.OpenRead(fullSourcePath);
-        byte[] hash = await SHA256.HashDataAsync(input, cancellationToken).ConfigureAwait(false);
-        string extension = Path.GetExtension(fullSourcePath);
-        string destinationPath = Path.Combine(destinationDirectory, $"{Convert.ToHexString(hash)}{extension}");
-
-        if (!File.Exists(destinationPath))
+        FileStream input = File.OpenRead(fullSourcePath);
+        await using (input.ConfigureAwait(false))
         {
-            input.Position = 0;
-            await using FileStream output = File.Create(destinationPath);
-            await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-        }
+            byte[] hash = await SHA256.HashDataAsync(input, cancellationToken).ConfigureAwait(false);
+            string extension = Path.GetExtension(fullSourcePath);
+            string destinationPath = Path.Combine(destinationDirectory, $"{Convert.ToHexString(hash)}{extension}");
 
-        return destinationPath;
+            if (!File.Exists(destinationPath))
+            {
+                input.Position = 0;
+                FileStream output = File.Create(destinationPath);
+                await using (output.ConfigureAwait(false))
+                {
+                    await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            return destinationPath;
+        }
     }
 }

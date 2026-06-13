@@ -26,7 +26,7 @@ try
 
     return 0;
 }
-catch (Exception ex) when (ex is not OperationCanceledException)
+catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
 {
     VirtualPrinterCommandLine.WriteDiagnostic($"Startup failed: {ex}");
     return 1;

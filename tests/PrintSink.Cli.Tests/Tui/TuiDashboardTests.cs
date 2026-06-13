@@ -12,7 +12,7 @@ namespace PrintSink.Cli.Tests.Tui;
 /// Tests the Hex1b diagnostics dashboard.
 /// </summary>
 [TestClass]
-public sealed class TuiDashboardTests
+internal sealed class TuiDashboardTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
@@ -23,7 +23,7 @@ public sealed class TuiDashboardTests
     /// Verifies that the dashboard model validates package assets and fixture routes.
     /// </summary>
     [TestMethod]
-    public async Task Dashboard_model_validates_assets_and_routes()
+    public async Task DashboardModelValidatesAssetsAndRoutes()
     {
         TuiDashboardModel model = await TuiDashboardModel
             .LoadAsync(Environment.CurrentDirectory, TestContext.CancellationToken)
@@ -42,13 +42,13 @@ public sealed class TuiDashboardTests
     /// Verifies that the dashboard renders through Hex1b's headless presentation adapter.
     /// </summary>
     [TestMethod]
-    public async Task Dashboard_renders_in_headless_terminal()
+    public async Task DashboardRendersInHeadlessTerminal()
     {
         string directory = CreateTestDirectory();
         TuiDashboardModel model;
         try
         {
-            LocalDiagnosticEventStore diagnosticEventStore = new(directory);
+            using LocalDiagnosticEventStore diagnosticEventStore = new(directory);
             await diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
@@ -89,7 +89,7 @@ public sealed class TuiDashboardTests
             .ApplyAsync(terminal, cancellation.Token)
             .ConfigureAwait(false);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync().ConfigureAwait(false);
 
         try
         {
@@ -125,7 +125,7 @@ public sealed class TuiDashboardTests
     /// Verifies that the dashboard refresh action can be activated from the keyboard.
     /// </summary>
     [TestMethod]
-    public async Task Dashboard_refresh_action_responds_to_enter()
+    public async Task DashboardRefreshActionRespondsToEnter()
     {
         TuiDashboardModel model = await TuiDashboardModel
             .LoadAsync(Environment.CurrentDirectory, TestContext.CancellationToken)
@@ -157,7 +157,7 @@ public sealed class TuiDashboardTests
             .ApplyAsync(terminal, cancellation.Token)
             .ConfigureAwait(false);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync().ConfigureAwait(false);
 
         try
         {
@@ -172,7 +172,7 @@ public sealed class TuiDashboardTests
     /// Verifies that the install queues dashboard action runs the package command from the keyboard.
     /// </summary>
     [TestMethod]
-    public async Task Dashboard_install_action_runs_package_command()
+    public async Task DashboardInstallActionRunsPackageCommand()
     {
         await VerifyQueueActionAsync(
                 tabCount: 1,
@@ -186,7 +186,7 @@ public sealed class TuiDashboardTests
     /// Verifies that the remove queues dashboard action runs the package command from the keyboard.
     /// </summary>
     [TestMethod]
-    public async Task Dashboard_remove_action_runs_package_command()
+    public async Task DashboardRemoveActionRunsPackageCommand()
     {
         await VerifyQueueActionAsync(
                 tabCount: 2,
@@ -267,7 +267,7 @@ public sealed class TuiDashboardTests
             .ApplyAsync(terminal, cancellation.Token)
             .ConfigureAwait(false);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync().ConfigureAwait(false);
 
         try
         {

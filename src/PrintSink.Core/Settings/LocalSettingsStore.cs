@@ -42,10 +42,14 @@ public sealed class LocalSettingsStore : ISettingsStore
             return WatermarkOptions.Disabled;
         }
 
-        await using FileStream input = File.OpenRead(path);
-        WatermarkOptions? options = await JsonSerializer
-            .DeserializeAsync<WatermarkOptions>(input, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream input = File.OpenRead(path);
+        WatermarkOptions? options;
+        await using (input.ConfigureAwait(false))
+        {
+            options = await JsonSerializer
+                .DeserializeAsync<WatermarkOptions>(input, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return options ?? WatermarkOptions.Disabled;
     }
@@ -62,10 +66,13 @@ public sealed class LocalSettingsStore : ISettingsStore
         Directory.CreateDirectory(rootDirectory);
 
         string path = GetWatermarkPath(rootDirectory, printerUri);
-        await using FileStream output = File.Create(path);
-        await JsonSerializer
-            .SerializeAsync(output, options, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream output = File.Create(path);
+        await using (output.ConfigureAwait(false))
+        {
+            await JsonSerializer
+                .SerializeAsync(output, options, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -77,10 +84,14 @@ public sealed class LocalSettingsStore : ISettingsStore
             return JobUiOptions.Default;
         }
 
-        await using FileStream input = File.OpenRead(path);
-        JobUiOptions? options = await JsonSerializer
-            .DeserializeAsync<JobUiOptions>(input, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream input = File.OpenRead(path);
+        JobUiOptions? options;
+        await using (input.ConfigureAwait(false))
+        {
+            options = await JsonSerializer
+                .DeserializeAsync<JobUiOptions>(input, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return options ?? JobUiOptions.Default;
     }
@@ -95,10 +106,13 @@ public sealed class LocalSettingsStore : ISettingsStore
         Directory.CreateDirectory(rootDirectory);
 
         string path = GetJobUiOptionsPath(rootDirectory);
-        await using FileStream output = File.Create(path);
-        await JsonSerializer
-            .SerializeAsync(output, options, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream output = File.Create(path);
+        await using (output.ConfigureAwait(false))
+        {
+            await JsonSerializer
+                .SerializeAsync(output, options, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -111,10 +125,13 @@ public sealed class LocalSettingsStore : ISettingsStore
         Directory.CreateDirectory(rootDirectory);
 
         string path = GetJobProcessingOptionsPath(rootDirectory);
-        await using FileStream output = File.Create(path);
-        await JsonSerializer
-            .SerializeAsync(output, options, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream output = File.Create(path);
+        await using (output.ConfigureAwait(false))
+        {
+            await JsonSerializer
+                .SerializeAsync(output, options, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -130,7 +147,8 @@ public sealed class LocalSettingsStore : ISettingsStore
         try
         {
             JobProcessingOptions? options;
-            await using (FileStream input = File.OpenRead(path))
+            FileStream input = File.OpenRead(path);
+            await using (input.ConfigureAwait(false))
             {
                 options = await JsonSerializer
                     .DeserializeAsync<JobProcessingOptions>(input, SerializerOptions, cancellationToken)

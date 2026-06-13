@@ -9,7 +9,7 @@ namespace PrintSink.Xps.Tests;
 /// Tests the native XPS watermarker through its C# projection.
 /// </summary>
 [TestClass]
-public sealed class NativeXpsPageWatermarkerTests
+internal sealed class NativeXpsPageWatermarkerTests
 {
     private const string WatermarkText = "PrintSink Test";
 
@@ -17,7 +17,7 @@ public sealed class NativeXpsPageWatermarkerTests
     /// Verifies that text watermarking produces a readable XPS package.
     /// </summary>
     [TestMethod]
-    public async Task ApplyAsync_writes_text_watermarked_xps_package()
+    public async Task ApplyAsyncWritesTextWatermarkedXpsPackage()
     {
         NativeXpsPageWatermarker watermarker = new();
         watermarker.ApplyText(new TextWatermark(WatermarkText, "Segoe UI", 48, 0.35, -30, 0, 0));
@@ -35,7 +35,7 @@ public sealed class NativeXpsPageWatermarkerTests
     /// Verifies that image watermarking embeds an image resource in the generated XPS package.
     /// </summary>
     [TestMethod]
-    public async Task ApplyAsync_writes_image_watermarked_xps_package()
+    public async Task ApplyAsyncWritesImageWatermarkedXpsPackage()
     {
         string imagePath = Path.Combine(TestContext.TestRunResultsDirectory!, "printsink-watermark.png");
         await File.WriteAllBytesAsync(imagePath, CreatePngBytes(), TestContext.CancellationToken).ConfigureAwait(false);
@@ -55,7 +55,7 @@ public sealed class NativeXpsPageWatermarkerTests
     /// Verifies that malformed XPS input reports a native package failure.
     /// </summary>
     [TestMethod]
-    public async Task ApplyAsync_throws_for_corrupt_xps_package()
+    public async Task ApplyAsyncThrowsForCorruptXpsPackage()
     {
         NativeXpsPageWatermarker watermarker = new();
         watermarker.ApplyText(new TextWatermark(WatermarkText, "Segoe UI", 48, 0.35, -30, 0, 0));
@@ -66,7 +66,11 @@ public sealed class NativeXpsPageWatermarkerTests
         {
             await watermarker.ApplyAsync(source, TestContext.CancellationToken).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+        catch (System.Runtime.InteropServices.COMException)
         {
             return;
         }

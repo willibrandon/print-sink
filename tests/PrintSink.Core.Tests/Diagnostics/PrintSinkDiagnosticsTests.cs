@@ -13,13 +13,13 @@ namespace PrintSink.Core.Tests.Diagnostics;
 /// Tests the PrintSink diagnostics event source.
 /// </summary>
 [TestClass]
-public sealed class PrintSinkDiagnosticsTests
+internal sealed class PrintSinkDiagnosticsTests
 {
     /// <summary>
     /// Verifies the provider name used for ETW/EventSource listeners.
     /// </summary>
     [TestMethod]
-    public void Log_uses_expected_provider_name()
+    public void LogUsesExpectedProviderName()
     {
         Assert.AreEqual("PrintSink-Diagnostics", PrintSinkDiagnostics.Log.Name);
     }
@@ -28,7 +28,7 @@ public sealed class PrintSinkDiagnosticsTests
     /// Verifies successful conversion jobs emit routing, conversion, and completion events.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_emits_success_events()
+    public async Task ProcessAsyncEmitsSuccessEvents()
     {
         using CollectingEventListener listener = new();
         listener.EnableEvents(PrintSinkDiagnostics.Log, EventLevel.LogAlways);
@@ -53,7 +53,7 @@ public sealed class PrintSinkDiagnosticsTests
     /// Verifies rejected jobs emit a rejection event.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_emits_rejection_event()
+    public async Task ProcessAsyncEmitsRejectionEvent()
     {
         using CollectingEventListener listener = new();
         listener.EnableEvents(PrintSinkDiagnostics.Log, EventLevel.LogAlways);
@@ -76,7 +76,7 @@ public sealed class PrintSinkDiagnosticsTests
     /// Verifies failed sink writes emit a failure event.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_emits_failure_event()
+    public async Task ProcessAsyncEmitsFailureEvent()
     {
         using CollectingEventListener listener = new();
         listener.EnableEvents(PrintSinkDiagnostics.Log, EventLevel.LogAlways);

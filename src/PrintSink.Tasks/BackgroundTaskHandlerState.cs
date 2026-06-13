@@ -47,7 +47,7 @@ internal sealed class BackgroundTaskHandlerState
             action();
             return true;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (BackgroundTaskExceptionPolicy.IsRecoverable(exception))
         {
             onException?.Invoke(exception);
             // In-process print background tasks must not let IPC teardown or handler

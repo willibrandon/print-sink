@@ -43,10 +43,26 @@ internal sealed class TuiDashboardModel
         CancellationToken cancellationToken)
     {
         string diagnosticsRootDirectory = ResolveDiagnosticsRootDirectory(workingDirectory);
+        using LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticsRootDirectory);
         return await LoadAsync(
                 workingDirectory,
-                new LocalDiagnosticEventStore(diagnosticsRootDirectory),
+                diagnosticEventStore,
                 InstalledPrinterReader.Read,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<TuiDashboardModel> LoadAsync(
+        string workingDirectory,
+        Func<PrinterQueueSnapshot> readInstalledQueues,
+        CancellationToken cancellationToken)
+    {
+        string diagnosticsRootDirectory = ResolveDiagnosticsRootDirectory(workingDirectory);
+        using LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticsRootDirectory);
+        return await LoadAsync(
+                workingDirectory,
+                diagnosticEventStore,
+                readInstalledQueues,
                 cancellationToken)
             .ConfigureAwait(false);
     }

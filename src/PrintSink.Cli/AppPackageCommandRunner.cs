@@ -38,41 +38,41 @@ internal static class AppPackageCommandRunner
             string standardOutput = await outputTask.ConfigureAwait(false);
             string standardError = await errorTask.ConfigureAwait(false);
 
-            WriteIfNotEmpty(output, standardOutput);
-            WriteIfNotEmpty(error, standardError);
+            await WriteIfNotEmptyAsync(output, standardOutput).ConfigureAwait(false);
+            await WriteIfNotEmptyAsync(error, standardError).ConfigureAwait(false);
             if (process.ExitCode != CliExitCodes.Success)
             {
-                WriteHeadlessLog(error);
+                await WriteHeadlessLogAsync(error, cancellationToken).ConfigureAwait(false);
             }
 
             return process.ExitCode;
         }
         catch (Win32Exception ex)
         {
-            error.WriteLine($"Unable to start {AppExecutionAlias}: {ex.Message}");
-            WritePackageInstallHint(error);
+            await error.WriteLineAsync($"Unable to start {AppExecutionAlias}: {ex.Message}").ConfigureAwait(false);
+            await WritePackageInstallHintAsync(error).ConfigureAwait(false);
             return CliExitCodes.ValidationFailed;
         }
     }
 
-    private static void WritePackageInstallHint(TextWriter error)
+    private static async Task WritePackageInstallHintAsync(TextWriter error)
     {
         string? packagePath = FindLatestMsixPackage();
         if (packagePath is null)
         {
-            error.WriteLine("Build a signed MSIX package for PrintSink.App, install it with Add-AppxPackage, then retry.");
+            await error.WriteLineAsync("Build a signed MSIX package for PrintSink.App, install it with Add-AppxPackage, then retry.").ConfigureAwait(false);
             return;
         }
 
         string certificatePath = Path.ChangeExtension(packagePath, ".cer");
         if (File.Exists(certificatePath))
         {
-            error.WriteLine("Trust the test certificate if this is the first local install:");
-            error.WriteLine($"  Import-Certificate -FilePath \"{certificatePath}\" -CertStoreLocation Cert:\\CurrentUser\\TrustedPeople");
+            await error.WriteLineAsync("Trust the test certificate if this is the first local install:").ConfigureAwait(false);
+            await error.WriteLineAsync($"  Import-Certificate -FilePath \"{certificatePath}\" -CertStoreLocation Cert:\\CurrentUser\\TrustedPeople").ConfigureAwait(false);
         }
 
-        error.WriteLine("Install the signed MSIX package, then retry:");
-        error.WriteLine($"  Add-AppxPackage -Path \"{packagePath}\" -ForceApplicationShutdown -ForceUpdateFromAnyVersion");
+        await error.WriteLineAsync("Install the signed MSIX package, then retry:").ConfigureAwait(false);
+        await error.WriteLineAsync($"  Add-AppxPackage -Path \"{packagePath}\" -ForceApplicationShutdown -ForceUpdateFromAnyVersion").ConfigureAwait(false);
     }
 
     private static string? FindLatestMsixPackage()
@@ -109,23 +109,23 @@ internal static class AppPackageCommandRunner
         return null;
     }
 
-    private static void WriteIfNotEmpty(TextWriter writer, string text)
+    private static async Task WriteIfNotEmptyAsync(TextWriter writer, string text)
     {
         if (!string.IsNullOrWhiteSpace(text))
         {
-            writer.Write(text);
+            await writer.WriteAsync(text).ConfigureAwait(false);
         }
     }
 
-    private static void WriteHeadlessLog(TextWriter error)
+    private static async Task WriteHeadlessLogAsync(TextWriter error, CancellationToken cancellationToken)
     {
         if (!File.Exists(HeadlessLogPath))
         {
-            error.WriteLine($"No headless diagnostic log was written at {HeadlessLogPath}.");
+            await error.WriteLineAsync($"No headless diagnostic log was written at {HeadlessLogPath}.").ConfigureAwait(false);
             return;
         }
 
-        error.WriteLine($"Headless diagnostic log ({HeadlessLogPath}):");
-        error.Write(File.ReadAllText(HeadlessLogPath));
+        await error.WriteLineAsync($"Headless diagnostic log ({HeadlessLogPath}):").ConfigureAwait(false);
+        await error.WriteAsync(await File.ReadAllTextAsync(HeadlessLogPath, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
     }
 }

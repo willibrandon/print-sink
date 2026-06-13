@@ -8,13 +8,13 @@ namespace PrintSink.Architecture.Tests;
 /// Tests authored XML documentation coverage.
 /// </summary>
 [TestClass]
-public sealed class XmlDocumentationTests
+internal sealed class XmlDocumentationTests
 {
     /// <summary>
     /// Verifies public authored API is documented, including public members on internal types.
     /// </summary>
     [TestMethod]
-    public void Public_authored_api_has_xml_documentation()
+    public void PublicAuthoredApiHasXmlDocumentation()
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string[] sourceFiles = SourceFileDiscovery.EnumerateRepositorySourceFiles(repositoryRoot);

@@ -7,7 +7,7 @@ namespace PrintSink.Core.Tests.Pdl;
 /// Tests PDL routing decisions.
 /// </summary>
 [TestClass]
-public sealed class PdlRouterTests
+internal sealed class PdlRouterTests
 {
     private readonly PdlRouter router = new();
 
@@ -25,7 +25,7 @@ public sealed class PdlRouterTests
     [DataRow("application/oxps", EndpointKind.Pclm, PdlActionKind.Convert, PdlConversionKind.XpsToPclm)]
     [DataRow("application/pdf", EndpointKind.Xps, PdlActionKind.Reject, null)]
     [DataRow("application/octet-stream", EndpointKind.Pdf, PdlActionKind.Reject, null)]
-    public void Resolve_returns_expected_plan(
+    public void ResolveReturnsExpectedPlan(
         string contentType,
         EndpointKind endpointKind,
         PdlActionKind expectedAction,
@@ -44,7 +44,7 @@ public sealed class PdlRouterTests
     /// Verifies that unknown content types preserve a null source format.
     /// </summary>
     [TestMethod]
-    public void Resolve_rejects_unknown_content_type_without_source_format()
+    public void ResolveRejectsUnknownContentTypeWithoutSourceFormat()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
 

@@ -3,6 +3,7 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Watermark;
+using System.Globalization;
 using Windows.Graphics.Printing.PrintSupport;
 using Windows.Storage;
 using static Microsoft.UI.Reactor.Factories;
@@ -25,7 +26,7 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
         IReadOnlyList<VirtualEndpoint> endpoints = EndpointCatalog.All;
         PrintSupportSettingsActivatedEventArgs? settingsArgs = Props.SettingsArgs;
         string launchKind = settingsArgs?.Session.LaunchKind.ToString() ?? "Unavailable";
-        string ownerWindowId = settingsArgs?.OwnerWindowId.Value.ToString() ?? "Unavailable";
+        string ownerWindowId = settingsArgs?.OwnerWindowId.Value.ToString(CultureInfo.InvariantCulture) ?? "Unavailable";
         var (selectedIndex, setSelectedIndex) = UseState(0);
         var (textEnabled, setTextEnabled) = UseState(false);
         var (text, setText) = UseState("Confidential");
@@ -275,7 +276,7 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
                 setStatus($"Loaded settings for {endpoint.QueueName}.");
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatus($"Load failed: {ex.Message}"));
         }
@@ -346,14 +347,14 @@ internal sealed class SettingsScreen : Component<AppActivationRoute>
             {
                 refreshStatus = InstalledVirtualPrinterReader.RefreshCapabilities(endpoint.Kind);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
             {
                 refreshStatus = $"Capability refresh failed: {ex.Message}";
             }
 
             UiDispatch.Post(() => setStatus($"Saved settings for {endpoint.QueueName}. {refreshStatus}"));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatus($"Save failed: {ex.Message}"));
         }

@@ -8,13 +8,13 @@ namespace PrintSink.Core.Tests.Settings;
 /// Tests IPP job password option handling.
 /// </summary>
 [TestClass]
-public sealed class JobPasswordOptionsTests
+internal sealed class JobPasswordOptionsTests
 {
     /// <summary>
     /// Verifies SHA-256 password options store the expected digest bytes.
     /// </summary>
     [TestMethod]
-    public void FromPassword_hashes_sha2_256_password()
+    public void FromPasswordHashesSha2256Password()
     {
         JobPasswordOptions options = JobPasswordOptions.FromPassword("secret", "sha2-256");
         byte[] expected = SHA256.HashData(Encoding.UTF8.GetBytes("secret"));
@@ -27,7 +27,7 @@ public sealed class JobPasswordOptionsTests
     /// Verifies the none encryption method stores UTF-8 password bytes.
     /// </summary>
     [TestMethod]
-    public void FromPassword_keeps_utf8_bytes_for_none()
+    public void FromPasswordKeepsUtf8BytesForNone()
     {
         JobPasswordOptions options = JobPasswordOptions.FromPassword("secret", "none");
 
@@ -39,7 +39,7 @@ public sealed class JobPasswordOptionsTests
     /// Verifies unsupported encryption keywords are rejected.
     /// </summary>
     [TestMethod]
-    public void Constructor_rejects_unknown_encryption_method()
+    public void ConstructorRejectsUnknownEncryptionMethod()
     {
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new JobPasswordOptions(Convert.ToBase64String([1, 2, 3]), "md5"));
     }

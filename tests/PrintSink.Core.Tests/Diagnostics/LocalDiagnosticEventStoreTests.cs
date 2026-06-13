@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Diagnostics;
 /// Tests local diagnostic event persistence.
 /// </summary>
 [TestClass]
-public sealed class LocalDiagnosticEventStoreTests
+internal sealed class LocalDiagnosticEventStoreTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
@@ -17,10 +17,10 @@ public sealed class LocalDiagnosticEventStoreTests
     /// Verifies missing diagnostic storage returns no events.
     /// </summary>
     [TestMethod]
-    public async Task ReadRecentAsync_returns_empty_when_missing()
+    public async Task ReadRecentAsyncReturnsEmptyWhenMissing()
     {
         string directory = CreateTestDirectory();
-        LocalDiagnosticEventStore store = new(directory);
+        using LocalDiagnosticEventStore store = new(directory);
 
         try
         {
@@ -40,10 +40,10 @@ public sealed class LocalDiagnosticEventStoreTests
     /// Verifies recent diagnostics are returned newest first.
     /// </summary>
     [TestMethod]
-    public async Task ReadRecentAsync_returns_newest_events_first()
+    public async Task ReadRecentAsyncReturnsNewestEventsFirst()
     {
         string directory = CreateTestDirectory();
-        LocalDiagnosticEventStore store = new(directory);
+        using LocalDiagnosticEventStore store = new(directory);
 
         try
         {
@@ -72,10 +72,10 @@ public sealed class LocalDiagnosticEventStoreTests
     /// Verifies the local store trims older diagnostics.
     /// </summary>
     [TestMethod]
-    public async Task AppendAsync_trims_old_events()
+    public async Task AppendAsyncTrimsOldEvents()
     {
         string directory = CreateTestDirectory();
-        LocalDiagnosticEventStore store = new(directory, 2);
+        using LocalDiagnosticEventStore store = new(directory, 2);
 
         try
         {
@@ -107,23 +107,25 @@ public sealed class LocalDiagnosticEventStoreTests
     /// Verifies concurrent store instances preserve all appended diagnostics.
     /// </summary>
     [TestMethod]
-    public async Task AppendAsync_preserves_events_from_concurrent_store_instances()
+    public async Task AppendAsyncPreservesEventsFromConcurrentStoreInstances()
     {
         string directory = CreateTestDirectory();
         const int EventCount = 32;
 
         try
         {
-            Task[] appendTasks = [.. Enumerable.Range(0, EventCount).Select(index =>
+            Task[] appendTasks = [.. Enumerable.Range(0, EventCount).Select(async index =>
             {
-                LocalDiagnosticEventStore store = new(directory, EventCount);
-                return store.AppendAsync(
-                    CreateRecord($"Event {index}", DateTimeOffset.UtcNow.AddSeconds(index)),
-                    TestContext.CancellationToken);
+                using LocalDiagnosticEventStore store = new(directory, EventCount);
+                await store
+                    .AppendAsync(
+                        CreateRecord($"Event {index}", DateTimeOffset.UtcNow.AddSeconds(index)),
+                        TestContext.CancellationToken)
+                    .ConfigureAwait(false);
             })];
             await Task.WhenAll(appendTasks).ConfigureAwait(false);
 
-            LocalDiagnosticEventStore reader = new(directory, EventCount);
+            using LocalDiagnosticEventStore reader = new(directory, EventCount);
             IReadOnlyList<DiagnosticEventRecord> records = await reader
                 .ReadRecentAsync(EventCount, TestContext.CancellationToken)
                 .ConfigureAwait(false);

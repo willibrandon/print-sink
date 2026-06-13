@@ -68,12 +68,15 @@ internal static partial class SettingsWindowOwner
         return result;
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static partial nint SetWindowLongPtr(nint windowHandle, int index, nint newLong);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("user32.dll", SetLastError = true)]
     private static partial nint GetAncestor(nint windowHandle, uint flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool EnableWindow(nint windowHandle, [MarshalAs(UnmanagedType.Bool)] bool enable);

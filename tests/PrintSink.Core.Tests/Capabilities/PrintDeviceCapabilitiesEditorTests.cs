@@ -7,11 +7,17 @@ namespace PrintSink.Core.Tests.Capabilities;
 /// Tests Print Device Capabilities editing.
 /// </summary>
 [TestClass]
-public sealed class PrintDeviceCapabilitiesEditorTests
+internal sealed class PrintDeviceCapabilitiesEditorTests
 {
     private static readonly XNamespace Psf2 = PrintSchemaNamespaces.Framework2;
     private static readonly XNamespace Psk = PrintSchemaNamespaces.Keywords;
     private static readonly XNamespace PrintSink = "https://schemas.printsink.dev/printing/keywords";
+    private static readonly string[] MediaSizePropertyOrder =
+    [
+        "PortraitImageableSize",
+        "MediaSizeHeight",
+        "MediaSizeWidth",
+    ];
 
     private readonly PrintDeviceCapabilitiesEditor editor = new();
 
@@ -19,7 +25,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies that a custom option is appended without replacing existing options.
     /// </summary>
     [TestMethod]
-    public void Apply_adds_custom_option_to_existing_feature()
+    public void ApplyAddsCustomOptionToExistingFeature()
     {
         XDocument document = CreateMinimalPdc();
         CustomFeature feature = new(
@@ -39,7 +45,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies that applying the same feature twice does not duplicate options.
     /// </summary>
     [TestMethod]
-    public void Apply_is_idempotent_for_existing_options()
+    public void ApplyIsIdempotentForExistingOptions()
     {
         XDocument document = CreateMinimalPdc();
         CustomFeature feature = new(
@@ -63,7 +69,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies that a custom default option clears the previous default option.
     /// </summary>
     [TestMethod]
-    public void Apply_moves_default_to_custom_option()
+    public void ApplyMovesDefaultToCustomOption()
     {
         XDocument document = CreateMinimalPdc();
         CustomFeature feature = new(
@@ -85,7 +91,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies that media-size options carry Print Schema scored properties.
     /// </summary>
     [TestMethod]
-    public void Apply_adds_media_size_scored_properties()
+    public void ApplyAddsMediaSizeScoredProperties()
     {
         XDocument document = CreateMinimalPdc();
         CustomFeature feature = new(
@@ -111,7 +117,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
         Assert.AreEqual("200000", option.Element(Psk + "MediaSizeHeight")?.Value);
         Assert.AreEqual("0,0,80000,200000", option.Element(XNamespace.Get(PrintSchemaNamespaces.Keywords12) + "PortraitImageableSize")?.Value);
         CollectionAssert.AreEqual(
-            new[] { "PortraitImageableSize", "MediaSizeHeight", "MediaSizeWidth" },
+            MediaSizePropertyOrder,
             option.Elements().Select(static element => element.Name.LocalName).ToArray());
     }
 
@@ -119,7 +125,7 @@ public sealed class PrintDeviceCapabilitiesEditorTests
     /// Verifies that the shared PrintSink feature set injects the custom capabilities used by the package.
     /// </summary>
     [TestMethod]
-    public void Apply_adds_built_in_printsink_features()
+    public void ApplyAddsBuiltInPrintsinkFeatures()
     {
         XDocument document = CreateMinimalPdc();
 

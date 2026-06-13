@@ -60,9 +60,11 @@ internal sealed class IppPrinterServer
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            File.AppendAllText(
-                options.ErrorLogPath,
-                DateTimeOffset.UtcNow.ToString("O") + Environment.NewLine + ex + Environment.NewLine);
+            await File.AppendAllTextAsync(
+                    options.ErrorLogPath,
+                    DateTimeOffset.UtcNow.ToString("O") + Environment.NewLine + ex + Environment.NewLine,
+                    cancellationToken)
+                .ConfigureAwait(false);
             throw;
         }
     }
@@ -141,7 +143,7 @@ internal sealed class IppPrinterServer
         };
     }
 
-    private ValidateJobResponse CreateValidateJobResponse(ValidateJobRequest request)
+    private static ValidateJobResponse CreateValidateJobResponse(ValidateJobRequest request)
     {
         return new ValidateJobResponse
         {
@@ -279,7 +281,7 @@ internal sealed class IppPrinterServer
         };
     }
 
-    private static IIppResponse CreateUnsupportedResponse(IIppRequest request)
+    private static ValidateJobResponse CreateUnsupportedResponse(IIppRequest request)
     {
         return new ValidateJobResponse
         {
@@ -324,7 +326,8 @@ internal sealed class IppPrinterServer
             : documentFormat;
         string extension = GetExtension(normalizedFormat);
         string documentPath = Path.Combine(options.OutputDirectory, $"job-{job.Id}{extension}");
-        await using (FileStream output = File.Create(documentPath))
+        FileStream output = File.Create(documentPath);
+        await using (output.ConfigureAwait(false))
         {
             if (document.CanSeek)
             {
@@ -438,7 +441,7 @@ internal sealed class IppPrinterServer
             .Order(StringComparer.OrdinalIgnoreCase)];
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<string>> AttributeValues(IEnumerable<IppAttribute> attributes)
+    private static Dictionary<string, IReadOnlyList<string>> AttributeValues(IEnumerable<IppAttribute> attributes)
     {
         Dictionary<string, List<string>> values = new(StringComparer.OrdinalIgnoreCase);
         foreach (IppAttribute attribute in attributes)
@@ -588,7 +591,7 @@ internal sealed class IppPrinterServer
         AddMissingResolutionAttributes(attributes, "printer-resolution-supported");
     }
 
-    private string GetPrinterDeviceId()
+    private static string GetPrinterDeviceId()
     {
         return string.Concat(
             "MFG:PrintSink;",
@@ -696,14 +699,14 @@ internal sealed class IppPrinterServer
 
     private static string GetExtension(string documentFormat)
     {
-        return documentFormat.ToLowerInvariant() switch
+        return documentFormat.ToUpperInvariant() switch
         {
-            "application/pdf" => ".pdf",
-            "application/pclm" => ".pclm",
-            "image/pwg-raster" => ".pwg",
-            "application/oxps" => ".oxps",
-            "application/vnd.ms-xpsdocument" => ".xps",
-            "application/postscript" => ".ps",
+            "APPLICATION/PDF" => ".pdf",
+            "APPLICATION/PCLM" => ".pclm",
+            "IMAGE/PWG-RASTER" => ".pwg",
+            "APPLICATION/OXPS" => ".oxps",
+            "APPLICATION/VND.MS-XPSDOCUMENT" => ".xps",
+            "APPLICATION/POSTSCRIPT" => ".ps",
             _ => ".pdl",
         };
     }

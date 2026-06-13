@@ -35,7 +35,7 @@ internal static class InstalledVirtualPrinterReader
 
             return snapshots;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             return EndpointCatalog.All.ToDictionary(
                 endpoint => endpoint.Kind,
@@ -100,7 +100,7 @@ internal static class InstalledVirtualPrinterReader
                 printDevice.UserDefaultPrintTicket?.Name,
                 null);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             return new InstalledVirtualPrinterSnapshot(
                 endpoint.Kind,

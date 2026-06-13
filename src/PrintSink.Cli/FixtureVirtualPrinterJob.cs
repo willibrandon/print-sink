@@ -64,15 +64,17 @@ internal sealed class FixtureVirtualPrinterJob : IVirtualPrinterJob
     }
 
     /// <inheritdoc />
-    public ValueTask<Stream> OpenSourceAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<Stream> OpenSourceAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        Stream source = string.IsNullOrWhiteSpace(inputPath)
-            ? new MemoryStream(defaultSource)
-            : File.OpenRead(inputPath);
+        if (string.IsNullOrWhiteSpace(inputPath))
+        {
+            return new MemoryStream(defaultSource);
+        }
 
-        return ValueTask.FromResult(source);
+        byte[] source = await File.ReadAllBytesAsync(inputPath, cancellationToken).ConfigureAwait(false);
+        return new MemoryStream(source);
     }
 
     /// <inheritdoc />
@@ -107,14 +109,17 @@ internal sealed class FixtureVirtualPrinterJob : IVirtualPrinterJob
     }
 
     /// <inheritdoc />
-    public Task CompleteAsync(VirtualPrinterJobStatus status, CancellationToken cancellationToken = default)
+    public async Task CompleteAsync(VirtualPrinterJobStatus status, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         CompletedStatus = status;
-        targetStream?.Dispose();
+        Stream? stream = targetStream;
         targetStream = null;
-        return Task.CompletedTask;
+        if (stream is not null)
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <summary>

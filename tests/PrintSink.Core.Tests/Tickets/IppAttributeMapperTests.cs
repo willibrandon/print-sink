@@ -7,7 +7,7 @@ namespace PrintSink.Core.Tests.Tickets;
 /// Tests print-ticket to IPP attribute mapping.
 /// </summary>
 [TestClass]
-public sealed class IppAttributeMapperTests
+internal sealed class IppAttributeMapperTests
 {
     private readonly IppAttributeMapper mapper = new();
 
@@ -15,7 +15,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies that common print-ticket features map to IPP job attributes.
     /// </summary>
     [TestMethod]
-    public void FromPrintTicket_maps_common_features()
+    public void FromPrintTicketMapsCommonFeatures()
     {
         XDocument printTicket = CreatePrintTicket();
 
@@ -35,7 +35,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies that common print-ticket parameters map to IPP job attributes.
     /// </summary>
     [TestMethod]
-    public void FromPrintTicket_maps_parameters()
+    public void FromPrintTicketMapsParameters()
     {
         XDocument printTicket = CreatePrintTicket();
 
@@ -49,7 +49,7 @@ public sealed class IppAttributeMapperTests
     /// Verifies that merge policy removals return a filtered attribute map.
     /// </summary>
     [TestMethod]
-    public void ApplyMergePolicy_removes_configured_attributes()
+    public void ApplyMergePolicyRemovesConfiguredAttributes()
     {
         XDocument printTicket = CreatePrintTicket();
         IReadOnlyDictionary<string, IppAttributeValue> attributes = mapper.FromPrintTicket(printTicket);
@@ -66,17 +66,17 @@ public sealed class IppAttributeMapperTests
     /// Verifies that the default physical-workflow policy removes media-size from media-col collections.
     /// </summary>
     [TestMethod]
-    public void ApplyMergePolicy_removes_pdl_embedded_media_size()
+    public void ApplyMergePolicyRemovesPdlEmbeddedMediaSize()
     {
         Dictionary<string, IppAttributeValue> mediaCol = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["media-size"] = IppAttributeValue.Single("media-size", "na_letter_8.5x11in"),
-            ["media-type"] = IppAttributeValue.Single("media-type", "stationery"),
+            ["media-size"] = IppAttributeValue.Create("media-size", "na_letter_8.5x11in"),
+            ["media-type"] = IppAttributeValue.Create("media-type", "stationery"),
         };
         Dictionary<string, IppAttributeValue> attributes = new(StringComparer.OrdinalIgnoreCase)
         {
             ["media-col"] = IppAttributeValue.Collection("media-col", mediaCol),
-            ["sides"] = IppAttributeValue.Single("sides", "one-sided"),
+            ["sides"] = IppAttributeValue.Create("sides", "one-sided"),
         };
 
         IReadOnlyDictionary<string, IppAttributeValue> result = mapper.ApplyMergePolicy(

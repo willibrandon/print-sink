@@ -135,7 +135,7 @@ public sealed class PrintDeviceCapabilitiesEditor : IPrintDeviceCapabilitiesEdit
 
     private static void EnsureNamespaceDeclaration(XElement root, PrintSchemaQualifiedName name)
     {
-        EnsureNamespaceDeclaration(root, name.Prefix, name.NamespaceUri);
+        EnsureNamespaceDeclaration(root, name.Prefix, name.NamespaceUri.AbsoluteUri);
     }
 
     private static void EnsureNamespaceDeclaration(XElement root, string prefix, string namespaceUri)

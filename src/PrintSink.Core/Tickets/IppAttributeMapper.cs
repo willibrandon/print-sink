@@ -16,10 +16,10 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         featureMappings = new Dictionary<string, Func<string, IppAttributeValue?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["PageMediaSize"] = option => IppAttributeValue.Single("media", NormalizeKeyword(option)),
-            ["PageMediaType"] = option => IppAttributeValue.Single("media-type", NormalizeKeyword(option)),
-            ["JobInputBin"] = option => IppAttributeValue.Single("media-source", NormalizeKeyword(option)),
-            ["JobOutputBin"] = option => IppAttributeValue.Single("output-bin", NormalizeKeyword(option)),
+            ["PageMediaSize"] = option => IppAttributeValue.Create("media", NormalizeKeyword(option)),
+            ["PageMediaType"] = option => IppAttributeValue.Create("media-type", NormalizeKeyword(option)),
+            ["JobInputBin"] = option => IppAttributeValue.Create("media-source", NormalizeKeyword(option)),
+            ["JobOutputBin"] = option => IppAttributeValue.Create("output-bin", NormalizeKeyword(option)),
             ["JobDuplexAllDocumentsContiguously"] = MapDuplex,
             ["JobPageOrder"] = MapPageOrder,
             ["JobStapleAllDocuments"] = MapStaple,
@@ -102,10 +102,10 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
         switch (parameterName)
         {
             case "JobCopiesAllDocuments":
-                attributes["copies"] = IppAttributeValue.Single("copies", value);
+                attributes["copies"] = IppAttributeValue.Create("copies", value);
                 break;
             case "JobNUpAllDocumentsContiguously":
-                attributes["number-up"] = IppAttributeValue.Single("number-up", value);
+                attributes["number-up"] = IppAttributeValue.Create("number-up", value);
                 break;
         }
     }
@@ -132,9 +132,9 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "Color" => IppAttributeValue.Single("print-color-mode", "color"),
-            "Monochrome" or "Grayscale" => IppAttributeValue.Single("print-color-mode", "monochrome"),
-            _ => IppAttributeValue.Single("print-color-mode", NormalizeKeyword(option)),
+            "Color" => IppAttributeValue.Create("print-color-mode", "color"),
+            "Monochrome" or "Grayscale" => IppAttributeValue.Create("print-color-mode", "monochrome"),
+            _ => IppAttributeValue.Create("print-color-mode", NormalizeKeyword(option)),
         };
     }
 
@@ -142,9 +142,9 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "OneSided" => IppAttributeValue.Single("sides", "one-sided"),
-            "TwoSidedLongEdge" => IppAttributeValue.Single("sides", "two-sided-long-edge"),
-            "TwoSidedShortEdge" => IppAttributeValue.Single("sides", "two-sided-short-edge"),
+            "OneSided" => IppAttributeValue.Create("sides", "one-sided"),
+            "TwoSidedLongEdge" => IppAttributeValue.Create("sides", "two-sided-long-edge"),
+            "TwoSidedShortEdge" => IppAttributeValue.Create("sides", "two-sided-short-edge"),
             _ => null,
         };
     }
@@ -153,10 +153,10 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "Portrait" => IppAttributeValue.Single("orientation-requested", "3"),
-            "Landscape" => IppAttributeValue.Single("orientation-requested", "4"),
-            "ReverseLandscape" => IppAttributeValue.Single("orientation-requested", "5"),
-            "ReversePortrait" => IppAttributeValue.Single("orientation-requested", "6"),
+            "Portrait" => IppAttributeValue.Create("orientation-requested", "3"),
+            "Landscape" => IppAttributeValue.Create("orientation-requested", "4"),
+            "ReverseLandscape" => IppAttributeValue.Create("orientation-requested", "5"),
+            "ReversePortrait" => IppAttributeValue.Create("orientation-requested", "6"),
             _ => null,
         };
     }
@@ -165,9 +165,9 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "Standard" or "SameOrder" => IppAttributeValue.Single("page-delivery", "same-order"),
-            "Reverse" or "ReverseOrder" => IppAttributeValue.Single("page-delivery", "reverse-order"),
-            _ => IppAttributeValue.Single("page-delivery", NormalizeKeyword(option)),
+            "Standard" or "SameOrder" => IppAttributeValue.Create("page-delivery", "same-order"),
+            "Reverse" or "ReverseOrder" => IppAttributeValue.Create("page-delivery", "reverse-order"),
+            _ => IppAttributeValue.Create("page-delivery", NormalizeKeyword(option)),
         };
     }
 
@@ -175,9 +175,9 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "Draft" => IppAttributeValue.Single("print-quality", "3"),
-            "Normal" => IppAttributeValue.Single("print-quality", "4"),
-            "High" or "Photo" => IppAttributeValue.Single("print-quality", "5"),
+            "Draft" => IppAttributeValue.Create("print-quality", "3"),
+            "Normal" => IppAttributeValue.Create("print-quality", "4"),
+            "High" or "Photo" => IppAttributeValue.Create("print-quality", "5"),
             _ => null,
         };
     }
@@ -186,12 +186,12 @@ public sealed class IppAttributeMapper : IIppAttributeMapper
     {
         return option switch
         {
-            "None" or "Off" => IppAttributeValue.Single("finishings", "3"),
-            "Staple" => IppAttributeValue.Single("finishings", "4"),
-            "StapleUpperLeft" or "StapleTopLeft" => IppAttributeValue.Single("finishings", "20"),
-            "StapleBottomLeft" => IppAttributeValue.Single("finishings", "21"),
-            "StapleTopRight" => IppAttributeValue.Single("finishings", "22"),
-            "StapleBottomRight" => IppAttributeValue.Single("finishings", "23"),
+            "None" or "Off" => IppAttributeValue.Create("finishings", "3"),
+            "Staple" => IppAttributeValue.Create("finishings", "4"),
+            "StapleUpperLeft" or "StapleTopLeft" => IppAttributeValue.Create("finishings", "20"),
+            "StapleBottomLeft" => IppAttributeValue.Create("finishings", "21"),
+            "StapleTopRight" => IppAttributeValue.Create("finishings", "22"),
+            "StapleBottomRight" => IppAttributeValue.Create("finishings", "23"),
             _ => null,
         };
     }

@@ -375,7 +375,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 Microsoft.UI.Xaml.Application.Current.Exit();
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatus($"Continue failed: {ex.Message}"));
         }
@@ -389,8 +389,8 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
     {
         try
         {
-            await AppSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+            await diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -401,7 +401,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                         $"User canceled from Job UI. Job: {jobTitle}; Source: {source}."))
                 .ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatus($"Cancel diagnostic failed: {ex.Message}"));
         }
@@ -430,8 +430,8 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
         try
         {
             string jobStatus = args.PrinterJob.GetJobStatus().ToString();
-            AppSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+            diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -443,7 +443,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                 .GetAwaiter()
                 .GetResult();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             // The Job UI still has to complete its deferral even if diagnostics cannot be written.
         }
@@ -457,8 +457,8 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
     {
         try
         {
-            await AppSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+            await diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -469,7 +469,7 @@ internal sealed class JobPreviewScreen : Component<AppActivationRoute>
                         $"kind={kind}; jobTitle={jobTitle}; source={sourceAppDisplayName}; contentType={contentType}"))
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             // Job UI interaction must keep running even if local diagnostics are temporarily locked.
         }

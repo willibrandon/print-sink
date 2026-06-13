@@ -71,18 +71,21 @@ internal sealed partial class NativeXpsActivationContext : IDisposable
         }
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("kernel32.dll", EntryPoint = "CreateActCtxW", SetLastError = true)]
     private static partial nint CreateActCtx(ref ActivationContext context);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ActivateActCtx(nint context, out nint cookie);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool DeactivateActCtx(uint flags, nint cookie);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("kernel32.dll")]
     private static partial void ReleaseActCtx(nint context);
-
 }

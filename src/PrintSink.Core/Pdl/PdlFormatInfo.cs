@@ -49,25 +49,25 @@ public static class PdlFormatInfo
 
         format = normalized switch
         {
-            OxpsContentType => PdlFormat.Oxps,
-            XpsContentType => PdlFormat.Xps,
-            PdfContentType => PdlFormat.Pdf,
-            PostScriptContentType or "application/ps" => PdlFormat.PostScript,
-            PwgRasterContentType or "application/pwg-raster" => PdlFormat.PwgRaster,
-            PclmContentType or "application/vnd.hp-pclm" => PdlFormat.Pclm,
+            "APPLICATION/OXPS" => PdlFormat.Oxps,
+            "APPLICATION/VND.MS-XPSDOCUMENT" => PdlFormat.Xps,
+            "APPLICATION/PDF" => PdlFormat.Pdf,
+            "APPLICATION/POSTSCRIPT" or "APPLICATION/PS" => PdlFormat.PostScript,
+            "IMAGE/PWG-RASTER" or "APPLICATION/PWG-RASTER" => PdlFormat.PwgRaster,
+            "APPLICATION/PCLM" or "APPLICATION/VND.HP-PCLM" => PdlFormat.Pclm,
             _ => default,
         };
 
         return normalized is
-            OxpsContentType or
-            XpsContentType or
-            PdfContentType or
-            PostScriptContentType or
-            "application/ps" or
-            PwgRasterContentType or
-            "application/pwg-raster" or
-            PclmContentType or
-            "application/vnd.hp-pclm";
+            "APPLICATION/OXPS" or
+            "APPLICATION/VND.MS-XPSDOCUMENT" or
+            "APPLICATION/PDF" or
+            "APPLICATION/POSTSCRIPT" or
+            "APPLICATION/PS" or
+            "IMAGE/PWG-RASTER" or
+            "APPLICATION/PWG-RASTER" or
+            "APPLICATION/PCLM" or
+            "APPLICATION/VND.HP-PCLM";
     }
 
     /// <summary>
@@ -113,6 +113,6 @@ public static class PdlFormatInfo
         int parameterStart = contentType.IndexOf(';', StringComparison.Ordinal);
         string mediaType = parameterStart >= 0 ? contentType[..parameterStart] : contentType;
 
-        return mediaType.Trim().ToLowerInvariant();
+        return mediaType.Trim().ToUpperInvariant();
     }
 }

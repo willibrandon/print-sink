@@ -57,7 +57,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 {
                     ProcessJobAsync(sender, args).GetAwaiter().GetResult();
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
                 {
                     AppendDiagnostic(
                         "Virtual printer job failed",
@@ -104,7 +104,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         }
 
         LocalSettingsStore settingsStore = PackagedSettingsStoreFactory.Create();
-        LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+        using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
         JobUiCompletionResult uiCompletion = await CompleteJobUiAsync(args, settingsStore, endpoint, diagnosticEventStore)
             .ConfigureAwait(false);
         if (!uiCompletion.ShouldProcess)
@@ -122,7 +122,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             settingsStore,
             jobProcessingOptions,
             diagnosticEventStore);
-        WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
+        using WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
         await processor.ProcessAsync(job).ConfigureAwait(false);
     }
 
@@ -130,7 +130,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
         LocalSettingsStore settingsStore,
         VirtualEndpoint endpoint,
-        IDiagnosticEventStore diagnosticEventStore)
+        LocalDiagnosticEventStore diagnosticEventStore)
     {
         JobUiOptions options = await settingsStore.GetJobUiOptionsAsync().ConfigureAwait(false);
         if (!options.LaunchJobUi)
@@ -189,7 +189,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket,
         LocalSettingsStore settingsStore,
         JobProcessingOptions? jobProcessingOptions,
-        IDiagnosticEventStore diagnosticEventStore)
+        LocalDiagnosticEventStore diagnosticEventStore)
     {
         EndpointSinkResolver sinkResolver = new(new Dictionary<EndpointKind, ISink>
         {
@@ -222,18 +222,22 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         string path = Path.Combine(
             directory,
             $"{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{GetSinkArtifactExtension(context.ContentType)}");
-        await using FileStream output = File.Create(path);
-        await pdl.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+        FileStream output = File.Create(path);
+        long bytes;
+        await using (output.ConfigureAwait(false))
+        {
+            await pdl.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            bytes = output.Length;
+        }
 
-        long bytes = output.Length;
         if (bytes == 0)
         {
             throw new InvalidOperationException("The cloud sink received an empty PDL stream.");
         }
 
-        await PackagedSettingsStoreFactory
-            .CreateDiagnosticEventStore()
+        using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+        await diagnosticEventStore
             .AppendAsync(
                 new DiagnosticEventRecord(
                     DateTimeOffset.UtcNow,
@@ -268,7 +272,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         {
             return session.Printer.PrinterName;
         }
-        catch (Exception)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             return string.Empty;
         }
@@ -278,8 +282,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
     {
         try
         {
-            PackagedSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+            diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -291,7 +295,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 .GetAwaiter()
                 .GetResult();
         }
-        catch (Exception)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             // Diagnostics must not make the virtual-printer contract fail.
         }

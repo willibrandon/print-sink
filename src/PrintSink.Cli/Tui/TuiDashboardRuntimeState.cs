@@ -56,7 +56,6 @@ internal sealed class TuiDashboardRuntimeState
         TuiDashboardModel model = await TuiDashboardModel
             .LoadAsync(
                 workingDirectory,
-                new LocalDiagnosticEventStore(TuiDashboardModel.ResolveDiagnosticsRootDirectory(workingDirectory)),
                 readInstalledQueues,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -104,7 +103,15 @@ internal sealed class TuiDashboardRuntimeState
         {
             Status = "Refresh canceled.";
         }
-        catch (Exception exception)
+        catch (IOException exception)
+        {
+            Status = $"Refresh failed: {exception.Message}";
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Status = $"Refresh failed: {exception.Message}";
+        }
+        catch (InvalidOperationException exception)
         {
             Status = $"Refresh failed: {exception.Message}";
         }
@@ -130,7 +137,15 @@ internal sealed class TuiDashboardRuntimeState
         {
             Status = "Queue command canceled.";
         }
-        catch (Exception exception)
+        catch (IOException exception)
+        {
+            Status = $"Queue command failed: {exception.Message}";
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Status = $"Queue command failed: {exception.Message}";
+        }
+        catch (InvalidOperationException exception)
         {
             Status = $"Queue command failed: {exception.Message}";
         }
@@ -158,7 +173,6 @@ internal sealed class TuiDashboardRuntimeState
     {
         return TuiDashboardModel.LoadAsync(
             workingDirectory,
-            new LocalDiagnosticEventStore(TuiDashboardModel.ResolveDiagnosticsRootDirectory(workingDirectory)),
             readInstalledQueues,
             cancellationToken);
     }

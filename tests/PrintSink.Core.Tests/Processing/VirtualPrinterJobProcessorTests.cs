@@ -13,13 +13,13 @@ namespace PrintSink.Core.Tests.Processing;
 /// Tests virtual printer job processing.
 /// </summary>
 [TestClass]
-public sealed class VirtualPrinterJobProcessorTests
+internal sealed class VirtualPrinterJobProcessorTests
 {
     /// <summary>
     /// Verifies passthrough jobs are copied to the target stream and completed successfully.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_copies_passthrough_job_to_target_stream()
+    public async Task ProcessAsyncCopiesPassthroughJobToTargetStream()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
@@ -42,7 +42,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies conversion jobs use the converter before writing to the sink.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_converts_job_before_sink_write()
+    public async Task ProcessAsyncConvertsJobBeforeSinkWrite()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
@@ -69,7 +69,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies empty converted output fails the job instead of producing an empty target file.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_fails_file_job_when_converted_output_is_empty()
+    public async Task ProcessAsyncFailsFileJobWhenConvertedOutputIsEmpty()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
@@ -91,7 +91,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies transformed XPS bytes are passed to the converter before sink writes.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_transforms_job_before_conversion()
+    public async Task ProcessAsyncTransformsJobBeforeConversion()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         byte[] sourceBytes = Encoding.UTF8.GetBytes("xps");
@@ -130,7 +130,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies transformed passthrough bytes are written directly to the target stream.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_writes_transformed_passthrough_job_to_target_stream()
+    public async Task ProcessAsyncWritesTransformedPassthroughJobToTargetStream()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Xps);
         byte[] sourceBytes = Encoding.UTF8.GetBytes("xps");
@@ -163,7 +163,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies transform failures complete the job as failed.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_marks_job_failed_when_transform_throws()
+    public async Task ProcessAsyncMarksJobFailedWhenTransformThrows()
     {
         InvalidOperationException expected = new("transform failed");
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
@@ -191,10 +191,10 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies failure diagnostics include exception identity when the exception message is empty.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_records_exception_identity_when_failure_message_is_empty()
+    public async Task ProcessAsyncRecordsExceptionIdentityWhenFailureMessageIsEmpty()
     {
         string diagnosticDirectory = Path.Combine(TestContext.TestRunResultsDirectory!, Guid.NewGuid().ToString("N"));
-        LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
+        using LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
         InvalidOperationException expected = new(string.Empty);
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
@@ -233,7 +233,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies transform cancellation completes the job as canceled.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_marks_job_canceled_when_transform_cancels()
+    public async Task ProcessAsyncMarksJobCanceledWhenTransformCancels()
     {
         OperationCanceledException expected = new("transform canceled");
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
@@ -261,7 +261,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies rejected jobs complete as failed without opening streams.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_rejects_unknown_content_type()
+    public async Task ProcessAsyncRejectsUnknownContentType()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
@@ -285,7 +285,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies sink failures complete the job as failed and return the exception.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_marks_job_failed_when_sink_throws()
+    public async Task ProcessAsyncMarksJobFailedWhenSinkThrows()
     {
         InvalidOperationException expected = new("sink failed");
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
@@ -307,7 +307,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies job processing loads persisted watermark options for the endpoint.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_adds_persisted_watermark_options_to_sink_context()
+    public async Task ProcessAsyncAddsPersistedWatermarkOptionsToSinkContext()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         WatermarkOptions expected = new(
@@ -343,7 +343,7 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies job UI options override endpoint defaults.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_uses_job_options_before_persisted_endpoint_watermark()
+    public async Task ProcessAsyncUsesJobOptionsBeforePersistedEndpointWatermark()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemorySettingsStore settingsStore = new();
@@ -378,10 +378,10 @@ public sealed class VirtualPrinterJobProcessorTests
     /// Verifies job password metadata is recorded without exposing the password.
     /// </summary>
     [TestMethod]
-    public async Task ProcessAsync_records_job_password_metadata_without_secret()
+    public async Task ProcessAsyncRecordsJobPasswordMetadataWithoutSecret()
     {
         string diagnosticDirectory = Path.Combine(TestContext.TestRunResultsDirectory!, Guid.NewGuid().ToString("N"));
-        LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
+        using LocalDiagnosticEventStore diagnosticEventStore = new(diagnosticDirectory);
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
         InMemoryVirtualPrinterJob job = new(
             PdlFormatInfo.PdfContentType,

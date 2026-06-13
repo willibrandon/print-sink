@@ -14,9 +14,20 @@ public sealed class PrintSchemaQualifiedName
     /// <param name="namespaceUri">The XML namespace URI.</param>
     /// <param name="localName">The XML local name.</param>
     public PrintSchemaQualifiedName(string prefix, string namespaceUri, string localName)
+        : this(prefix, new Uri(namespaceUri, UriKind.Absolute), localName)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PrintSchemaQualifiedName"/> class.
+    /// </summary>
+    /// <param name="prefix">The XML namespace prefix to preserve in generated documents.</param>
+    /// <param name="namespaceUri">The XML namespace URI.</param>
+    /// <param name="localName">The XML local name.</param>
+    public PrintSchemaQualifiedName(string prefix, Uri namespaceUri, string localName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
-        ArgumentException.ThrowIfNullOrWhiteSpace(namespaceUri);
+        ArgumentNullException.ThrowIfNull(namespaceUri);
         ArgumentException.ThrowIfNullOrWhiteSpace(localName);
 
         Prefix = prefix;
@@ -32,7 +43,7 @@ public sealed class PrintSchemaQualifiedName
     /// <summary>
     /// Gets the XML namespace URI.
     /// </summary>
-    public string NamespaceUri { get; }
+    public Uri NamespaceUri { get; }
 
     /// <summary>
     /// Gets the XML local name.
@@ -71,6 +82,6 @@ public sealed class PrintSchemaQualifiedName
 
     internal XName ToXName()
     {
-        return XNamespace.Get(NamespaceUri) + LocalName;
+        return XNamespace.Get(NamespaceUri.AbsoluteUri) + LocalName;
     }
 }

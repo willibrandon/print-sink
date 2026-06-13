@@ -74,11 +74,11 @@ internal static class QueuesCommand
             int exitCode = await runPackageCommand(packageArgument, cancellationToken).ConfigureAwait(false);
             if (exitCode != CliExitCodes.Success)
             {
-                context.Error.WriteLine($"Package command failed with exit code {exitCode}.");
+                await context.Error.WriteLineAsync($"Package command failed with exit code {exitCode}.").ConfigureAwait(false);
                 return exitCode;
             }
 
-            context.Output.WriteLine($"{name} completed.");
+            await context.Output.WriteLineAsync($"{name} completed.").ConfigureAwait(false);
             return WriteQueues(context, readInstalledQueues());
         });
 

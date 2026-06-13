@@ -6,7 +6,7 @@ namespace PrintSink.Core.Tests.Pdl;
 /// Tests PDL content type parsing and formatting.
 /// </summary>
 [TestClass]
-public sealed class PdlFormatInfoTests
+internal sealed class PdlFormatInfoTests
 {
     /// <summary>
     /// Verifies parsing for supported content types.
@@ -19,7 +19,7 @@ public sealed class PdlFormatInfoTests
     [DataRow("image/pwg-raster", PdlFormat.PwgRaster)]
     [DataRow("application/pclm", PdlFormat.Pclm)]
     [DataRow("APPLICATION/PDF; version=1.7", PdlFormat.Pdf)]
-    public void TryParseContentType_recognizes_supported_formats(string contentType, PdlFormat expected)
+    public void TryParseContentTypeRecognizesSupportedFormats(string contentType, PdlFormat expected)
     {
         bool parsed = PdlFormatInfo.TryParseContentType(contentType, out PdlFormat actual);
 
@@ -31,7 +31,7 @@ public sealed class PdlFormatInfoTests
     /// Verifies that unsupported content types are rejected.
     /// </summary>
     [TestMethod]
-    public void TryParseContentType_rejects_unknown_format()
+    public void TryParseContentTypeRejectsUnknownFormat()
     {
         bool parsed = PdlFormatInfo.TryParseContentType("application/octet-stream", out PdlFormat _);
 
@@ -42,7 +42,7 @@ public sealed class PdlFormatInfoTests
     /// Verifies canonical content type formatting.
     /// </summary>
     [TestMethod]
-    public void GetContentType_returns_canonical_media_type()
+    public void GetContentTypeReturnsCanonicalMediaType()
     {
         Assert.AreEqual("application/pdf", PdlFormatInfo.GetContentType(PdlFormat.Pdf));
     }
@@ -57,7 +57,7 @@ public sealed class PdlFormatInfoTests
     [DataRow(PdlFormat.Xps, "1.0")]
     [DataRow(PdlFormat.PwgRaster, "1.0")]
     [DataRow(PdlFormat.Pclm, "1.0")]
-    public void GetMaxSupportedVersion_returns_manifest_version(PdlFormat format, string expected)
+    public void GetMaxSupportedVersionReturnsManifestVersion(PdlFormat format, string expected)
     {
         Assert.AreEqual(expected, PdlFormatInfo.GetMaxSupportedVersion(format));
     }

@@ -53,12 +53,12 @@ public sealed class IppAttributeValue
     public IReadOnlyList<IReadOnlyDictionary<string, IppAttributeValue>> Collections { get; }
 
     /// <summary>
-    /// Creates a single-valued IPP attribute.
+    /// Creates an IPP attribute with one scalar value.
     /// </summary>
     /// <param name="name">The IPP attribute name.</param>
     /// <param name="value">The attribute value.</param>
     /// <returns>The IPP attribute.</returns>
-    public static IppAttributeValue Single(string name, string value)
+    public static IppAttributeValue Create(string name, string value)
     {
         return new IppAttributeValue(name, [value]);
     }

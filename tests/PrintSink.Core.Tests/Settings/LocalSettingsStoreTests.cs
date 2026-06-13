@@ -7,7 +7,7 @@ namespace PrintSink.Core.Tests.Settings;
 /// Tests local settings persistence.
 /// </summary>
 [TestClass]
-public sealed class LocalSettingsStoreTests
+internal sealed class LocalSettingsStoreTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
@@ -18,7 +18,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies missing watermark settings return disabled options.
     /// </summary>
     [TestMethod]
-    public async Task GetWatermarkOptionsAsync_returns_disabled_when_missing()
+    public async Task GetWatermarkOptionsAsyncReturnsDisabledWhenMissing()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -41,7 +41,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies watermark options round-trip through local JSON storage.
     /// </summary>
     [TestMethod]
-    public async Task SaveWatermarkOptionsAsync_round_trips_text_watermark()
+    public async Task SaveWatermarkOptionsAsyncRoundTripsTextWatermark()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -78,7 +78,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies image watermark options round-trip through local JSON storage.
     /// </summary>
     [TestMethod]
-    public async Task SaveWatermarkOptionsAsync_round_trips_image_watermark()
+    public async Task SaveWatermarkOptionsAsyncRoundTripsImageWatermark()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -116,7 +116,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies settings are partitioned by printer URI.
     /// </summary>
     [TestMethod]
-    public async Task SaveWatermarkOptionsAsync_partitions_by_printer_uri()
+    public async Task SaveWatermarkOptionsAsyncPartitionsByPrinterUri()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -146,7 +146,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies missing job UI options default to launching foreground job UI.
     /// </summary>
     [TestMethod]
-    public async Task GetJobUiOptionsAsync_returns_default_when_missing()
+    public async Task GetJobUiOptionsAsyncReturnsDefaultWhenMissing()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -169,7 +169,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies job UI options round-trip through local JSON storage.
     /// </summary>
     [TestMethod]
-    public async Task SaveJobUiOptionsAsync_round_trips_headless_setting()
+    public async Task SaveJobUiOptionsAsyncRoundTripsHeadlessSetting()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -196,7 +196,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies missing pending job options return null.
     /// </summary>
     [TestMethod]
-    public async Task ConsumeJobProcessingOptionsAsync_returns_null_when_missing()
+    public async Task ConsumeJobProcessingOptionsAsyncReturnsNullWhenMissing()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -219,7 +219,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies pending job options are removed after they are consumed.
     /// </summary>
     [TestMethod]
-    public async Task SaveJobProcessingOptionsAsync_consumes_pending_options_once()
+    public async Task SaveJobProcessingOptionsAsyncConsumesPendingOptionsOnce()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);
@@ -257,7 +257,7 @@ public sealed class LocalSettingsStoreTests
     /// Verifies pending job password options round-trip through local JSON storage.
     /// </summary>
     [TestMethod]
-    public async Task SaveJobProcessingOptionsAsync_round_trips_job_password_options()
+    public async Task SaveJobProcessingOptionsAsyncRoundTripsJobPasswordOptions()
     {
         string directory = CreateTestDirectory();
         LocalSettingsStore store = new(directory);

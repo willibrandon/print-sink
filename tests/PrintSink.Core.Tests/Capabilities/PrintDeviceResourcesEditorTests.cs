@@ -7,13 +7,13 @@ namespace PrintSink.Core.Tests.Capabilities;
 /// Tests Print Device Resources editing.
 /// </summary>
 [TestClass]
-public sealed class PrintDeviceResourcesEditorTests
+internal sealed class PrintDeviceResourcesEditorTests
 {
     /// <summary>
     /// Verifies that missing custom feature resources are appended.
     /// </summary>
     [TestMethod]
-    public void Apply_adds_missing_resources()
+    public void ApplyAddsMissingResources()
     {
         XDocument document = CreateMinimalPdr();
 
@@ -35,7 +35,7 @@ public sealed class PrintDeviceResourcesEditorTests
     /// Verifies that existing localized strings are not overwritten.
     /// </summary>
     [TestMethod]
-    public void Apply_preserves_existing_resources()
+    public void ApplyPreservesExistingResources()
     {
         XDocument document = CreateMinimalPdr();
 
@@ -57,7 +57,7 @@ public sealed class PrintDeviceResourcesEditorTests
     /// Verifies that an empty PDR document can be initialized.
     /// </summary>
     [TestMethod]
-    public void Apply_creates_root_for_empty_document()
+    public void ApplyCreatesRootForEmptyDocument()
     {
         XDocument result = PrintDeviceResourcesEditor.Apply(
             new XDocument(),

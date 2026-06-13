@@ -6,13 +6,13 @@ namespace PrintSink.Architecture.Tests;
 /// Tests the contract between the design feature matrix and E2E evidence reporting.
 /// </summary>
 [TestClass]
-public sealed partial class FeatureEvidenceContractTests
+internal sealed partial class FeatureEvidenceContractTests
 {
     /// <summary>
     /// Verifies every design feature row is either supported by E2E evidence or explicitly deferred.
     /// </summary>
     [TestMethod]
-    public void Design_feature_rows_match_e2e_supported_and_deferred_evidence()
+    public void DesignFeatureRowsMatchE2eSupportedAndDeferredEvidence()
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");

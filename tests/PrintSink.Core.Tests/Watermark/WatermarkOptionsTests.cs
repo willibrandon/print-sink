@@ -6,13 +6,13 @@ namespace PrintSink.Core.Tests.Watermark;
 /// Tests watermark option validation.
 /// </summary>
 [TestClass]
-public sealed class WatermarkOptionsTests
+internal sealed class WatermarkOptionsTests
 {
     /// <summary>
     /// Verifies that disabled watermark options contain no watermark payload.
     /// </summary>
     [TestMethod]
-    public void Disabled_returns_disabled_options()
+    public void DisabledReturnsDisabledOptions()
     {
         WatermarkOptions options = WatermarkOptions.Disabled;
 
@@ -25,7 +25,7 @@ public sealed class WatermarkOptionsTests
     /// Verifies that enabled options require a configured watermark.
     /// </summary>
     [TestMethod]
-    public void Constructor_rejects_enabled_options_without_payload()
+    public void ConstructorRejectsEnabledOptionsWithoutPayload()
     {
         Assert.ThrowsExactly<ArgumentException>(() => new WatermarkOptions(true, null, null));
     }
@@ -34,7 +34,7 @@ public sealed class WatermarkOptionsTests
     /// Verifies that enabled options can carry only an image watermark.
     /// </summary>
     [TestMethod]
-    public void Constructor_accepts_image_only_options()
+    public void ConstructorAcceptsImageOnlyOptions()
     {
         ImageWatermark image = new("C:\\Watermarks\\logo.png", 144, 96, 0.4, 0, 0, 0);
         WatermarkOptions options = new(true, null, image);

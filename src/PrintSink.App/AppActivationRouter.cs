@@ -60,7 +60,7 @@ internal static class AppActivationRouter
         return true;
     }
 
-    private static string? TryGetOptionValue(IReadOnlyList<string> args, string option)
+    private static string? TryGetOptionValue(List<string> args, string option)
     {
         for (int index = 0; index < args.Count - 1; index++)
         {
@@ -76,7 +76,7 @@ internal static class AppActivationRouter
         return null;
     }
 
-    private static bool Contains(IReadOnlyList<string> args, string value)
+    private static bool Contains(List<string> args, string value)
     {
         return args.Any(arg => string.Equals(arg, value, StringComparison.OrdinalIgnoreCase));
     }

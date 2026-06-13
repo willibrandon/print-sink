@@ -274,7 +274,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         IDictionary<string, PrintSchemaQualifiedName> names,
         PrintSchemaQualifiedName name)
     {
-        if (!string.Equals(name.NamespaceUri, "https://schemas.printsink.dev/printing/keywords", StringComparison.Ordinal))
+        if (!string.Equals(name.NamespaceUri.AbsoluteUri, "https://schemas.printsink.dev/printing/keywords", StringComparison.Ordinal))
         {
             return;
         }
@@ -284,7 +284,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
 
     private static string ToPdrResourceName(PrintSchemaQualifiedName name)
     {
-        string namespaceName = name.NamespaceUri;
+        string namespaceName = name.NamespaceUri.AbsoluteUri;
         if (namespaceName.StartsWith("https://", StringComparison.Ordinal))
         {
             namespaceName = namespaceName["https://".Length..];
@@ -409,8 +409,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
     {
         try
         {
-            PackagedSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+            diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -422,7 +422,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 .GetAwaiter()
                 .GetResult();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             // Diagnostics must not make the PSA extension contract fail.
         }

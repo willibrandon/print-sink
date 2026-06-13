@@ -8,7 +8,7 @@ namespace PrintSink.Cli.Tests.Commands;
 /// Tests the command-line surface.
 /// </summary>
 [TestClass]
-public sealed class CliApplicationTests
+internal sealed class CliApplicationTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
@@ -19,7 +19,7 @@ public sealed class CliApplicationTests
     /// Verifies that the queue command prints the built-in endpoint list.
     /// </summary>
     [TestMethod]
-    public async Task Queues_writes_builtin_endpoint_names()
+    public async Task QueuesWritesBuiltinEndpointNames()
     {
         (int exitCode, string output, _) = await InvokeAsync("queues").ConfigureAwait(false);
 
@@ -35,7 +35,7 @@ public sealed class CliApplicationTests
     /// Verifies that the queue command marks queues found in the local print stack.
     /// </summary>
     [TestMethod]
-    public async Task Queues_reports_installed_status_when_snapshot_is_available()
+    public async Task QueuesReportsInstalledStatusWhenSnapshotIsAvailable()
     {
         (int exitCode, string output, string error) = await InvokeQueuesAsync(
             PrinterQueueSnapshot.Available(["printsink - pdf"])).ConfigureAwait(false);
@@ -50,7 +50,7 @@ public sealed class CliApplicationTests
     /// Verifies that the queue command stays useful when installed queue inspection is unavailable.
     /// </summary>
     [TestMethod]
-    public async Task Queues_reports_unknown_status_when_snapshot_is_unavailable()
+    public async Task QueuesReportsUnknownStatusWhenSnapshotIsUnavailable()
     {
         (int exitCode, string output, string error) = await InvokeQueuesAsync(
             PrinterQueueSnapshot.Unavailable("print stack unavailable")).ConfigureAwait(false);
@@ -65,7 +65,7 @@ public sealed class CliApplicationTests
     /// Verifies that the queue install command delegates provisioning to the packaged app.
     /// </summary>
     [TestMethod]
-    public async Task Queues_install_invokes_packaged_app_provisioning()
+    public async Task QueuesInstallInvokesPackagedAppProvisioning()
     {
         string? packageArgument = null;
         (int exitCode, string output, string error) = await InvokeQueuesAsync(
@@ -88,7 +88,7 @@ public sealed class CliApplicationTests
     /// Verifies that the queue remove command delegates cleanup to the packaged app.
     /// </summary>
     [TestMethod]
-    public async Task Queues_remove_invokes_packaged_app_cleanup()
+    public async Task QueuesRemoveInvokesPackagedAppCleanup()
     {
         string? packageArgument = null;
         (int exitCode, string output, string error) = await InvokeQueuesAsync(
@@ -111,7 +111,7 @@ public sealed class CliApplicationTests
     /// Verifies that package command failures are surfaced by queue provisioning commands.
     /// </summary>
     [TestMethod]
-    public async Task Queues_install_reports_packaged_app_failure()
+    public async Task QueuesInstallReportsPackagedAppFailure()
     {
         (int exitCode, string output, string error) = await InvokeQueuesAsync(
             "install",
@@ -127,7 +127,7 @@ public sealed class CliApplicationTests
     /// Verifies that sink testing uses the core PDL router.
     /// </summary>
     [TestMethod]
-    public async Task Sink_test_reports_conversion_route()
+    public async Task SinkTestReportsConversionRoute()
     {
         (int exitCode, string output, _) = await InvokeAsync(
             "sink",
@@ -146,7 +146,7 @@ public sealed class CliApplicationTests
     /// Verifies sink testing writes passthrough fixture bytes to a file-backed endpoint.
     /// </summary>
     [TestMethod]
-    public async Task Sink_test_writes_passthrough_fixture_to_output()
+    public async Task SinkTestWritesPassthroughFixtureToOutput()
     {
         string directory = CreateTestDirectory();
         string inputPath = Path.Combine(directory, "input.pdf");
@@ -183,7 +183,7 @@ public sealed class CliApplicationTests
     /// Verifies sink testing writes deterministic converted fixture bytes to a file-backed endpoint.
     /// </summary>
     [TestMethod]
-    public async Task Sink_test_writes_converted_fixture_to_output()
+    public async Task SinkTestWritesConvertedFixtureToOutput()
     {
         string directory = CreateTestDirectory();
         string inputPath = Path.Combine(directory, "input.oxps");
@@ -220,7 +220,7 @@ public sealed class CliApplicationTests
     /// Verifies cloud sink tests reject file-output paths.
     /// </summary>
     [TestMethod]
-    public async Task Sink_test_rejects_output_path_for_cloud_endpoint()
+    public async Task SinkTestRejectsOutputPathForCloudEndpoint()
     {
         (int exitCode, _, string error) = await InvokeAsync(
             "sink",
@@ -240,7 +240,7 @@ public sealed class CliApplicationTests
     /// Verifies manifest linting against a packaged virtual-printer manifest fixture.
     /// </summary>
     [TestMethod]
-    public async Task Manifest_lint_accepts_virtual_printer_manifest()
+    public async Task ManifestLintAcceptsVirtualPrinterManifest()
     {
         string directory = await CreateManifestFixtureAsync(ValidManifest).ConfigureAwait(false);
 
@@ -262,7 +262,7 @@ public sealed class CliApplicationTests
     /// Verifies manifest linting rejects supported formats without an explicit maximum version.
     /// </summary>
     [TestMethod]
-    public async Task Manifest_lint_rejects_supported_format_missing_max_version()
+    public async Task ManifestLintRejectsSupportedFormatMissingMaxVersion()
     {
         string invalidManifest = ValidManifest.Replace(
             " Type=\"application/oxps\" MaxVersion=\"1.0\"",
@@ -288,7 +288,7 @@ public sealed class CliApplicationTests
     /// Verifies manifest linting rejects an XPS endpoint that does not expose every expected file extension.
     /// </summary>
     [TestMethod]
-    public async Task Manifest_lint_rejects_xps_endpoint_missing_output_extension()
+    public async Task ManifestLintRejectsXpsEndpointMissingOutputExtension()
     {
         string invalidManifest = ValidManifest.Replace(
             "OutputFileTypes=\"xps;oxps\"",
@@ -314,7 +314,7 @@ public sealed class CliApplicationTests
     /// Verifies manifest linting rejects file output on the cloud endpoint.
     /// </summary>
     [TestMethod]
-    public async Task Manifest_lint_rejects_cloud_output_file_types()
+    public async Task ManifestLintRejectsCloudOutputFileTypes()
     {
         string directory = await CreateManifestFixtureAsync(InvalidCloudOutputManifest).ConfigureAwait(false);
 
@@ -336,7 +336,7 @@ public sealed class CliApplicationTests
     /// Verifies manifest linting rejects foreground print-support UI extensions without entry points.
     /// </summary>
     [TestMethod]
-    public async Task Manifest_lint_rejects_foreground_extension_without_entry_point()
+    public async Task ManifestLintRejectsForegroundExtensionWithoutEntryPoint()
     {
         string invalidManifest = ValidManifest.Replace(
             """<printsupport:Extension Category="windows.printSupportJobUI" EntryPoint="PrintSink.App.App" />""",
@@ -362,7 +362,7 @@ public sealed class CliApplicationTests
     /// Verifies PDC validation rejects files that are not Print Schema Framework v2 PDC documents.
     /// </summary>
     [TestMethod]
-    public async Task Pdc_validate_reports_core_shape_errors()
+    public async Task PdcValidateReportsCoreShapeErrors()
     {
         string pdcPath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.xml");
         await File.WriteAllTextAsync(pdcPath, "<PrintDeviceCapabilities />", TestContext.CancellationToken).ConfigureAwait(false);
@@ -384,7 +384,7 @@ public sealed class CliApplicationTests
     /// Verifies PDC validation accepts matching PDR resources.
     /// </summary>
     [TestMethod]
-    public async Task Pdc_validate_accepts_matching_pdr_resources()
+    public async Task PdcValidateAcceptsMatchingPdrResources()
     {
         string directory = CreateTestDirectory();
         string pdcPath = Path.Combine(directory, "Printer.pdc.xml");
@@ -415,7 +415,7 @@ public sealed class CliApplicationTests
     /// Verifies PDC validation rejects PDR files missing custom feature resources.
     /// </summary>
     [TestMethod]
-    public async Task Pdc_validate_rejects_pdr_missing_custom_resources()
+    public async Task PdcValidateRejectsPdrMissingCustomResources()
     {
         string directory = CreateTestDirectory();
         string pdcPath = Path.Combine(directory, "Printer.pdc.xml");
@@ -446,7 +446,7 @@ public sealed class CliApplicationTests
     /// Verifies ticket mapping reports IPP attributes produced by Core.
     /// </summary>
     [TestMethod]
-    public async Task Ticket_map_reports_ipp_attributes()
+    public async Task TicketMapReportsIppAttributes()
     {
         string ticketPath = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.xml");
         await File.WriteAllTextAsync(ticketPath, ValidPrintTicket, TestContext.CancellationToken).ConfigureAwait(false);

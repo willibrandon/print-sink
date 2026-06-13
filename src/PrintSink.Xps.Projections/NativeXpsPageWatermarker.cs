@@ -87,26 +87,26 @@ public sealed class NativeXpsPageWatermarker
     }
 
     private async Task<MemoryStream?> TryApplyWithObjectModelAsync(
-        IRandomAccessStream input,
+        InMemoryRandomAccessStream input,
         CancellationToken cancellationToken)
     {
         PrintWorkflowObjectModelSourceFileContent sourceContent = new(input.GetInputStreamAt(0));
         PrintSink.Xps.XpsSequentialDocument document = new(sourceContent);
-        ulong? generationFailure = null;
-        document.XpsGenerationFailed += (_, error) => generationFailure = error;
+        XpsGenerationFailureTracker generationFailure = new();
+        document.XpsGenerationFailed += generationFailure.Record;
 
         using IInputStream watermarkedInput = document.GetWatermarkedStream(watermarker);
         MemoryStream result = await ReadToMemoryAsync(watermarkedInput, cancellationToken).ConfigureAwait(false);
-        if (generationFailure is not null)
+        if (generationFailure.Error is not null)
         {
-            if (generationFailure.Value == ErrorNotImplemented)
+            if (generationFailure.Error.Value == ErrorNotImplemented)
             {
-                result.Dispose();
+                await result.DisposeAsync().ConfigureAwait(false);
                 return null;
             }
 
             throw new InvalidOperationException(
-                $"XPS object model generation failed with HRESULT 0x{generationFailure.Value:X8}.");
+                $"XPS object model generation failed with HRESULT 0x{generationFailure.Error.Value:X8}.");
         }
 
         if (result.Length == 0)

@@ -6,13 +6,13 @@ namespace PrintSink.Core.Tests.Watermark;
 /// Tests image watermark validation.
 /// </summary>
 [TestClass]
-public sealed class ImageWatermarkTests
+internal sealed class ImageWatermarkTests
 {
     /// <summary>
     /// Verifies that image watermark values are retained.
     /// </summary>
     [TestMethod]
-    public void Constructor_sets_properties()
+    public void ConstructorSetsProperties()
     {
         ImageWatermark watermark = new("C:\\Watermarks\\logo.png", 144, 96, 0.4, 15, 12, 24);
 
@@ -29,7 +29,7 @@ public sealed class ImageWatermarkTests
     /// Verifies that width is constrained to positive values.
     /// </summary>
     [TestMethod]
-    public void Constructor_rejects_invalid_width()
+    public void ConstructorRejectsInvalidWidth()
     {
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new ImageWatermark("C:\\Watermarks\\logo.png", 0, 96, 0.4, 0, 0, 0));
     }
@@ -38,7 +38,7 @@ public sealed class ImageWatermarkTests
     /// Verifies that opacity is constrained to the supported range.
     /// </summary>
     [TestMethod]
-    public void Constructor_rejects_invalid_opacity()
+    public void ConstructorRejectsInvalidOpacity()
     {
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new ImageWatermark("C:\\Watermarks\\logo.png", 144, 96, -0.1, 0, 0, 0));
     }

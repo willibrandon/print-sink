@@ -185,7 +185,7 @@ internal static class VirtualPrinterCommandLine
             exitCode = Success;
             return exitCode;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             WriteDiagnostic(ex.ToString());
             return exitCode;
@@ -433,8 +433,8 @@ internal static class VirtualPrinterCommandLine
         string detail,
         CancellationToken cancellationToken)
     {
-        await AppSettingsStoreFactory
-            .CreateDiagnosticEventStore()
+        using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+        await diagnosticEventStore
             .AppendAsync(
                 new DiagnosticEventRecord(
                     DateTimeOffset.UtcNow,

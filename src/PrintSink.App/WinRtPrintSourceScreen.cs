@@ -75,7 +75,7 @@ internal sealed class WinRtPrintSourceScreen : Component<AppActivationRoute>
                 _ => "The WinRT print task closed.",
             });
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             setStatus("The WinRT print source failed.");
             VirtualPrinterCommandLine.WriteDiagnostic($"WinRT print source failed: {ex}");

@@ -90,7 +90,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                 args.Configuration.AbortPrintFlow(PrintWorkflowJobAbortReason.JobFailed);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             AppendDiagnostic("Workflow job failed", GetPrinterName(args), ex.ToString());
             args.Configuration.AbortPrintFlow(PrintWorkflowJobAbortReason.JobFailed);
@@ -152,7 +152,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
         {
             return args.PrinterJob.Printer.PrinterName;
         }
-        catch (Exception)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             return string.Empty;
         }
@@ -162,8 +162,8 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
     {
         try
         {
-            PackagedSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
+            diagnosticEventStore
                 .AppendAsync(
                     new DiagnosticEventRecord(
                         DateTimeOffset.UtcNow,
@@ -175,7 +175,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                 .GetAwaiter()
                 .GetResult();
         }
-        catch (Exception)
+        catch (Exception ex) when (BackgroundTaskExceptionPolicy.IsRecoverable(ex))
         {
             // Diagnostics must not make the PSA workflow contract fail.
         }

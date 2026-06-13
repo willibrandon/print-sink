@@ -7,13 +7,13 @@ namespace PrintSink.Core.Tests.Tickets;
 /// Tests print ticket validation.
 /// </summary>
 [TestClass]
-public sealed class PrintTicketValidatorTests
+internal sealed class PrintTicketValidatorTests
 {
     /// <summary>
     /// Verifies that a well-formed ticket passes validation.
     /// </summary>
     [TestMethod]
-    public void Validate_accepts_well_formed_ticket()
+    public void ValidateAcceptsWellFormedTicket()
     {
         XDocument printTicket = CreateValidPrintTicket();
 
@@ -26,7 +26,7 @@ public sealed class PrintTicketValidatorTests
     /// Verifies that an empty document is rejected.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_empty_document()
+    public void ValidateRejectsEmptyDocument()
     {
         IReadOnlyList<string> messages = PrintTicketValidator.Validate(new XDocument());
 
@@ -37,7 +37,7 @@ public sealed class PrintTicketValidatorTests
     /// Verifies that a non-ticket root is rejected.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_wrong_root()
+    public void ValidateRejectsWrongRoot()
     {
         XDocument printTicket = XDocument.Parse("<Document />");
 
@@ -50,7 +50,7 @@ public sealed class PrintTicketValidatorTests
     /// Verifies that a feature with multiple selected options is rejected.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_multiple_feature_options()
+    public void ValidateRejectsMultipleFeatureOptions()
     {
         XDocument printTicket = XDocument.Parse(
             """
@@ -72,7 +72,7 @@ public sealed class PrintTicketValidatorTests
     /// Verifies that a parameter without a value is rejected.
     /// </summary>
     [TestMethod]
-    public void Validate_rejects_parameter_without_value()
+    public void ValidateRejectsParameterWithoutValue()
     {
         XDocument printTicket = XDocument.Parse(
             """

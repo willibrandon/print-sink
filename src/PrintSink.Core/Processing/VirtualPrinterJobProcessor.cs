@@ -222,7 +222,7 @@ public sealed class VirtualPrinterJobProcessor
                 .ConfigureAwait(false);
             return new VirtualPrinterJobResult(plan, VirtualPrinterJobStatus.Canceled, ex);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsPrintJobFailure(ex))
         {
             string exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
             string exceptionDetail = FormatExceptionDetail(ex);
@@ -251,62 +251,65 @@ public sealed class VirtualPrinterJobProcessor
         PdlPlan plan,
         CancellationToken cancellationToken)
     {
-        await using Stream source = await job.OpenSourceAsync(cancellationToken).ConfigureAwait(false);
+        Stream source = await job.OpenSourceAsync(cancellationToken).ConfigureAwait(false);
         Stream? target = await job.OpenTargetAsync(cancellationToken).ConfigureAwait(false);
 
-        WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
-            .ConfigureAwait(false);
-        Stream transformed = await transformer
-            .TransformAsync(source, job.Endpoint, plan, watermarkOptions, cancellationToken)
-            .ConfigureAwait(false);
-        RewindIfSeekable(transformed);
-        Stream output = transformed;
-        Stream? transformedToDispose = ReferenceEquals(source, transformed) ? null : transformed;
-        Stream? converted = null;
-
-        try
+        await using (source.ConfigureAwait(false))
         {
-            if (plan.ActionKind == PdlActionKind.Convert)
-            {
-                PdlConversionKind conversionKind = plan.ConversionKind
-                    ?? throw new InvalidOperationException("A conversion plan must include a conversion kind.");
+            WatermarkOptions watermarkOptions = await GetWatermarkOptionsAsync(job.Endpoint, cancellationToken)
+                .ConfigureAwait(false);
+            Stream transformed = await transformer
+                .TransformAsync(source, job.Endpoint, plan, watermarkOptions, cancellationToken)
+                .ConfigureAwait(false);
+            RewindIfSeekable(transformed);
+            Stream output = transformed;
+            Stream? transformedToDispose = ReferenceEquals(source, transformed) ? null : transformed;
+            Stream? converted = null;
 
-                long conversionStarted = Stopwatch.GetTimestamp();
-                PrintSinkDiagnostics.Log.PdlConversionStarted(job.Endpoint.QueueName, conversionKind.ToString());
-                converted = await converter.ConvertAsync(output, conversionKind, cancellationToken).ConfigureAwait(false);
-                RewindIfSeekable(converted);
-                PrintSinkDiagnostics.Log.PdlConversionCompleted(
-                    job.Endpoint.QueueName,
-                    conversionKind.ToString(),
-                    GetElapsedMilliseconds(conversionStarted));
-                output = converted;
+            try
+            {
+                if (plan.ActionKind == PdlActionKind.Convert)
+                {
+                    PdlConversionKind conversionKind = plan.ConversionKind
+                        ?? throw new InvalidOperationException("A conversion plan must include a conversion kind.");
+
+                    long conversionStarted = Stopwatch.GetTimestamp();
+                    PrintSinkDiagnostics.Log.PdlConversionStarted(job.Endpoint.QueueName, conversionKind.ToString());
+                    converted = await converter.ConvertAsync(output, conversionKind, cancellationToken).ConfigureAwait(false);
+                    RewindIfSeekable(converted);
+                    PrintSinkDiagnostics.Log.PdlConversionCompleted(
+                        job.Endpoint.QueueName,
+                        conversionKind.ToString(),
+                        GetElapsedMilliseconds(conversionStarted));
+                    output = converted;
+                }
+
+                ISink sink = sinkResolver.Resolve(job.Endpoint);
+                SinkWriteContext context = new(
+                    job.Endpoint,
+                    PdlFormatInfo.GetContentType(plan.TargetFormat),
+                    null,
+                    target,
+                    watermarkOptions);
+
+                EnsureNonEmptyOutput(output, job.Endpoint);
+                await sink.WriteAsync(output, context, cancellationToken).ConfigureAwait(false);
+                if (target is not null)
+                {
+                    await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
-
-            ISink sink = sinkResolver.Resolve(job.Endpoint);
-            SinkWriteContext context = new(
-                job.Endpoint,
-                PdlFormatInfo.GetContentType(plan.TargetFormat),
-                null,
-                target,
-                watermarkOptions);
-
-            EnsureNonEmptyOutput(output, job.Endpoint);
-            await sink.WriteAsync(output, context, cancellationToken).ConfigureAwait(false);
-            if (target is not null)
+            finally
             {
-                await target.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            if (transformedToDispose is not null)
-            {
-                await transformedToDispose.DisposeAsync().ConfigureAwait(false);
-            }
+                if (transformedToDispose is not null)
+                {
+                    await transformedToDispose.DisposeAsync().ConfigureAwait(false);
+                }
 
-            if (converted is not null)
-            {
-                await converted.DisposeAsync().ConfigureAwait(false);
+                if (converted is not null)
+                {
+                    await converted.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
     }
@@ -386,9 +389,26 @@ public sealed class VirtualPrinterJobProcessor
         {
             await diagnosticEventStore.AppendAsync(record, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex) when (IsDiagnosticPersistenceFailure(ex))
         {
             // Diagnostics persistence must never fail print-job processing.
         }
+    }
+
+    private static bool IsPrintJobFailure(Exception exception)
+    {
+        return exception is not OutOfMemoryException
+            and not StackOverflowException
+            and not AccessViolationException
+            and not AppDomainUnloadedException;
+    }
+
+    private static bool IsDiagnosticPersistenceFailure(Exception exception)
+    {
+        return exception is IOException
+            or UnauthorizedAccessException
+            or System.Text.Json.JsonException
+            or TimeoutException
+            or OperationCanceledException;
     }
 }

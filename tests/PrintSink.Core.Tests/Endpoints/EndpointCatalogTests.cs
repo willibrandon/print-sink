@@ -7,13 +7,15 @@ namespace PrintSink.Core.Tests.Endpoints;
 /// Tests the built-in endpoint catalog.
 /// </summary>
 [TestClass]
-public sealed class EndpointCatalogTests
+internal sealed class EndpointCatalogTests
 {
+    private static readonly string[] XpsOutputExtensions = [".xps", ".oxps"];
+
     /// <summary>
     /// Verifies the endpoint display order.
     /// </summary>
     [TestMethod]
-    public void All_returns_expected_endpoints_in_display_order()
+    public void AllReturnsExpectedEndpointsInDisplayOrder()
     {
         EndpointKind[] expected =
         [
@@ -32,7 +34,7 @@ public sealed class EndpointCatalogTests
     /// Verifies that printer URIs uniquely identify endpoints.
     /// </summary>
     [TestMethod]
-    public void All_has_unique_printer_uris()
+    public void AllHasUniquePrinterUris()
     {
         Uri[] printerUris = [.. EndpointCatalog.All.Select(endpoint => endpoint.PrinterUri)];
         int distinctCount = printerUris.Select(uri => uri.AbsoluteUri).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -44,7 +46,7 @@ public sealed class EndpointCatalogTests
     /// Verifies that the cloud endpoint is not file-backed.
     /// </summary>
     [TestMethod]
-    public void Cloud_endpoint_does_not_require_target_file()
+    public void CloudEndpointDoesNotRequireTargetFile()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Cloud);
 
@@ -57,7 +59,7 @@ public sealed class EndpointCatalogTests
     /// Verifies that file endpoints declare file output metadata.
     /// </summary>
     [TestMethod]
-    public void File_endpoints_require_target_file_and_extension()
+    public void FileEndpointsRequireTargetFileAndExtension()
     {
         foreach (VirtualEndpoint endpoint in EndpointCatalog.All.Where(endpoint => endpoint.Kind != EndpointKind.Cloud))
         {
@@ -71,12 +73,12 @@ public sealed class EndpointCatalogTests
     /// Verifies the XPS endpoint exposes both classic XPS and OpenXPS file extensions.
     /// </summary>
     [TestMethod]
-    public void Xps_endpoint_declares_xps_and_oxps_output_extensions()
+    public void XpsEndpointDeclaresXpsAndOxpsOutputExtensions()
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Xps);
 
         CollectionAssert.AreEquivalent(
-            new[] { ".xps", ".oxps" },
+            XpsOutputExtensions,
             endpoint.OutputExtensions.ToArray());
     }
 
@@ -84,7 +86,7 @@ public sealed class EndpointCatalogTests
     /// Verifies URI resolution for registered endpoint addresses.
     /// </summary>
     [TestMethod]
-    public void TryResolve_accepts_registered_uri_case_insensitively()
+    public void TryResolveAcceptsRegisteredUriCaseInsensitively()
     {
         Uri printerUri = new("PRINTSINK:PRINT-TO-PDF");
 

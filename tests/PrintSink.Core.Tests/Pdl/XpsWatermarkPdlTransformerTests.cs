@@ -9,13 +9,13 @@ namespace PrintSink.Core.Tests.Pdl;
 /// Tests the XPS watermark PDL transformer.
 /// </summary>
 [TestClass]
-public sealed class XpsWatermarkPdlTransformerTests
+internal sealed class XpsWatermarkPdlTransformerTests
 {
     /// <summary>
     /// Verifies disabled watermark options leave the source stream unchanged.
     /// </summary>
     [TestMethod]
-    public async Task TransformAsync_returns_source_when_watermark_is_disabled()
+    public async Task TransformAsyncReturnsSourceWhenWatermarkIsDisabled()
     {
         MemoryStream source = new(Encoding.UTF8.GetBytes("xps"));
         TestXpsWatermarker watermarker = new(Encoding.UTF8.GetBytes("watermarked"));
@@ -39,7 +39,7 @@ public sealed class XpsWatermarkPdlTransformerTests
     /// Verifies enabled watermark options are delegated for XPS-family sources.
     /// </summary>
     [TestMethod]
-    public async Task TransformAsync_applies_watermark_to_xps_family_source()
+    public async Task TransformAsyncAppliesWatermarkToXpsFamilySource()
     {
         byte[] sourceBytes = Encoding.UTF8.GetBytes("xps");
         byte[] watermarkedBytes = Encoding.UTF8.GetBytes("watermarked xps");
@@ -52,7 +52,7 @@ public sealed class XpsWatermarkPdlTransformerTests
             new TextWatermark("Draft", "Segoe UI", 48, 0.35, -30, 0, 0),
             null);
 
-        await using Stream result = await transformer
+        Stream result = await transformer
             .TransformAsync(
                 source,
                 EndpointCatalog.GetByKind(EndpointKind.Pdf),
@@ -61,21 +61,24 @@ public sealed class XpsWatermarkPdlTransformerTests
                 TestContext.CancellationToken)
             .ConfigureAwait(false);
 
-        using MemoryStream captured = new();
-        await result.CopyToAsync(captured, TestContext.CancellationToken).ConfigureAwait(false);
+        await using (result.ConfigureAwait(false))
+        {
+            using MemoryStream captured = new();
+            await result.CopyToAsync(captured, TestContext.CancellationToken).ConfigureAwait(false);
 
-        Assert.AreEqual(1, watermarker.CallCount);
-        Assert.AreEqual(PdlFormat.Oxps, watermarker.LastSourceFormat);
-        Assert.AreSame(options, watermarker.LastOptions);
-        CollectionAssert.AreEqual(sourceBytes, watermarker.LastSourceBytes);
-        CollectionAssert.AreEqual(watermarkedBytes, captured.ToArray());
+            Assert.AreEqual(1, watermarker.CallCount);
+            Assert.AreEqual(PdlFormat.Oxps, watermarker.LastSourceFormat);
+            Assert.AreSame(options, watermarker.LastOptions);
+            CollectionAssert.AreEqual(sourceBytes, watermarker.LastSourceBytes);
+            CollectionAssert.AreEqual(watermarkedBytes, captured.ToArray());
+        }
     }
 
     /// <summary>
     /// Verifies enabled watermark options reject non-XPS source formats.
     /// </summary>
     [TestMethod]
-    public async Task TransformAsync_rejects_non_xps_source_when_watermark_is_enabled()
+    public async Task TransformAsyncRejectsNonXpsSourceWhenWatermarkIsEnabled()
     {
         MemoryStream source = new(Encoding.UTF8.GetBytes("%PDF-1.7"));
         TestXpsWatermarker watermarker = new([]);

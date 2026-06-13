@@ -9,13 +9,13 @@ namespace PrintSink.Cli.Tests.Commands;
 /// Tests validators against the package assets that ship with the app.
 /// </summary>
 [TestClass]
-public sealed class PackageAssetValidationTests
+internal sealed class PackageAssetValidationTests
 {
     /// <summary>
     /// Verifies the shipped package manifest matches the virtual-printer contract shape.
     /// </summary>
     [TestMethod]
-    public void Manifest_lint_accepts_shipped_package_manifest()
+    public void ManifestLintAcceptsShippedPackageManifest()
     {
         string repositoryRoot = FindRepositoryRoot();
         string manifestPath = Path.Combine(repositoryRoot, "src", "PrintSink.App", "Package.appxmanifest");
@@ -29,7 +29,7 @@ public sealed class PackageAssetValidationTests
     /// Verifies every shipped virtual-printer PDC file has a valid Print Schema shape.
     /// </summary>
     [TestMethod]
-    public void Pdc_validate_accepts_shipped_virtual_printer_capabilities()
+    public void PdcValidateAcceptsShippedVirtualPrinterCapabilities()
     {
         string repositoryRoot = FindRepositoryRoot();
         string configDirectory = Path.Combine(repositoryRoot, "src", "PrintSink.App", "Config");
@@ -56,7 +56,7 @@ public sealed class PackageAssetValidationTests
     /// Verifies every shipped virtual-printer PDC file contains the custom feature nodes.
     /// </summary>
     [TestMethod]
-    public void Pdc_files_contain_shipped_custom_feature_nodes()
+    public void PdcFilesContainShippedCustomFeatureNodes()
     {
         string repositoryRoot = FindRepositoryRoot();
         string configDirectory = Path.Combine(repositoryRoot, "src", "PrintSink.App", "Config");
@@ -93,7 +93,7 @@ public sealed class PackageAssetValidationTests
     /// Verifies every shipped virtual-printer PDR file contains the custom feature resource keys.
     /// </summary>
     [TestMethod]
-    public void Pdr_files_contain_shipped_custom_feature_resources()
+    public void PdrFilesContainShippedCustomFeatureResources()
     {
         string repositoryRoot = FindRepositoryRoot();
         string configDirectory = Path.Combine(repositoryRoot, "src", "PrintSink.App", "Config");
@@ -124,7 +124,7 @@ public sealed class PackageAssetValidationTests
     /// Verifies shipped RESW files cover manifest display names and custom feature display strings.
     /// </summary>
     [TestMethod]
-    public void Resw_files_cover_manifest_and_custom_feature_resources()
+    public void ReswFilesCoverManifestAndCustomFeatureResources()
     {
         string repositoryRoot = FindRepositoryRoot();
         string appDirectory = Path.Combine(repositoryRoot, "src", "PrintSink.App");
@@ -229,11 +229,11 @@ public sealed class PackageAssetValidationTests
 
     private static bool IsPrintSinkName(PrintSchemaQualifiedName name)
     {
-        return string.Equals(name.NamespaceUri, "https://schemas.printsink.dev/printing/keywords", StringComparison.Ordinal);
+        return string.Equals(name.NamespaceUri.AbsoluteUri, "https://schemas.printsink.dev/printing/keywords", StringComparison.Ordinal);
     }
 
     private static string ToPdrResourceName(PrintSchemaQualifiedName name)
     {
-        return string.Concat(name.NamespaceUri["https://".Length..].TrimEnd('/'), "/", name.LocalName);
+        return string.Concat(name.NamespaceUri.AbsoluteUri["https://".Length..].TrimEnd('/'), "/", name.LocalName);
     }
 }

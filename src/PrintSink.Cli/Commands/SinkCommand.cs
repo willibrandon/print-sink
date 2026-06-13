@@ -60,20 +60,20 @@ internal static class SinkCommand
 
             if (!EndpointParser.TryParse(endpointText, out EndpointKind endpointKind))
             {
-                context.Error.WriteLine($"Unknown endpoint '{endpointText}'.");
+                await context.Error.WriteLineAsync($"Unknown endpoint '{endpointText}'.").ConfigureAwait(false);
                 return CliExitCodes.UsageError;
             }
 
             if (!string.IsNullOrWhiteSpace(inputPath) && !File.Exists(inputPath))
             {
-                context.Error.WriteLine($"Input file not found: {inputPath}");
+                await context.Error.WriteLineAsync($"Input file not found: {inputPath}").ConfigureAwait(false);
                 return CliExitCodes.ValidationFailed;
             }
 
             VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
             if (!endpoint.RequiresTargetFile && !string.IsNullOrWhiteSpace(outputPath))
             {
-                context.Error.WriteLine($"Endpoint '{endpoint.QueueName}' is not file-backed and does not accept --output.");
+                await context.Error.WriteLineAsync($"Endpoint '{endpoint.QueueName}' is not file-backed and does not accept --output.").ConfigureAwait(false);
                 return CliExitCodes.ValidationFailed;
             }
 
@@ -93,28 +93,28 @@ internal static class SinkCommand
             VirtualPrinterJobResult result = await processor.ProcessAsync(job, cancellationToken).ConfigureAwait(false);
             PdlPlan plan = result.Plan;
 
-            context.Output.WriteLine($"Endpoint: {endpoint.QueueName}");
-            context.Output.WriteLine($"Source: {plan.SourceFormat?.ToString() ?? "Unknown"}");
-            context.Output.WriteLine($"Target: {plan.TargetFormat}");
-            context.Output.WriteLine($"Action: {plan.ActionKind}");
-            context.Output.WriteLine($"Conversion: {plan.ConversionKind?.ToString() ?? "None"}");
-            context.Output.WriteLine($"Reason: {plan.Reason}");
-            context.Output.WriteLine($"Status: {result.Status}");
+            await context.Output.WriteLineAsync($"Endpoint: {endpoint.QueueName}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Source: {plan.SourceFormat?.ToString() ?? "Unknown"}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Target: {plan.TargetFormat}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Action: {plan.ActionKind}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Conversion: {plan.ConversionKind?.ToString() ?? "None"}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Reason: {plan.Reason}").ConfigureAwait(false);
+            await context.Output.WriteLineAsync($"Status: {result.Status}").ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(inputPath))
             {
-                context.Output.WriteLine($"InputBytes: {new FileInfo(inputPath).Length}");
+                await context.Output.WriteLineAsync($"InputBytes: {new FileInfo(inputPath).Length}").ConfigureAwait(false);
             }
 
             if (!string.IsNullOrWhiteSpace(outputPath))
             {
-                context.Output.WriteLine($"Output: {outputPath}");
+                await context.Output.WriteLineAsync($"Output: {outputPath}").ConfigureAwait(false);
             }
 
             long outputBytes = endpoint.Kind == EndpointKind.Cloud
                 ? cloudSink.BytesWritten
                 : job.OutputBytes;
-            context.Output.WriteLine($"OutputBytes: {outputBytes}");
+            await context.Output.WriteLineAsync($"OutputBytes: {outputBytes}").ConfigureAwait(false);
             job.DeleteTemporaryOutput();
 
             return result.Status == Core.Abstractions.VirtualPrinterJobStatus.Succeeded

@@ -15,7 +15,7 @@ namespace PrintSink.App.Tests;
 /// Tests package-hosted app behavior.
 /// </summary>
 [TestClass]
-public sealed class AppPackageTests
+internal sealed class AppPackageTests
 {
     /// <summary>
     /// Gets or sets the MSTest context for cancellation-aware async work.
@@ -26,7 +26,7 @@ public sealed class AppPackageTests
     /// Verifies the management activation route exposes the shell metadata used at normal launch.
     /// </summary>
     [TestMethod]
-    public void Management_route_uses_management_shell_metadata()
+    public void ManagementRouteUsesManagementShellMetadata()
     {
         PrintSinkApp::PrintSink.App.AppActivationRoute route =
             PrintSinkApp::PrintSink.App.AppActivationRoute.Management(42);
@@ -43,7 +43,7 @@ public sealed class AppPackageTests
     /// Verifies the WinRT source route carries the source text used by the print harness.
     /// </summary>
     [TestMethod]
-    public void WinRt_source_route_uses_print_source_metadata()
+    public void WinRtSourceRouteUsesPrintSourceMetadata()
     {
         PrintSinkApp::PrintSink.App.AppActivationRoute route =
             PrintSinkApp::PrintSink.App.AppActivationRoute.WinRtPrintSource(42, "foo");
@@ -61,7 +61,7 @@ public sealed class AppPackageTests
     /// Verifies the packaged test host owns a usable XAML UI thread.
     /// </summary>
     [UITestMethod]
-    public void Xaml_runtime_is_available_inside_packaged_test_host()
+    public void XamlRuntimeIsAvailableInsidePackagedTestHost()
     {
         Grid grid = new();
 
@@ -72,7 +72,7 @@ public sealed class AppPackageTests
     /// Verifies settings activation owner IDs are copied across the Windows and Microsoft UI projections.
     /// </summary>
     [TestMethod]
-    public void Settings_window_owner_converts_owner_window_id_projection()
+    public void SettingsWindowOwnerConvertsOwnerWindowIdProjection()
     {
         Windows.UI.WindowId source;
         source.Value = 123;
@@ -87,7 +87,7 @@ public sealed class AppPackageTests
     /// Verifies app settings resolve under the package-local storage root.
     /// </summary>
     [TestMethod]
-    public void App_settings_store_uses_package_local_settings_directory()
+    public void AppSettingsStoreUsesPackageLocalSettingsDirectory()
     {
         string localFolderPath = ApplicationData.Current.LocalFolder.Path;
         string expected = PackagedSettingsDirectory.GetRootDirectory(localFolderPath);
@@ -101,7 +101,7 @@ public sealed class AppPackageTests
     /// Verifies loose development packages report why virtual-printer provisioning is blocked.
     /// </summary>
     [TestMethod]
-    public void Virtual_printer_provisioning_reports_development_mode_package()
+    public void VirtualPrinterProvisioningReportsDevelopmentModePackage()
     {
         string packageRoot = Path.Combine(
             Path.GetTempPath(),
@@ -124,7 +124,7 @@ public sealed class AppPackageTests
     /// Verifies headless activation argument parsing ignores missing or whitespace-only payloads.
     /// </summary>
     [TestMethod]
-    public void SplitArguments_handles_empty_activation_payloads()
+    public void SplitArgumentsHandlesEmptyActivationPayloads()
     {
         string[] nullActual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(null);
         string[] whitespaceActual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments("   ");
@@ -137,7 +137,7 @@ public sealed class AppPackageTests
     /// Verifies headless activation argument parsing preserves quoted values.
     /// </summary>
     [TestMethod]
-    public void SplitArguments_preserves_quoted_activation_values()
+    public void SplitArgumentsPreservesQuotedActivationValues()
     {
         string arguments = "--install-virtual-printers --log \"C:\\Temp\\Print Sink\\headless.log\"";
         string[] expected =
@@ -156,7 +156,7 @@ public sealed class AppPackageTests
     /// Verifies headless activation argument parsing follows Windows quote escaping rules.
     /// </summary>
     [TestMethod]
-    public void SplitArguments_preserves_escaped_quotes_and_empty_values()
+    public void SplitArgumentsPreservesEscapedQuotesAndEmptyValues()
     {
         string arguments = "--name \"Print \\\"Sink\\\"\" \"\"";
         string[] expected =
@@ -175,7 +175,7 @@ public sealed class AppPackageTests
     /// Verifies headless activation argument parsing preserves doubled trailing backslashes.
     /// </summary>
     [TestMethod]
-    public void SplitArguments_preserves_trailing_backslashes_before_closing_quotes()
+    public void SplitArgumentsPreservesTrailingBackslashesBeforeClosingQuotes()
     {
         string arguments = "--path \"C:\\Temp\\Print Sink\\\\\"";
         string[] expected =
@@ -193,7 +193,7 @@ public sealed class AppPackageTests
     /// Verifies foreground job options are visible through package-backed local settings and consumed once.
     /// </summary>
     [TestMethod]
-    public async Task App_settings_store_round_trips_job_options_inside_package_identity()
+    public async Task AppSettingsStoreRoundTripsJobOptionsInsidePackageIdentity()
     {
         string rootDirectory = ResetPackagedSettingsDirectory();
         LocalSettingsStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.Create();
@@ -238,7 +238,7 @@ public sealed class AppPackageTests
     /// Verifies packaged job UI options round-trip through package-backed local settings.
     /// </summary>
     [TestMethod]
-    public async Task App_settings_store_round_trips_job_ui_options_inside_package_identity()
+    public async Task AppSettingsStoreRoundTripsJobUiOptionsInsidePackageIdentity()
     {
         string rootDirectory = ResetPackagedSettingsDirectory();
         LocalSettingsStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.Create();
@@ -265,10 +265,10 @@ public sealed class AppPackageTests
     /// Verifies packaged diagnostics round-trip through package-backed local storage.
     /// </summary>
     [TestMethod]
-    public async Task App_diagnostic_store_round_trips_events_inside_package_identity()
+    public async Task AppDiagnosticStoreRoundTripsEventsInsidePackageIdentity()
     {
         string rootDirectory = ResetPackagedSettingsDirectory();
-        LocalDiagnosticEventStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.CreateDiagnosticEventStore();
+        using LocalDiagnosticEventStore store = PrintSinkApp::PrintSink.App.AppSettingsStoreFactory.CreateDiagnosticEventStore();
         DiagnosticEventRecord expected = new(
             DateTimeOffset.UtcNow,
             DiagnosticEventSeverity.Information,

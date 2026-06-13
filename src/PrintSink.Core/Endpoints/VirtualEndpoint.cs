@@ -129,7 +129,7 @@ public sealed class VirtualEndpoint
     private static string NormalizeExtension(string extension)
     {
         string trimmedExtension = extension.Trim();
-        return trimmedExtension.StartsWith(".", StringComparison.Ordinal)
+        return trimmedExtension.StartsWith('.')
             ? trimmedExtension
             : string.Concat(".", trimmedExtension);
     }

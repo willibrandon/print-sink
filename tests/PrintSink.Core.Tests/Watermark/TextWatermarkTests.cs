@@ -6,13 +6,13 @@ namespace PrintSink.Core.Tests.Watermark;
 /// Tests text watermark validation.
 /// </summary>
 [TestClass]
-public sealed class TextWatermarkTests
+internal sealed class TextWatermarkTests
 {
     /// <summary>
     /// Verifies that text watermark values are retained.
     /// </summary>
     [TestMethod]
-    public void Constructor_sets_properties()
+    public void ConstructorSetsProperties()
     {
         TextWatermark watermark = new("Draft", "Segoe UI", 48, 0.35, -35, 12, 24);
 
@@ -29,7 +29,7 @@ public sealed class TextWatermarkTests
     /// Verifies that opacity is constrained to the supported range.
     /// </summary>
     [TestMethod]
-    public void Constructor_rejects_invalid_opacity()
+    public void ConstructorRejectsInvalidOpacity()
     {
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new TextWatermark("Draft", "Segoe UI", 48, 1.5, 0, 0, 0));
     }

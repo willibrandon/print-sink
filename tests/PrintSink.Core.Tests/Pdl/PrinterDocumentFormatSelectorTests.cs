@@ -7,13 +7,13 @@ namespace PrintSink.Core.Tests.Pdl;
 /// Tests physical-printer document format negotiation.
 /// </summary>
 [TestClass]
-public sealed class PrinterDocumentFormatSelectorTests
+internal sealed class PrinterDocumentFormatSelectorTests
 {
     /// <summary>
     /// Verifies that a copy-compatible default document format is preferred.
     /// </summary>
     [TestMethod]
-    public void Select_prefers_copy_compatible_default()
+    public void SelectPrefersCopyCompatibleDefault()
     {
         PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
             "application/pdf",
@@ -28,7 +28,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that XPS can be converted to a default PDF document format.
     /// </summary>
     [TestMethod]
-    public void Select_uses_default_when_xps_conversion_exists()
+    public void SelectUsesDefaultWhenXpsConversionExists()
     {
         PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
             "application/oxps",
@@ -43,7 +43,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that XPS can be converted to a default PCLm document format.
     /// </summary>
     [TestMethod]
-    public void Select_uses_pclm_default_when_xps_conversion_exists()
+    public void SelectUsesPclmDefaultWhenXpsConversionExists()
     {
         PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
             "application/oxps",
@@ -58,7 +58,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that the first supported convertible format is used when the default is not usable.
     /// </summary>
     [TestMethod]
-    public void Select_uses_supported_format_when_default_cannot_be_used()
+    public void SelectUsesSupportedFormatWhenDefaultCannotBeUsed()
     {
         PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
             "application/oxps",
@@ -73,7 +73,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that the source content type is retained when no printer format can be selected.
     /// </summary>
     [TestMethod]
-    public void Select_falls_back_to_source_content_type()
+    public void SelectFallsBackToSourceContentType()
     {
         PrinterDocumentFormatPlan plan = PrinterDocumentFormatSelector.Select(
             "application/pdf",
@@ -88,12 +88,12 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that a successful IPP attribute read drives document-format selection.
     /// </summary>
     [TestMethod]
-    public void Select_uses_successful_ipp_attribute_read()
+    public void SelectUsesSuccessfulIppAttributeRead()
     {
         IppAttributeReadResult attributes = IppAttributeReadResult.Success(
             new Dictionary<string, IppAttributeValue>(StringComparer.OrdinalIgnoreCase)
             {
-                ["document-format-default"] = IppAttributeValue.Single(
+                ["document-format-default"] = IppAttributeValue.Create(
                     "document-format-default",
                     "image/pwg-raster"),
                 ["document-format-supported"] = new IppAttributeValue(
@@ -111,7 +111,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that unsupported IPP attribute reads fall back to source format submission.
     /// </summary>
     [TestMethod]
-    public void Select_falls_back_when_ipp_attribute_read_is_not_supported()
+    public void SelectFallsBackWhenIppAttributeReadIsNotSupported()
     {
         IppAttributeReadResult attributes = IppAttributeReadResult.NotSupported(
             "Virtual printer attribute reads are not supported.");
@@ -126,7 +126,7 @@ public sealed class PrinterDocumentFormatSelectorTests
     /// Verifies that failed IPP attribute reads fall back to source format submission.
     /// </summary>
     [TestMethod]
-    public void Select_falls_back_when_ipp_attribute_read_fails()
+    public void SelectFallsBackWhenIppAttributeReadFails()
     {
         IppAttributeReadResult attributes = IppAttributeReadResult.Failed("Printer attribute query failed.");
 

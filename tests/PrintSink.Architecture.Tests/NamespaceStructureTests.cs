@@ -7,13 +7,13 @@ namespace PrintSink.Architecture.Tests;
 /// Tests namespace-to-folder structure rules.
 /// </summary>
 [TestClass]
-public sealed class NamespaceStructureTests
+internal sealed class NamespaceStructureTests
 {
     /// <summary>
     /// Verifies source namespaces match the project root namespace plus the relative folder path.
     /// </summary>
     [TestMethod]
-    public void CSharp_types_use_namespaces_matching_their_project_folder()
+    public void CSharpTypesUseNamespacesMatchingTheirProjectFolder()
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string[] sourceFiles = SourceFileDiscovery.EnumerateRepositorySourceFiles(repositoryRoot);

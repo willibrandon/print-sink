@@ -409,7 +409,7 @@ internal sealed class ManagementScreen : Component
             setInstalledPrinters(InstalledVirtualPrinterReader.ReadAll());
             setStatusText(status);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             setStatusText($"Capability refresh failed: {ex.Message}");
         }
@@ -428,7 +428,7 @@ internal sealed class ManagementScreen : Component
 
             UiDispatch.Post(() => setJobUiOptions(options));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatusText($"Job UI setting load failed: {ex.Message}"));
         }
@@ -440,14 +440,14 @@ internal sealed class ManagementScreen : Component
     {
         try
         {
-            IReadOnlyList<DiagnosticEventRecord> events = await AppSettingsStoreFactory
-                .CreateDiagnosticEventStore()
+            using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+            IReadOnlyList<DiagnosticEventRecord> events = await diagnosticEventStore
                 .ReadRecentAsync(8)
                 .ConfigureAwait(false);
 
             UiDispatch.Post(() => setDiagnosticEvents([.. events]));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatusText($"Diagnostic load failed: {ex.Message}"));
         }
@@ -472,7 +472,7 @@ internal sealed class ManagementScreen : Component
                 setStatusText(launchJobUi ? "Job UI enabled." : "Headless jobs enabled.");
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
             UiDispatch.Post(() => setStatusText($"Job UI setting save failed: {ex.Message}"));
         }

@@ -10,7 +10,7 @@ namespace PrintSink.Tasks;
 /// <summary>
 /// Adapts a virtual-printer workflow activation to the core job contract.
 /// </summary>
-internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob
+internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
 {
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;
     private readonly WorkflowPrintTicket printTicket;
@@ -95,8 +95,20 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob
         }
         finally
         {
-            targetBuffer?.Dispose();
+            MemoryStream? buffer = targetBuffer;
+            targetBuffer = null;
+            if (buffer is not null)
+            {
+                await buffer.DisposeAsync().ConfigureAwait(false);
+            }
         }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        targetBuffer?.Dispose();
+        targetBuffer = null;
     }
 
     private static PrintWorkflowSubmittedStatus ToWinRtStatus(VirtualPrinterJobStatus status)

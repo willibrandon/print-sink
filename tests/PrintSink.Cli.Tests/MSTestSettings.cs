@@ -1,1 +1,2 @@
-﻿[assembly: Parallelize(Scope = ExecutionScope.MethodLevel)]
+[assembly: DiscoverInternals]
+[assembly: Parallelize(Scope = ExecutionScope.MethodLevel)]

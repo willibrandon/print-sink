@@ -8,13 +8,13 @@ namespace PrintSink.Architecture.Tests;
 /// Tests source-level architecture rules.
 /// </summary>
 [TestClass]
-public sealed class OneTypePerFileTests
+internal sealed class OneTypePerFileTests
 {
     /// <summary>
     /// Verifies each C# source file declares at most one type and uses a matching file name.
     /// </summary>
     [TestMethod]
-    public void CSharp_files_declare_at_most_one_type_with_matching_file_name()
+    public void CSharpFilesDeclareAtMostOneTypeWithMatchingFileName()
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string[] sourceFiles = SourceFileDiscovery.EnumerateRepositorySourceFiles(repositoryRoot);

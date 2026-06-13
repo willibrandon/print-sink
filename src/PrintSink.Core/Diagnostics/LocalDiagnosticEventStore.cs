@@ -7,7 +7,7 @@ namespace PrintSink.Core.Diagnostics;
 /// <summary>
 /// Stores recent PrintSink diagnostic events as local JSON.
 /// </summary>
-public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
+public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposable
 {
     private const string EventsFileName = "diagnostic-events.json";
     private const int DefaultMaximumStoredEvents = 200;
@@ -75,10 +75,13 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
                 records.RemoveRange(0, records.Count - maximumStoredEvents);
             }
 
-            await using FileStream output = File.Create(path);
-            await JsonSerializer
-                .SerializeAsync(output, records, SerializerOptions, cancellationToken)
-                .ConfigureAwait(false);
+            FileStream output = File.Create(path);
+            await using (output.ConfigureAwait(false))
+            {
+                await JsonSerializer
+                    .SerializeAsync(output, records, SerializerOptions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -141,12 +144,22 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore
             return [];
         }
 
-        await using FileStream input = File.OpenRead(path);
-        List<DiagnosticEventRecord>? records = await JsonSerializer
-            .DeserializeAsync<List<DiagnosticEventRecord>>(input, SerializerOptions, cancellationToken)
-            .ConfigureAwait(false);
+        FileStream input = File.OpenRead(path);
+        List<DiagnosticEventRecord>? records;
+        await using (input.ConfigureAwait(false))
+        {
+            records = await JsonSerializer
+                .DeserializeAsync<List<DiagnosticEventRecord>>(input, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return records ?? [];
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        gate.Dispose();
     }
 
     private static string GetEventsPath(string rootDirectory)
