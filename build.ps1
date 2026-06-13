@@ -16,11 +16,17 @@ $arguments = @(
     '.\PrintSink.slnx',
     "/t:$Target",
     "/p:Configuration=$Configuration",
-    "/p:Platform=$Platform"
+    "/p:Platform=$Platform",
+    '/nologo',
+    '/v:minimal'
 )
 
 if (-not $NoRestore) {
     $arguments = @('/restore') + $arguments
 }
 
-msbuild @arguments
+& msbuild @arguments
+
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}

@@ -28,7 +28,7 @@ Use an explicit platform for WinUI, CsWinRT, and C++/WinRT projects. Local x64 i
 The script runs:
 
 ```powershell
-msbuild .\PrintSink.slnx /t:Build /p:Configuration=Debug /p:Platform=x64
+msbuild .\PrintSink.slnx /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
 ```
 
 ## Visual Studio
