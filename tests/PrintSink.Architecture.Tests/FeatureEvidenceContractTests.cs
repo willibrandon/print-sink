@@ -56,6 +56,34 @@ internal sealed partial class FeatureEvidenceContractTests
         Assert.DoesNotContain("no feature is descoped", design);
     }
 
+    /// <summary>
+    /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
+    /// </summary>
+    [TestMethod]
+    public void DeferredCompatibilityHooksHaveDefensiveHandlers()
+    {
+        string jobPreviewScreen = ReadRepositoryFile("src", "PrintSink.App", "JobPreviewScreen.cs");
+        string workflowTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportWorkflowBackgroundTask.cs");
+        string extensionTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportExtensionBackgroundTask.cs");
+
+        Assert.Contains("session.JobNotification += OnJobNotification", jobPreviewScreen);
+        Assert.Contains("AppendJobNotificationDiagnostic", jobPreviewScreen);
+        Assert.Contains("Job notification received", jobPreviewScreen);
+        Assert.Contains("args.PrinterJob.GetJobStatus()", jobPreviewScreen);
+
+        Assert.Contains("ApiInformation.IsEventPresent(PrintWorkflowJobBackgroundSessionType, \"JobIssueDetected\")", workflowTask);
+        Assert.Contains("session.JobIssueDetected += OnJobIssueDetected", workflowTask);
+        Assert.Contains("Workflow job issue detected", workflowTask);
+        Assert.Contains("skipSystemErrorToast={args.SkipSystemErrorToast}", workflowTask);
+        Assert.Contains("uiLaunch={(args.UILauncher.IsUILaunchEnabled() ? \"enabled\" : \"disabled\")}", workflowTask);
+
+        Assert.Contains("ApiInformation.IsEventPresent(PrintSupportExtensionSessionType, \"CommunicationErrorDetected\")", extensionTask);
+        Assert.Contains("session.CommunicationErrorDetected += OnCommunicationErrorDetected", extensionTask);
+        Assert.Contains("IppCommunicationErrorKind.Timeout", extensionTask);
+        Assert.Contains("ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration)", extensionTask);
+        Assert.Contains("IPP communication error", extensionTask);
+    }
+
     private static int[] ExtractDesignFeatureNumbers(string design)
     {
         return [.. DesignFeatureRowRegex()
@@ -108,6 +136,13 @@ internal sealed partial class FeatureEvidenceContractTests
             .Select(static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture))
             .Distinct()
             .Order()];
+    }
+
+    private static string ReadRepositoryFile(params string[] relativePathParts)
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string path = Path.Combine([repositoryRoot, .. relativePathParts]);
+        return File.ReadAllText(path);
     }
 
     [GeneratedRegex(@"^\|\s*(?<number>\d+)\s*\|", RegexOptions.Multiline)]
