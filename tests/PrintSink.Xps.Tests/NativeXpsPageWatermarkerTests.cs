@@ -29,6 +29,7 @@ internal sealed class NativeXpsPageWatermarkerTests
         using ZipArchive archive = new(output, ZipArchiveMode.Read);
         Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.EndsWith(".fpage", StringComparison.OrdinalIgnoreCase)));
         Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.EndsWith(".odttf", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(ReadFixedPageXml(archive).Any(page => page.Contains(WatermarkText, StringComparison.Ordinal)));
     }
 
     /// <summary>
@@ -49,6 +50,7 @@ internal sealed class NativeXpsPageWatermarkerTests
         Assert.IsGreaterThan(0L, output.Length);
         using ZipArchive archive = new(output, ZipArchiveMode.Read);
         Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.Contains("PrintSinkWatermarkImage", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(ReadFixedPageXml(archive).Any(page => page.Contains("PrintSinkWatermarkImage", StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>
@@ -129,6 +131,77 @@ internal sealed class NativeXpsPageWatermarkerTests
     private static byte[] CreatePngBytes()
     {
         return Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lX8xjAAAAABJRU5ErkJggg==");
+    }
+
+    private static string[] ReadFixedPageXml(ZipArchive archive)
+    {
+        string[] fixedPageNames = GetPackagePartNames(archive, ".fpage");
+        Assert.IsNotEmpty(fixedPageNames);
+
+        return [.. fixedPageNames.Select(partName => ReadPackagePartText(archive, partName))];
+    }
+
+    private static string[] GetPackagePartNames(ZipArchive archive, string extension)
+    {
+        SortedSet<string> partNames = new(StringComparer.OrdinalIgnoreCase);
+        string interleavedMarker = $"{extension}/";
+        foreach (ZipArchiveEntry entry in archive.Entries)
+        {
+            if (entry.FullName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                partNames.Add(entry.FullName);
+                continue;
+            }
+
+            int markerIndex = entry.FullName.IndexOf(interleavedMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0)
+            {
+                partNames.Add(entry.FullName[..(markerIndex + extension.Length)]);
+            }
+        }
+
+        return [.. partNames];
+    }
+
+    private static string ReadPackagePartText(ZipArchive archive, string partName)
+    {
+        ZipArchiveEntry? directEntry = archive.GetEntry(partName);
+        if (directEntry is not null)
+        {
+            using Stream directStream = directEntry.Open();
+            using StreamReader directReader = new(directStream, Encoding.UTF8, true);
+            return directReader.ReadToEnd();
+        }
+
+        ZipArchiveEntry[] pieceEntries = [.. archive.Entries
+            .Where(entry => entry.FullName.StartsWith($"{partName}/", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static entry => GetInterleavedPieceIndex(entry))];
+        if (pieceEntries.Length == 0)
+        {
+            throw new InvalidDataException($"XPS package part is missing: {partName}");
+        }
+
+        using MemoryStream buffer = new();
+        foreach (ZipArchiveEntry pieceEntry in pieceEntries)
+        {
+            using Stream pieceStream = pieceEntry.Open();
+            pieceStream.CopyTo(buffer);
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    private static int GetInterleavedPieceIndex(ZipArchiveEntry entry)
+    {
+        string name = entry.FullName[(entry.FullName.LastIndexOf('/') + 1)..];
+        int start = name.IndexOf('[', StringComparison.Ordinal);
+        int end = name.IndexOf(']', StringComparison.Ordinal);
+        if (start < 0 || end <= start)
+        {
+            throw new InvalidDataException($"XPS interleaved package piece has invalid name: {entry.FullName}");
+        }
+
+        return int.Parse(name[(start + 1)..end], System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static void WriteEntry(ZipArchive archive, string name, string text)
