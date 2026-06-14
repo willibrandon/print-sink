@@ -26,6 +26,9 @@ internal sealed partial class FeatureEvidenceContractTests
         int[] supportedEvidenceNumbers = ExtractSupportedEvidenceNumbers(e2eScript);
         int[] deferredEvidenceNumbers = ExtractDeferredEvidenceNumbers(e2eScript);
         int[] evidenceNumbers = [.. supportedEvidenceNumbers.Concat(deferredEvidenceNumbers).Order()];
+        Dictionary<int, string> designFeatureNames = ExtractDesignFeatureNames(design);
+        Dictionary<int, string> supportedEvidenceNames = ExtractSupportedEvidenceNames(e2eScript);
+        Dictionary<int, string> deferredEvidenceNames = ExtractDeferredEvidenceNames(e2eScript);
 
         Assert.IsEmpty(
             supportedEvidenceNumbers.Intersect(deferredEvidenceNumbers).ToArray(),
@@ -38,6 +41,13 @@ internal sealed partial class FeatureEvidenceContractTests
             trackedDesignNumbers,
             deferredEvidenceNumbers,
             "Tracked-only design rows must match deferred E2E evidence numbers.");
+
+        CollectionAssert.AreEqual(
+            designFeatureNumbers,
+            designFeatureNames.Keys.Order().ToArray(),
+            "Every design feature row must have a parsed feature name.");
+        AssertEvidenceNamesMatchDesign(designFeatureNames, supportedEvidenceNames, "supported");
+        AssertEvidenceNamesMatchDesign(designFeatureNames, deferredEvidenceNames, "deferred");
     }
 
     /// <summary>
@@ -110,6 +120,15 @@ internal sealed partial class FeatureEvidenceContractTests
             .Order()];
     }
 
+    private static Dictionary<int, string> ExtractDesignFeatureNames(string design)
+    {
+        return DesignFeatureNameRegex()
+            .Matches(design)
+            .ToDictionary(
+                static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                static match => match.Groups["feature"].Value.Trim());
+    }
+
     private static int[] ExtractSupportedEvidenceNumbers(string e2eScript)
     {
         Match functionMatch = SupportedEvidenceFunctionRegex().Match(e2eScript);
@@ -148,6 +167,47 @@ internal sealed partial class FeatureEvidenceContractTests
             .Order()];
     }
 
+    private static Dictionary<int, string> ExtractSupportedEvidenceNames(string e2eScript)
+    {
+        Match functionMatch = FeatureEvidenceFunctionRegex().Match(e2eScript);
+        Assert.IsTrue(functionMatch.Success, "Could not find New-PrintSinkFeatureEvidence.");
+
+        return SupportedEvidenceNameRegex()
+            .Matches(functionMatch.Groups["body"].Value)
+            .ToDictionary(
+                static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                static match => match.Groups["feature"].Value);
+    }
+
+    private static Dictionary<int, string> ExtractDeferredEvidenceNames(string e2eScript)
+    {
+        Match functionMatch = DeferredEvidenceFunctionRegex().Match(e2eScript);
+        Assert.IsTrue(functionMatch.Success, "Could not find New-PrintSinkDeferredFeatureEvidence.");
+
+        return DeferredEvidenceNameRegex()
+            .Matches(functionMatch.Groups["body"].Value)
+            .ToDictionary(
+                static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                static match => match.Groups["feature"].Value);
+    }
+
+    private static void AssertEvidenceNamesMatchDesign(
+        Dictionary<int, string> designFeatureNames,
+        Dictionary<int, string> evidenceFeatureNames,
+        string evidenceKind)
+    {
+        foreach ((int number, string evidenceName) in evidenceFeatureNames)
+        {
+            Assert.IsTrue(
+                designFeatureNames.TryGetValue(number, out string? designName),
+                $"The {evidenceKind} evidence row #{number} does not exist in DESIGN.md.");
+            Assert.AreEqual(
+                designName,
+                evidenceName,
+                $"The {evidenceKind} evidence name for row #{number} must match DESIGN.md.");
+        }
+    }
+
     private static string ReadRepositoryFile(params string[] relativePathParts)
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
@@ -157,6 +217,9 @@ internal sealed partial class FeatureEvidenceContractTests
 
     [GeneratedRegex(@"^\|\s*(?<number>\d+)\s*\|", RegexOptions.Multiline)]
     private static partial Regex DesignFeatureRowRegex();
+
+    [GeneratedRegex(@"^\|\s*(?<number>\d+)\s*\|\s*(?<feature>[^|]+?)\s*\|", RegexOptions.Multiline)]
+    private static partial Regex DesignFeatureNameRegex();
 
     [GeneratedRegex(@"^\|\s*(?<number>\d+)\s*\|[^\r\n]*Tracked only\.", RegexOptions.Multiline)]
     private static partial Regex TrackedDesignFeatureRowRegex();
@@ -172,4 +235,13 @@ internal sealed partial class FeatureEvidenceContractTests
 
     [GeneratedRegex(@"number\s*=\s*(?<number>\d+)")]
     private static partial Regex DeferredNumberRegex();
+
+    [GeneratedRegex(@"function New-PrintSinkFeatureEvidence\s*\{(?<body>.*?)^\}", RegexOptions.Multiline | RegexOptions.Singleline)]
+    private static partial Regex FeatureEvidenceFunctionRegex();
+
+    [GeneratedRegex(@"Add-PrintSinkFeatureEvidence[\s\S]*?-Number\s+(?<number>\d+)\s*`[\s\S]*?-Feature\s+'(?<feature>[^']+)'", RegexOptions.CultureInvariant)]
+    private static partial Regex SupportedEvidenceNameRegex();
+
+    [GeneratedRegex(@"number\s*=\s*(?<number>\d+)[\s\S]*?feature\s*=\s*'(?<feature>[^']+)'", RegexOptions.CultureInvariant)]
+    private static partial Regex DeferredEvidenceNameRegex();
 }

@@ -4498,7 +4498,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 2 `
-        -Feature 'Receive spooled PDL and content type' `
+        -Feature 'Receive spooled PDL + content type' `
         -Passed (
             $realPrints.Count -eq $ExpectedQueues.Count `
                 -and (@($realPrints | Where-Object {
@@ -4522,7 +4522,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 4 `
-        -Feature 'Passthrough formats without OS re-render' `
+        -Feature 'Passthrough formats (no OS re-render)' `
         -Passed (
             (Test-RouteContains -Result $PdfPassthrough -ExpectedText 'application/pdf -> Pdf; Copy') `
                 -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
@@ -4538,7 +4538,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 5 `
-        -Feature 'File-printer Save As target' `
+        -Feature 'File-printer "Save As" target' `
         -Passed (
                 $fileBackedPrints.Count -eq 5 `
                 -and $NotepadPrint.bytes -gt 0 `
@@ -4561,7 +4561,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 6 `
-        -Feature 'Non-file sinks' `
+        -Feature 'Non-file sinks (cloud / OneNote-style)' `
         -Passed (
             $null -ne $cloudPrint `
                 -and $null -ne $cloudArtifact `
@@ -4577,7 +4577,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 7 `
-        -Feature 'OXPS conversion to PDF, PWG Raster, and PCLm' `
+        -Feature 'OXPS → PDF / PWG-Raster / PCLm conversion' `
         -Passed (
             (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PDF') -ExpectedText 'Convert XPS to PDF') `
                 -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PWG Raster') -ExpectedText 'Convert XPS to PWG Raster') `
@@ -4590,7 +4590,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 8 `
-        -Feature 'XPS/OXPS passthrough copy' `
+        -Feature 'XPS/OXPS passthrough (copy)' `
         -Passed (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
         -Evidence 'The XPS endpoint completed a copy route and produced a valid OXPS package.' `
         -Artifact (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS')
@@ -4598,7 +4598,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 9 `
-        -Feature 'Watermark text and image on XPS pages' `
+        -Feature 'Watermark (text + image) on XPS pages' `
         -Passed (
             $SettingsWatermark.bytes -gt 0 `
                 -and $SettingsImageWatermark.bytes -gt 0 `
@@ -4613,7 +4613,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 10 `
-        -Feature 'Per-job UI preview launched from background' `
+        -Feature 'Per-job UI / preview launched from background' `
         -Passed (
             $JobUiWatermark.mode -eq 'job-ui-watermark' `
                 -and $JobUiWatermark.bytes -gt 0 `
@@ -4635,7 +4635,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 12 `
-        -Feature 'Print-ticket validation and resolve' `
+        -Feature 'Print-ticket validation / resolve' `
         -Passed (
             $realPrints.Count -eq $ExpectedQueues.Count `
                 -and (@($realPrints | Where-Object {
@@ -4648,7 +4648,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 13 `
-        -Feature 'PDC regeneration and custom features' `
+        -Feature 'PDC regeneration / custom features' `
         -Passed ([string]$ExtensionCapabilities.detail -like '*features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode*') `
         -Evidence 'A real capability refresh updated the installed queue PDC with the built-in PrintSink feature set.' `
         -Artifact $ExtensionCapabilities
@@ -4672,7 +4672,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 16 `
-        -Feature 'Get and set user default print ticket' `
+        -Feature 'Get/set user default print ticket' `
         -Passed (
             [string]$UserDefaultPrintTicket.set.detail -like '*copies=2*verifiedCopies=2*' `
                 -and [string]$UserDefaultPrintTicket.restore.detail -like '*copies=1*verifiedCopies=1*') `
@@ -4682,7 +4682,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 17 `
-        -Feature 'Physical IPP PSA association and workflow activation' `
+        -Feature 'Physical IPP PSA association + workflow activation' `
         -Passed (
             -not [string]::IsNullOrWhiteSpace([string]$IppAssociation.aumid) `
                 -and $IppAssociation.ippRequestCount -gt 0 `
@@ -4730,7 +4730,7 @@ function New-PrintSinkFeatureEvidence {
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 23 `
-        -Feature 'Graceful cancel, abort, and fail' `
+        -Feature 'Graceful cancel / abort / fail' `
         -Passed (
             [string]$FailedImageWatermark.diagnostic.message -eq 'Job failed' `
                 -and [string]$JobUiCancel.diagnostic.message -eq 'Job canceled' `
