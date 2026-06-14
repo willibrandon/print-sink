@@ -159,9 +159,9 @@ The required E2E suite proves the current installed-package behavior:
    `GetPrinterAttributes` traffic, a stopped/rejecting IPP probe reports `printer-state=stopped`,
    `printer-state-reasons=paused`, and `printer-is-accepting-jobs=false`, the real
    `PrintSupportExtensionBackgroundTask` validates print tickets for that IPP queue, and a real print
-   job records `PrintSupportWorkflowBackgroundTask` start/compression-state, pass-through, and
-   passthrough-with-attributes state diagnostics. Document-output assertions are made through the
-   PrintSink virtual queues.
+   job records `PrintSupportWorkflowBackgroundTask` start/compression-state. Physical
+   `PdlModificationRequested` pass-through is recorded when Windows delivers it, but document-output
+   assertions are made through the PrintSink virtual queues.
 11. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
     target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
     copy route and provider-v2 state. If the live runtime can encode IPP job and operation attributes
@@ -229,8 +229,9 @@ Real output assertions:
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
   with real Microsoft IPP Class Driver devices, observe stopped/rejecting printer state from the local
   IPP device, trigger ticket validation for that queue, submit a real print job that activates
-  workflow start and pass-through, record IPP compression state while leaving system rendering enabled,
-  and produce local IPP request evidence.
+  workflow start, record IPP compression state while leaving system rendering enabled, and produce
+  local IPP request evidence. Physical pass-through is optional evidence because PrintSink does not
+  claim physical target-stream replacement.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider. Diagnostics must prove provider-v2 submission when the runtime
   can execute it and explicit v1 fallback when provider-v2 is unsupported or unusable.

@@ -115,7 +115,7 @@
             DisplayName="ms-resource:PwgRasterPrintDisplayName"
             PrinterUri="printsink:print-to-pwgr"
             PreferredInputFormat="application/oxps"
-            OutputFileTypes="pwg"
+            OutputFileTypes="pwgr"
             PdcFile="Config\PrinterPwgRaster.pdc.xml"
             PdrFile="Config\PrinterPwgRaster.pdr.xml" />
         </printsupport2:Extension>

@@ -54,7 +54,7 @@ public static class EndpointCatalog
             PdlFormat.PwgRaster,
             [],
             true,
-            ".pwg"),
+            ".pwgr"),
         new(
             EndpointKind.Pclm,
             "PrintSink - PCLm",

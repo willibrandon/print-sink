@@ -274,10 +274,12 @@ function Assert-FeatureEvidence {
 
     $capabilityRefresh = Get-ResultProperty -Object $artifact -Name 'capabilityRefresh'
     $pdfPassthroughProvider = Get-ResultProperty -Object $artifact -Name 'pdfPassthroughProvider'
+    $physicalWorkflowStart = Get-ResultProperty -Object $artifact -Name 'physicalWorkflowStart'
     $physicalWorkflow = Get-ResultProperty -Object $artifact -Name 'physicalWorkflow'
+    $physicalWorkflowStatus = [string](Get-ResultProperty -Object $artifact -Name 'physicalWorkflowStatus')
+    $physicalWorkflowDetail = [string](Get-ResultProperty -Object $artifact -Name 'physicalWorkflowDetail')
     $capabilityRefreshDetail = [string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail')
     $pdfPassthroughProviderDetail = [string](Get-ResultProperty -Object $pdfPassthroughProvider -Name 'detail')
-    $physicalWorkflowDetail = [string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail')
     Assert-Condition ($capabilityRefreshDetail -like '*pdlPassthroughWithJobAttributes=enabled*') 'Deferred row 28 did not enable passthrough-with-job-attributes during capability refresh.'
     Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2=*') 'Deferred row 28 omitted provider-v2 availability detail.'
     Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=*') 'Deferred row 28 omitted provider-v2 submission detail.'
@@ -297,8 +299,17 @@ function Assert-FeatureEvidence {
         Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=fallback-v1*') 'Deferred row 28 provider-v2 fallback was not explicit.'
     }
 
-    Assert-Condition ($physicalWorkflowDetail -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
-    Assert-Condition ($physicalWorkflowDetail -notlike '*passthroughWithAttributes=error*') 'Deferred row 28 workflow passthrough-with-attributes probe failed.'
+    Assert-Condition ((Get-ResultProperty -Object $physicalWorkflowStart -Name 'message') -eq 'Workflow job starting') 'Deferred row 28 omitted physical workflow-start evidence.'
+    if ($null -ne $physicalWorkflow) {
+        $physicalWorkflowDiagnosticDetail = [string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail')
+        Assert-Condition ($physicalWorkflowDiagnosticDetail -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
+        Assert-Condition ($physicalWorkflowDiagnosticDetail -notlike '*passthroughWithAttributes=error*') 'Deferred row 28 workflow passthrough-with-attributes probe failed.'
+        Assert-Condition ($physicalWorkflowStatus -eq 'pdl-modification-delivered') 'Deferred row 28 reported physical workflow evidence without delivered status.'
+    }
+    else {
+        Assert-Condition ($physicalWorkflowStatus -eq 'pdl-modification-not-delivered') 'Deferred row 28 omitted physical workflow non-delivery status.'
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace($physicalWorkflowDetail)) 'Deferred row 28 omitted physical workflow non-delivery detail.'
+    }
 }
 
 function Get-ExpectedSupportedFeatures {

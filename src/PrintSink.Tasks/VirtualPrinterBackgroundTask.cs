@@ -260,7 +260,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 PdlFormat.Oxps => ".oxps",
                 PdlFormat.Xps => ".xps",
                 PdlFormat.PostScript => ".ps",
-                PdlFormat.PwgRaster => ".pwg",
+                PdlFormat.PwgRaster => ".pwgr",
                 PdlFormat.Pclm => ".pclm",
                 _ => ".pdl",
             }

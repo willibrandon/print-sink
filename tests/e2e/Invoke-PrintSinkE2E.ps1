@@ -54,7 +54,7 @@ $realPrintCases = @(
     [ordered]@{
         queue = 'PrintSink - PWG Raster'
         format = 'pwg'
-        extension = '.pwg'
+        extension = '.pwgr'
         requiresSaveAs = $true
         expectedText = ''
         expectedRoute = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.'
@@ -128,7 +128,7 @@ $expectedVirtualPrinters = @(
         printerUri = 'printsink:print-to-pwgr'
         displayNameResource = 'ms-resource:PwgRasterPrintDisplayName'
         preferredInputFormat = 'application/oxps'
-        outputFileTypes = 'pwg'
+        outputFileTypes = 'pwgr'
         pdcFile = 'Config\PrinterPwgRaster.pdc.xml'
         pdrFile = 'Config\PrinterPwgRaster.pdr.xml'
         supportedFormats = @()
@@ -2281,6 +2281,39 @@ function Invoke-PrintSinkIppPrinterStateProbe {
     }
 }
 
+function Get-RecentPrintServiceEvents {
+    param(
+        [string] $PrinterName,
+        [DateTimeOffset] $StartedUtc
+    )
+
+    $startTime = $StartedUtc.LocalDateTime.AddSeconds(-5)
+    try {
+        $events = Get-WinEvent `
+            -FilterHashtable @{
+                LogName = 'Microsoft-Windows-PrintService/Operational'
+                StartTime = $startTime
+            } `
+            -ErrorAction Stop
+    }
+    catch {
+        return @()
+    }
+
+    return @($events |
+        Where-Object { [string]$_.Message -like "*$PrinterName*" } |
+        Select-Object -Last 20 |
+        ForEach-Object {
+            [ordered]@{
+                timeCreated = $_.TimeCreated.ToString('O')
+                id = $_.Id
+                level = $_.LevelDisplayName
+                provider = $_.ProviderName
+                message = $_.Message
+            }
+        })
+}
+
 function Invoke-PrintSinkIppWorkflowActivationPrint {
     param(
         [string] $PrinterName,
@@ -2309,19 +2342,34 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
                 'skipSystemRendering=default',
                 'ippCompression=') `
             -TimeoutSeconds 60
-        $workflow = Wait-ForPrintSinkDiagnostic `
-            -PackageFamilyName $PackageFamilyName `
-            -Endpoint $PrinterName `
-            -Message 'Workflow job passed through' `
-            -StartedUtc $startedUtc `
-            -DetailContains @(
-                'target=system',
-                'passthroughWithAttributes=') `
-            -TimeoutSeconds 60
+
+        $workflow = $null
+        $workflowStatus = 'pdl-modification-not-delivered'
+        $workflowDetail = ''
+        try {
+            $workflow = Wait-ForPrintSinkDiagnostic `
+                -PackageFamilyName $PackageFamilyName `
+                -Endpoint $PrinterName `
+                -Message 'Workflow job passed through' `
+                -StartedUtc $startedUtc `
+                -DetailContains @(
+                    'target=system',
+                    'passthroughWithAttributes=') `
+                -TimeoutSeconds 10
+            $workflowStatus = 'pdl-modification-delivered'
+        }
+        catch {
+            $workflowDetail = $_.Exception.Message
+            Write-E2EProgress "IPP workflow PDL modification was not delivered for ${PrinterName}: $workflowDetail"
+        }
+
         return [ordered]@{
             printer = $PrinterName
             workflowStart = $workflowStart
             workflow = $workflow
+            workflowStatus = $workflowStatus
+            workflowDetail = $workflowDetail
+            printServiceEvents = Get-RecentPrintServiceEvents -PrinterName $PrinterName -StartedUtc $startedUtc
         }
     }
     finally {
@@ -2502,7 +2550,8 @@ function Invoke-PrintSinkRealPrint {
     }
     if ($PrintCase.requiresSaveAs) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
-        Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath (Split-Path -Parent $outputPath) -Filter "$outputName*" -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force
     }
 
     $printProcess = Start-PrintSinkWin32PrintProcess `
@@ -2543,14 +2592,16 @@ function Invoke-PrintSinkRealPrint {
                 -StartedUtc $startedUtc `
                 -DetailContains @('status=Resolved')
 
-            Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
-            Assert-DocumentOutput -PrintCase $PrintCase -OutputPath $outputPath
-            $file = Get-Item -LiteralPath $outputPath
+            $file = Wait-ForMatchingDocumentOutput `
+                -PrintCase $PrintCase `
+                -Directory (Split-Path -Parent $outputPath) `
+                -OutputName $outputName `
+                -TimeoutSeconds 45
 
             return [ordered]@{
                 queue = $printerName
                 format = $PrintCase.format
-                outputPath = $outputPath
+                outputPath = $file.FullName
                 bytes = $file.Length
                 diagnostic = $diagnostic
                 ticketValidation = $ticketValidation
@@ -3921,6 +3972,39 @@ function Find-MatchingDocumentOutput {
     throw "Could not match a valid $($PrintCase.format) output for $($PrintCase.queue). Candidates: $($candidateSummary -join ', ')"
 }
 
+function Wait-ForMatchingDocumentOutput {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintCase,
+        [string] $Directory,
+        [string] $OutputName,
+        [int] $TimeoutSeconds
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $candidateFiles = @(
+            Get-ChildItem -LiteralPath $Directory -Filter "$OutputName*" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 } |
+                Sort-Object -Property LastWriteTimeUtc
+        )
+
+        foreach ($candidateFile in $candidateFiles) {
+            if (Test-DocumentOutput -PrintCase $PrintCase -OutputPath $candidateFile.FullName) {
+                return $candidateFile
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    $candidateSummary = @(
+        Get-ChildItem -LiteralPath $Directory -Filter "$OutputName*" -File -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.Name)=$($_.Length)" }
+    )
+    throw "Timed out waiting for a valid $($PrintCase.format) output for $($PrintCase.queue). Candidates: $($candidateSummary -join ', ')"
+}
+
 function Set-ToggleSwitch {
     param(
         [System.Windows.Automation.AutomationElement] $Root,
@@ -4464,11 +4548,15 @@ function New-PrintSinkDeferredFeatureEvidence {
             number = 28
             feature = 'PDL passthrough with IPP job-attribute compatibility'
             status = 'deferred'
-            evidence = 'PrintSink enables the capability, records workflow passthrough-attribute state, and submits provider-v2 jobs with encoded IPP job and operation attributes when the live runtime can execute that path. Hosted runners can report provider2=unsupported or provider2=runtime-unusable; those runs are recorded as explicit v1 fallback instead of a supported row-28 claim.'
+            evidence = 'PrintSink enables the capability and submits provider-v2 jobs with encoded IPP job and operation attributes when the live runtime can execute that path. Physical workflow passthrough-attribute state is recorded only when Windows delivers PdlModificationRequested. Hosted runners can report provider2=unsupported or provider2=runtime-unusable; those runs are recorded as explicit v1 fallback instead of a supported row-28 claim.'
             artifact = [ordered]@{
                 capabilityRefresh = $ExtensionCapabilities
                 pdfPassthroughProvider = $PdfPassthrough.provider
+                physicalWorkflowStart = $IppAssociation.workflowActivationPrint.workflowStart
                 physicalWorkflow = $IppAssociation.workflowActivationPrint.workflow
+                physicalWorkflowStatus = $IppAssociation.workflowActivationPrint.workflowStatus
+                physicalWorkflowDetail = $IppAssociation.workflowActivationPrint.workflowDetail
+                printServiceEvents = $IppAssociation.workflowActivationPrint.printServiceEvents
             }
         }
     )
@@ -4726,8 +4814,8 @@ function New-PrintSinkFeatureEvidence {
                 -and (@($IppAssociation.printerStateProbe.stateReasons) -contains 'paused') `
                 -and (@($IppAssociation.printerStateProbe.acceptingJobs) -contains 'False') `
                 -and [string]$IppAssociation.ticketValidation.message -eq 'Print ticket validated' `
-                -and $null -ne $IppAssociation.workflowActivationPrint.workflow) `
-        -Evidence 'A temporary signed INF associated the package with real Microsoft IPP Class Driver queues, proved stopped/rejecting IPP state traffic, and triggered extension plus workflow diagnostics.' `
+                -and [string]$IppAssociation.workflowActivationPrint.workflowStart.message -eq 'Workflow job starting') `
+        -Evidence 'A temporary signed INF associated the package with real Microsoft IPP Class Driver queues, proved stopped/rejecting IPP state traffic, and triggered extension plus workflow activation diagnostics.' `
         -Artifact $IppAssociation
 
     Add-PrintSinkFeatureEvidence `

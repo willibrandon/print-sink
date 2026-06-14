@@ -213,7 +213,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 | 26 | IPP communication-error timeout recovery | `PrintSupportExtensionSession.CommunicationErrorDetected`, `PrintSupportIppCommunicationConfiguration` | `PrintSupportExtensionBackgroundTask` | Tracked only. Defensive handler configures IPP timeouts when Windows reports a timeout; not a supported feature claim until a deterministic real-device E2E can trigger the event. |
 | 27 | IPP compression compatibility handling | `PrintWorkflowJobStartingEventArgs.IsIppCompressionEnabled`, `DisableIppCompressionForJob()` | `PrintSupportWorkflowBackgroundTask` + E2E | Real IPP workflow activation records the platform compression state and keeps system rendering enabled. |
-| 28 | PDL passthrough with IPP job-attribute compatibility | `SetPdlPassthroughWithJobAttributesSupported`, `IPdlPassthroughProvider2`, `PrintWorkflowPrinterJob3` | `PrintSupportExtensionBackgroundTask` + `PrintSupportWorkflowBackgroundTask` + `PrintSink.App` | Tracked only. PrintSink enables the capability, records workflow passthrough-attribute state, and uses a scoped CsWinRT projection for `IppAttributeConverter` / `IPdlPassthroughProvider2`. When the live runtime can encode IPP job and operation attributes and accepts provider-v2 submission, CI records that path. When Windows reports provider-v2 as unsupported or the attribute conversion API is unusable, CI records the explicit v1 fallback and HRESULT instead of claiming row 28 support. |
+| 28 | PDL passthrough with IPP job-attribute compatibility | `SetPdlPassthroughWithJobAttributesSupported`, `IPdlPassthroughProvider2`, `PrintWorkflowPrinterJob3` | `PrintSupportExtensionBackgroundTask` + `PrintSupportWorkflowBackgroundTask` + `PrintSink.App` | Tracked only. PrintSink enables the capability and uses a scoped CsWinRT projection for `IppAttributeConverter` / `IPdlPassthroughProvider2`. When the live runtime can encode IPP job and operation attributes and accepts provider-v2 submission, CI records that path. When Windows reports provider-v2 as unsupported or the attribute conversion API is unusable, CI records the explicit v1 fallback and HRESULT instead of claiming row 28 support. Physical workflow passthrough-attribute state is recorded only when Windows delivers `PdlModificationRequested`. |
 
 ---
 
@@ -416,7 +416,7 @@ shared PSA contracts, plus the in-process WinRT activation hosts.
                                  EntryPoint="PrintSink.Tasks.VirtualPrinterBackgroundTask">
           <printsupport2:PrintSupportVirtualPrinter DisplayName="ms-resource:PrinterPwgrName"
               PrinterUri="printsink:print-to-pwgr" PreferredInputFormat="application/oxps"
-              OutputFileTypes="pwg" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml"/>
+              OutputFileTypes="pwgr" PdcFile="Config\PrinterPwgRaster.pdc.xml" PdrFile="Config\PrinterPwgRaster.pdr.xml"/>
         </printsupport2:Extension>
 
         <!-- (f) PCLm file output (mobile raster pipeline) -->
@@ -511,7 +511,7 @@ only marshals WinRT objects into and out of the core.
 | Source | Endpoint target | Action |
 | --- | --- | --- |
 | `application/oxps` | pdf | `XpsToPdf` (+ optional watermark) |
-| `application/oxps` | pwg | `XpsToPwgr` |
+| `application/oxps` | pwgr | `XpsToPwgr` |
 | `application/oxps` | pclm | `XpsToPclm` |
 | `application/oxps` | xps/oxps | copy |
 | `application/pdf` | pdf | copy (passthrough) |
@@ -551,12 +551,14 @@ The physical-printer PSA path is an association and activation probe for
 
 - `JobStarting` records workflow activation and leaves system rendering enabled.
 - `PdlModificationRequested` honors Job UI cancel/fail semantics, consumes per-job UI options so they
-  cannot leak to the next virtual-printer job, and records a pass-through diagnostic.
+  cannot leak to the next virtual-printer job, and records pass-through diagnostics if Windows delivers
+  that event.
 - `JobIssueDetected` records issue kind, HRESULT, toast-skip state, and UI-launch availability when
   Windows raises the event. It remains a tracked compatibility hook until a deterministic E2E can
   trigger it.
 - The task does not call `SetSkipSystemRendering` or `CreateJobOnPrinter[WithAttributes]`.
-- Package-local diagnostics record physical workflow start, pass-through, and failure/cancel.
+- Package-local diagnostics always record physical workflow start and failure/cancel. Physical
+  pass-through diagnostics are optional evidence until target-stream replacement is a supported feature.
 
 ### 7.4 `PrintSink.App` — Reactor shell + activation router
 
@@ -732,8 +734,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      Microsoft IPP Class Driver queues to the in-process E2E IPP printer, assert the installed PSA AUMID
      device property, prove stopped/rejecting IPP state traffic, prove the extension task validates
      real print tickets for that queue, and submit a real print job that records physical workflow
-     start/compression state and pass-through.
-     Document-output assertions run through the PrintSink virtual queues.
+     start/compression state. Physical pass-through is recorded only when Windows delivers
+     `PdlModificationRequested`; document-output assertions run through the PrintSink virtual queues.
    - Assert real outputs: PDF and PCLm open with PDFPig; PDF text contains `foo`; the Notepad `/p`
      PDF path is non-empty and contains `foo`; XPS/OXPS is an OPC
      package with XPS content types, parseable fixed pages, interleaved piece support, and `foo`; PS
