@@ -16,6 +16,7 @@ internal static class MSTestDiscoveryRoots
         _ = new OneTypePerFileTests();
         _ = new PackageManagementContractTests();
         _ = new PackagingContractTests();
+        _ = new ReactorUiContractTests();
         _ = new WarningConfigurationTests();
         _ = new XmlDocumentationTests();
     }
