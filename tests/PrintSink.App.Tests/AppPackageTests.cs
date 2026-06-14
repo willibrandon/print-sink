@@ -2,6 +2,7 @@ extern alias PrintSinkApp;
 
 using System.Xml.Linq;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Windows.AppLifecycle;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.VisualStudio.TestTools.UnitTesting.AppContainer;
 using PrintSink.Core.Diagnostics;
@@ -227,6 +228,69 @@ internal sealed class AppPackageTests
         string[] actual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(arguments);
 
         CollectionAssert.AreEqual(expected, actual);
+    }
+
+    /// <summary>
+    /// Verifies visible app launches are not consumed by the headless command path.
+    /// </summary>
+    [TestMethod]
+    public async Task HeadlessCommandPathIgnoresNonCommandArguments()
+    {
+        int? exitCode = await PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine
+            .RunIfRequestedAsync(
+                ["--not-a-printsink-command"],
+                AppInstance.GetCurrent().GetActivatedEventArgs(),
+                TestContext.CancellationToken)
+            .ConfigureAwait(false);
+
+        Assert.IsNull(exitCode);
+    }
+
+    /// <summary>
+    /// Verifies packaged-app command help completes headlessly without starting the Reactor shell.
+    /// </summary>
+    [TestMethod]
+    public async Task HeadlessCommandPathHandlesHelp()
+    {
+        TextWriter originalOut = Console.Out;
+        using StringWriter writer = new(System.Globalization.CultureInfo.InvariantCulture);
+        Console.SetOut(writer);
+
+        try
+        {
+            int? exitCode = await PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine
+                .RunIfRequestedAsync(
+                    ["--help"],
+                    AppInstance.GetCurrent().GetActivatedEventArgs(),
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            Assert.AreEqual(0, exitCode);
+            string help = writer.ToString();
+            Assert.Contains("PrintSink packaged app commands:", help);
+            Assert.Contains("--install-virtual-printers", help);
+            Assert.Contains("--winrt-source-print", help);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+
+    /// <summary>
+    /// Verifies conflicting package commands fail before changing printer state.
+    /// </summary>
+    [TestMethod]
+    public async Task HeadlessCommandPathRejectsConflictingCommands()
+    {
+        int? exitCode = await PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine
+            .RunIfRequestedAsync(
+                ["--install-virtual-printers", "--remove-virtual-printers"],
+                AppInstance.GetCurrent().GetActivatedEventArgs(),
+                TestContext.CancellationToken)
+            .ConfigureAwait(false);
+
+        Assert.AreEqual(1, exitCode);
     }
 
     /// <summary>
