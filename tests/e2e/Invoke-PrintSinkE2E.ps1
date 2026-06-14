@@ -1219,7 +1219,8 @@ function Find-EnabledDescendant {
     while ([DateTime]::UtcNow -lt $deadline)
 
     $buttonSummary = Get-AutomationButtonSummary -Root $Root
-    throw "Timed out waiting for $Description. Buttons: $buttonSummary"
+    $automationSnapshot = Format-AutomationSnapshot -Root $Root
+    throw "Timed out waiting for $Description. Buttons: $buttonSummary`n$automationSnapshot"
 }
 
 function Get-AutomationButtonSummary {

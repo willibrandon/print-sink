@@ -29,7 +29,7 @@ internal sealed class ManagementScreen : Component
         var (jobUiOptions, setJobUiOptions) = UseState(JobUiOptions.Default);
         var (diagnosticEvents, setDiagnosticEvents) = UseState(Array.Empty<DiagnosticEventRecord>());
         var (installedPrinters, setInstalledPrinters) =
-            UseState<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>>(InstalledVirtualPrinterReader.ReadAll());
+            UseState<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>>(CreateInitialInstalledPrinters());
 
         VirtualEndpoint selectedEndpoint = EndpointCatalog.GetByKind(selectedKind);
         InstalledVirtualPrinterSnapshot selectedSnapshot = GetSnapshot(installedPrinters, selectedEndpoint);
@@ -49,6 +49,7 @@ internal sealed class ManagementScreen : Component
 
         UseEffect(() =>
         {
+            _ = RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText);
             _ = LoadJobUiOptionsAsync(setJobUiOptions, setStatusText);
             _ = LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText);
             return static () => { };
@@ -389,6 +390,22 @@ internal sealed class ManagementScreen : Component
     private static int CountInstalled(IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters)
     {
         return installedPrinters.Values.Count(snapshot => snapshot.IsInstalled);
+    }
+
+    private static Dictionary<EndpointKind, InstalledVirtualPrinterSnapshot> CreateInitialInstalledPrinters()
+    {
+        return EndpointCatalog.All.ToDictionary(
+            endpoint => endpoint.Kind,
+            endpoint => new InstalledVirtualPrinterSnapshot(
+                endpoint.Kind,
+                false,
+                "Pending",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
     }
 
     private static InstalledVirtualPrinterSnapshot GetSnapshot(
