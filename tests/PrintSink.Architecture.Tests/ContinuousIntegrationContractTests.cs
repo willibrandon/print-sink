@@ -153,6 +153,35 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the live E2E result validator checks exact PDL routes for real output paths.
+    /// </summary>
+    [TestMethod]
+    public void E2eResultValidatorRequiresExactRouteAssertions()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string validatorScript = File.ReadAllText(validatorPath);
+
+        Assert.Contains("function Assert-Route", validatorScript);
+        Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);
+        Assert.Contains("application/oxps -> Pdf; Convert; Convert XPS to PDF.", validatorScript);
+        Assert.Contains("application/oxps -> Oxps; Copy; Endpoint supports passthrough.", validatorScript);
+        Assert.Contains("application/postscript -> PostScript; Copy; Endpoint supports passthrough.", validatorScript);
+        Assert.Contains("application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.", validatorScript);
+        Assert.Contains("application/oxps -> Pclm; Convert; Convert XPS to PCLm.", validatorScript);
+        Assert.Contains("application/pdf -> Pdf; Copy; Endpoint supports passthrough.", validatorScript);
+        Assert.Contains("Assert-Route -Result $pdf", validatorScript);
+        Assert.Contains("Assert-Route -Result $xps", validatorScript);
+        Assert.Contains("Assert-Route -Result $postScript", validatorScript);
+        Assert.Contains("Assert-Route -Result $pwg", validatorScript);
+        Assert.Contains("Assert-Route -Result $pclm", validatorScript);
+        Assert.Contains("Assert-Route -Result $cloud", validatorScript);
+        Assert.Contains("Assert-Route -Result $notepad", validatorScript);
+        Assert.Contains("Assert-Route -Result $failedImageWatermark", validatorScript);
+        Assert.Contains("Assert-Route -Result $jobUiWatermark", validatorScript);
+    }
+
+    /// <summary>
     /// Verifies the live E2E suite must prove installed queue persistence after every major workflow.
     /// </summary>
     [TestMethod]

@@ -214,6 +214,20 @@ function Assert-CompletedJob {
     Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $diagnostic -Name 'route'))) "Missing route diagnostic for $Queue."
 }
 
+function Assert-Route {
+    param(
+        [object] $Result,
+        [string] $ExpectedRoute,
+        [string] $Description
+    )
+
+    $diagnostic = Get-ResultProperty -Object $Result -Name 'diagnostic'
+    Assert-Condition ($null -ne $diagnostic) "$Description did not include a diagnostic."
+
+    $route = [string](Get-ResultProperty -Object $diagnostic -Name 'route')
+    Assert-Condition ($route -eq $ExpectedRoute) "$Description route was '$route'; expected '$ExpectedRoute'."
+}
+
 function Assert-SourceApplication {
     param(
         [object] $Result,
@@ -384,31 +398,37 @@ function Assert-RealPrintOutputs {
     $pdf = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PDF'
     Assert-CompletedJob -Result $pdf -Queue 'PrintSink - PDF'
     Assert-SourceApplication -Result $pdf -ExpectedSourceApplication 'powershell.exe' -Description 'PDF real print'
+    Assert-Route -Result $pdf -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'PDF real print'
     Assert-Document -Format 'pdf' -Path $pdf.outputPath -ExpectedBytes $pdf.bytes -Contains 'foo'
 
     $xps = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - XPS'
     Assert-CompletedJob -Result $xps -Queue 'PrintSink - XPS'
     Assert-SourceApplication -Result $xps -ExpectedSourceApplication 'powershell.exe' -Description 'XPS real print'
+    Assert-Route -Result $xps -ExpectedRoute 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.' -Description 'XPS real print'
     Assert-Document -Format 'oxps' -Path $xps.outputPath -ExpectedBytes $xps.bytes -Contains 'foo'
 
     $postScript = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PostScript'
     Assert-CompletedJob -Result $postScript -Queue 'PrintSink - PostScript'
     Assert-SourceApplication -Result $postScript -ExpectedSourceApplication 'powershell.exe' -Description 'PostScript real print'
+    Assert-Route -Result $postScript -ExpectedRoute 'application/postscript -> PostScript; Copy; Endpoint supports passthrough.' -Description 'PostScript real print'
     Assert-Document -Format 'postscript' -Path $postScript.outputPath -ExpectedBytes $postScript.bytes
 
     $pwg = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PWG Raster'
     Assert-CompletedJob -Result $pwg -Queue 'PrintSink - PWG Raster'
     Assert-SourceApplication -Result $pwg -ExpectedSourceApplication 'powershell.exe' -Description 'PWG Raster real print'
+    Assert-Route -Result $pwg -ExpectedRoute 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.' -Description 'PWG Raster real print'
     Assert-Document -Format 'pwg' -Path $pwg.outputPath -ExpectedBytes $pwg.bytes
 
     $pclm = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PCLm'
     Assert-CompletedJob -Result $pclm -Queue 'PrintSink - PCLm'
     Assert-SourceApplication -Result $pclm -ExpectedSourceApplication 'powershell.exe' -Description 'PCLm real print'
+    Assert-Route -Result $pclm -ExpectedRoute 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.' -Description 'PCLm real print'
     Assert-Document -Format 'pclm' -Path $pclm.outputPath -ExpectedBytes $pclm.bytes
 
     $cloud = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - Cloud'
     Assert-CompletedJob -Result $cloud -Queue 'PrintSink - Cloud'
     Assert-SourceApplication -Result $cloud -ExpectedSourceApplication 'powershell.exe' -Description 'Cloud real print'
+    Assert-Route -Result $cloud -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Cloud real print'
     Assert-Condition ([string]::IsNullOrWhiteSpace([string]$cloud.outputPath)) 'Cloud queue unexpectedly reported a Save-As output path.'
     Assert-Condition ([long]$cloud.bytes -eq 0) 'Cloud queue unexpectedly reported file-backed output bytes.'
     $cloudArtifact = Get-ResultProperty -Object $cloud -Name 'sinkArtifact'
@@ -424,6 +444,7 @@ function Assert-AdditionalOutputs {
     $notepad = Get-ResultProperty -Object $Result -Name 'notepadPrint'
     Assert-CompletedJob -Result $notepad -Queue 'Notepad PDF print'
     Assert-SourceApplication -Result $notepad -ExpectedSourceApplication 'notepad.exe' -Description 'Notepad PDF print'
+    Assert-Route -Result $notepad -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Notepad PDF print'
     Assert-Document -Format 'pdf' -Path $notepad.outputPath -ExpectedBytes $notepad.bytes -Contains 'foo'
 
     $concurrent = Get-ResultProperty -Object $Result -Name 'concurrentPrints'
@@ -433,15 +454,18 @@ function Assert-AdditionalOutputs {
     $concurrentPclm = Get-ResultByQueue -Results $concurrentJobs -Queue 'PrintSink - PCLm'
     Assert-CompletedJob -Result $concurrentPclm -Queue 'Concurrent PCLm print'
     Assert-SourceApplication -Result $concurrentPclm -ExpectedSourceApplication 'powershell.exe' -Description 'Concurrent PCLm print'
+    Assert-Route -Result $concurrentPclm -ExpectedRoute 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.' -Description 'Concurrent PCLm print'
     Assert-Document -Format 'pclm' -Path $concurrentPclm.outputPath -ExpectedBytes $concurrentPclm.bytes
     $concurrentCloud = Get-ResultByQueue -Results $concurrentJobs -Queue 'PrintSink - Cloud'
     Assert-CompletedJob -Result $concurrentCloud -Queue 'Concurrent cloud print'
     Assert-SourceApplication -Result $concurrentCloud -ExpectedSourceApplication 'powershell.exe' -Description 'Concurrent cloud print'
+    Assert-Route -Result $concurrentCloud -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Concurrent cloud print'
     Assert-Document -Format 'pdf' -Path $concurrentCloud.sinkArtifact.artifactCopyPath -ExpectedBytes $concurrentCloud.sinkArtifact.bytes -Contains 'foo concurrent cloud'
 
     $pdfPassthrough = Get-ResultProperty -Object $Result -Name 'pdfPassthrough'
     Assert-CompletedJob -Result $pdfPassthrough -Queue 'PDF passthrough'
     Assert-SourceApplication -Result $pdfPassthrough -ExpectedSourceApplication 'printsink-app.exe' -Description 'PDF passthrough'
+    Assert-Route -Result $pdfPassthrough -ExpectedRoute 'application/pdf -> Pdf; Copy; Endpoint supports passthrough.' -Description 'PDF passthrough'
     Assert-Document -Format 'pdf' -Path $pdfPassthrough.outputPath -ExpectedBytes $pdfPassthrough.bytes -Contains 'foo'
     Assert-FilesEqual -ExpectedPath $pdfPassthrough.sourcePath -ActualPath $pdfPassthrough.outputPath -Description 'PDF passthrough output'
     $pdfPassthroughProvider = Get-ResultProperty -Object $pdfPassthrough -Name 'provider'
@@ -455,26 +479,31 @@ function Assert-AdditionalOutputs {
     $winRtSource = Get-ResultProperty -Object $Result -Name 'winRtSource'
     Assert-CompletedJob -Result $winRtSource -Queue 'WinRT source print'
     Assert-SourceApplication -Result $winRtSource -ExpectedSourceApplication 'printsink-app.exe' -Description 'WinRT source print'
+    Assert-Route -Result $winRtSource -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'WinRT source print'
     Assert-Document -Format 'pdf' -Path $winRtSource.outputPath -ExpectedBytes $winRtSource.bytes -Contains 'foo winrt source e2e'
 
     $settingsWatermark = Get-ResultProperty -Object $Result -Name 'settingsWatermark'
     Assert-CompletedJob -Result $settingsWatermark -Queue 'Settings text watermark print'
     Assert-SourceApplication -Result $settingsWatermark -ExpectedSourceApplication 'powershell.exe' -Description 'Settings text watermark print'
+    Assert-Route -Result $settingsWatermark -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Settings text watermark print'
     Assert-Document -Format 'pdf' -Path $settingsWatermark.outputPath -ExpectedBytes $settingsWatermark.bytes -Contains 'CI DEFAULT WATERMARK'
 
     $settingsImageWatermark = Get-ResultProperty -Object $Result -Name 'settingsImageWatermark'
     Assert-CompletedJob -Result $settingsImageWatermark -Queue 'Settings image watermark print'
     Assert-SourceApplication -Result $settingsImageWatermark -ExpectedSourceApplication 'powershell.exe' -Description 'Settings image watermark print'
+    Assert-Route -Result $settingsImageWatermark -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Settings image watermark print'
     Assert-Document -Format 'pdf' -Path $settingsImageWatermark.outputPath -ExpectedBytes $settingsImageWatermark.bytes -Contains 'foo' -RequiresImage
 
     $failedImageWatermark = Get-ResultProperty -Object $Result -Name 'failedImageWatermark'
     Assert-SourceApplication -Result $failedImageWatermark -ExpectedSourceApplication 'powershell.exe' -Description 'Failed image watermark print'
+    Assert-Route -Result $failedImageWatermark -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Failed image watermark print'
     Assert-Condition ($failedImageWatermark.diagnostic.message -eq 'Job failed') 'Failed image watermark evidence did not report Job failed.'
     Assert-EmptyOrMissingFile -Path $failedImageWatermark.outputPath -Description 'Failed image watermark job'
 
     $jobUiWatermark = Get-ResultProperty -Object $Result -Name 'jobUiWatermark'
     Assert-CompletedJob -Result $jobUiWatermark -Queue 'Job UI watermark print'
     Assert-SourceApplication -Result $jobUiWatermark -ExpectedSourceApplication 'powershell.exe' -Description 'Job UI watermark print'
+    Assert-Route -Result $jobUiWatermark -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Job UI watermark print'
     Assert-Document -Format 'pdf' -Path $jobUiWatermark.outputPath -ExpectedBytes $jobUiWatermark.bytes -Contains 'CI WATERMARK' -NotContains 'ci-password'
     Assert-Condition ($jobUiWatermark.jobPassword -eq 'present-not-applicable') 'Job UI password evidence did not report present-not-applicable.'
     Assert-Condition (-not [bool]$jobUiWatermark.jobPasswordSecretExposed) 'Job UI password secret was exposed in the result.'
