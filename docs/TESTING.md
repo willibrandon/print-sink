@@ -18,8 +18,9 @@ Use the build script for the full gate because `PrintSink.Xps` is a native C++/W
 requires MSBuild or Visual Studio. The test script runs the plain MSTest projects through the .NET 10
 Microsoft.Testing.Platform runner, including the E2E document-assertion executable's regression tests;
 the packaged app test script uses Visual Studio's test platform against the generated `.appxrecipe` so
-the WinUI test host runs with package identity. The scripts do not call `dotnet test` on the solution
-file because the solution also contains the native `PrintSink.Xps` project.
+the WinUI test host runs with package identity, then removes the registered test package unless
+`-KeepPackage` is used. The scripts do not call `dotnet test` on the solution file because the solution
+also contains the native `PrintSink.Xps` project.
 
 ## Continuous Integration
 

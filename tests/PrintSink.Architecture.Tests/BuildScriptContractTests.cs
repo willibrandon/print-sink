@@ -55,4 +55,22 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("$LASTEXITCODE -ne 0", script);
         Assert.DoesNotContain("StoreName]::Root", script);
     }
+
+    /// <summary>
+    /// Verifies the packaged app test script removes its registered test package by default.
+    /// </summary>
+    [TestMethod]
+    public void PackagedAppTestScriptCleansRegisteredTestPackage()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string scriptPath = Path.Combine(repositoryRoot, "test-app.ps1");
+        string script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("[switch] $KeepPackage", script);
+        Assert.Contains("function Remove-PackagedAppTestPackage", script);
+        Assert.Contains("Get-AppxPackage -Name 'PrintSink.App.Tests'", script);
+        Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", script);
+        Assert.Contains("if (-not $KeepPackage)", script);
+        Assert.Contains("exit $testExitCode", script);
+    }
 }

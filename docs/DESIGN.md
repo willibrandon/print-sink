@@ -272,7 +272,7 @@ print-sink/
    ├─ PrintSink.Core.Tests/              # MSTest on Microsoft.Testing.Platform (.NET 10)
    ├─ PrintSink.Cli.Tests/               # command parsing, output, and Hex1b state tests
    ├─ PrintSink.Xps.Tests/               # exercises XPS-OM via the C# projection
-   └─ PrintSink.App.Tests/               # packaged WinUI test app (in-package, MTP)
+   └─ PrintSink.App.Tests/               # packaged WinUI test app (appxrecipe via VSTest)
 ```
 
 **Naming:** root namespace `PrintSink`, with logical sub-namespaces (`PrintSink.Core.Pdl`,
@@ -687,9 +687,9 @@ keys or mouse input, capturing terminal output, and scripting assertions.
 
 ## 9. Testing strategy
 
-Microsoft's current guidance for WinUI 3 / Windows App SDK is **MSTest running on the
-Microsoft.Testing.Platform (MTP)**, including the **packaged WinUI MSTest app template** for tests that
-must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 10** throughout.
+Microsoft's current guidance for WinUI 3 / Windows App SDK is **MSTest**. PrintSink uses
+Microsoft.Testing.Platform (MTP) for plain .NET test projects and Visual Studio Test Platform against
+the generated `.appxrecipe` when tests must run inside a packaged WinUI app identity.
 
 ### 9.1 Test layers
 
@@ -712,9 +712,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    its C# projection with a small fixture OXPS document; assert the watermarked stream is non-empty,
    parses as valid XPS, and contains the watermark glyph run / image part. `XpsGenerationFailed` path
    asserted with a corrupt fixture.
-4. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app, MTP): run with package
-   identity to validate activation routing logic, `OwnerWindowId` modality wiring, settings persistence
-   visible across the UI/background boundary, and Reactor screen behavior.
+4. **Packaged app tests — `PrintSink.App.Tests`** (packaged WinUI MSTest app via Visual Studio Test
+   Platform): run from the generated `.appxrecipe` with package identity to validate activation routing
+   logic, `OwnerWindowId` modality wiring, settings persistence visible across the UI/background
+   boundary, and Reactor screen behavior. The root script removes the test package after the run unless
+   `-KeepPackage` is used.
 5. **End-to-end print-stack automation — `docs/TESTING.md` + `tests/e2e`.** The live PSA activation
    (real spooler, broker, OS rendering to OXPS, Save-As broker) cannot be faithfully mocked, so E2E runs
    as scripted Windows automation in CI and on clean Windows 11 26100+ VMs:

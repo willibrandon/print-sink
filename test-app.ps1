@@ -5,7 +5,9 @@ param(
     [ValidateSet('x64', 'ARM64')]
     [string] $Platform = 'x64',
 
-    [switch] $NoBuild
+    [switch] $NoBuild,
+
+    [switch] $KeepPackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +51,17 @@ function Find-VSTestConsole {
     throw 'Could not find vstest.console.exe. Install Visual Studio Test Platform V2 CLI or set VSTEST_CONSOLE.'
 }
 
+function Remove-PackagedAppTestPackage {
+    Get-Process -Name 'PrintSink.App.Tests' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+
+    $packages = @(Get-AppxPackage -Name 'PrintSink.App.Tests')
+    foreach ($package in $packages) {
+        Write-Host "Removing test package $($package.PackageFullName)"
+        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+    }
+}
+
 $runtimeIdentifier = switch ($Platform) {
     'x64' { 'win-x64' }
     'ARM64' { 'win-arm64' }
@@ -80,8 +93,17 @@ $arguments = @(
     "/ResultsDirectory:$resultsDirectory"
 )
 
-& $vstest @arguments
+$testExitCode = 0
+try {
+    & $vstest @arguments
+    $testExitCode = $LASTEXITCODE
+}
+finally {
+    if (-not $KeepPackage) {
+        Remove-PackagedAppTestPackage
+    }
+}
 
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+if ($testExitCode -ne 0) {
+    exit $testExitCode
 }
