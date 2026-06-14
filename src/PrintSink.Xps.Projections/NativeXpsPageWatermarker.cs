@@ -111,7 +111,8 @@ public sealed class NativeXpsPageWatermarker
 
         if (result.Length == 0)
         {
-            throw new InvalidOperationException("XPS object model generation produced no output.");
+            await result.DisposeAsync().ConfigureAwait(false);
+            return null;
         }
 
         return result;

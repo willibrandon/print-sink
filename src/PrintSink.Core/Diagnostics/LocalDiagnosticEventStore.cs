@@ -11,7 +11,7 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
     private const string LockFileName = "diagnostic-events.lock";
     private const int DefaultMaximumStoredEvents = 4096;
     private const int FileBufferSize = 4096;
-    private const int TransientFileRetryCount = 40;
+    private const int TransientFileRetryCount = 300;
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
