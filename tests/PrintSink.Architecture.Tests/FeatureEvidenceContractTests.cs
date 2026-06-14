@@ -79,6 +79,34 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies install and PDL receive evidence have explicit artifact validators.
+    /// </summary>
+    [TestMethod]
+    public void InstallAndSpooledPdlEvidenceRequiresExplicitArtifactValidation()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("cliInstall = $CliQueueLifecycle.install", e2eScript);
+        Assert.Contains("queuePersistence = $QueuePersistence", e2eScript);
+        Assert.Contains("New-PrintResultSummary -Results $realPrints -IncludeRoute", e2eScript);
+
+        Assert.Contains("Assert-VirtualPrinterInstallEvidence", validatorScript);
+        Assert.Contains("Assert-SpooledPdlEvidence", validatorScript);
+        Assert.Contains("Assert-VirtualPrinterInstallEvidence -Artifact $artifact", validatorScript);
+        Assert.Contains("Assert-SpooledPdlEvidence -Artifact @($artifact)", validatorScript);
+        Assert.Contains("Virtual-printer install evidence omitted queue-persistence proof.", validatorScript);
+        Assert.Contains("Spooled PDL evidence did not include route summaries.", validatorScript);
+
+        Assert.Contains("headless provisioning", design);
+        Assert.Contains("source content type", design);
+        Assert.Contains("The harness must assert these queues:", testing);
+        Assert.Contains("source content type", testing);
+    }
+
+    /// <summary>
     /// Verifies preferred input format evidence records both manifest data and observed job routes.
     /// </summary>
     [TestMethod]

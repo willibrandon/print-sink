@@ -250,6 +250,91 @@ function Assert-LocalizedQueueNameEvidence {
     }
 }
 
+function Assert-CliQueueOutput {
+    param(
+        [string] $Output,
+        [bool] $ExpectedInstalled,
+        [string] $Description
+    )
+
+    $expectedStatus = if ($ExpectedInstalled) { 'yes' } else { 'no' }
+    $lines = @($Output -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    foreach ($queue in $expectedQueues) {
+        $row = @($lines |
+            Where-Object { $_.StartsWith($queue, [System.StringComparison]::Ordinal) } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $row) "$Description did not include CLI row for $queue."
+
+        $cells = @($row -split '\s{2,}' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        Assert-Condition ($cells.Count -ge 5) "$Description CLI row for $queue was not parseable: $row"
+        Assert-Condition ($cells[$cells.Count - 1] -eq $expectedStatus) "$Description CLI row for $queue reported Installed '$($cells[$cells.Count - 1])'; expected '$expectedStatus'."
+    }
+}
+
+function Assert-VirtualPrinterInstallEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Virtual-printer install evidence did not include an artifact.'
+    Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'virtualPrinters') -eq $expectedQueues.Count) 'Virtual-printer install evidence reported the wrong manifest queue count.'
+
+    $provisionedQueues = @(Get-ResultProperty -Object $Artifact -Name 'provisionedQueues')
+    Assert-SetEqual `
+        -Actual @($provisionedQueues | ForEach-Object { Get-ResultProperty -Object $_ -Name 'name' }) `
+        -Expected $expectedQueues `
+        -Description 'Provisioned virtual-printer queue names'
+    foreach ($queue in $provisionedQueues) {
+        Assert-Condition ([bool](Get-ResultProperty -Object $queue -Name 'installed')) "Provisioned queue $((Get-ResultProperty -Object $queue -Name 'name')) was not installed."
+    }
+
+    Assert-CliQueueOutput `
+        -Output ([string](Get-ResultProperty -Object $Artifact -Name 'cliInstall')) `
+        -ExpectedInstalled $true `
+        -Description 'Virtual-printer install evidence'
+
+    Assert-ManagementUi -ManagementUi (Get-ResultProperty -Object $Artifact -Name 'managementUi')
+
+    $queuePersistence = Get-ResultProperty -Object $Artifact -Name 'queuePersistence'
+    Assert-Condition ($null -ne $queuePersistence) 'Virtual-printer install evidence omitted queue-persistence proof.'
+    Assert-SetEqual `
+        -Actual @(Get-ResultProperty -Object $queuePersistence -Name 'queues') `
+        -Expected $expectedQueues `
+        -Description 'Virtual-printer install evidence persisted queues'
+
+    $contexts = @(Get-ResultProperty -Object $queuePersistence -Name 'contexts')
+    foreach ($context in $requiredSnapshotContexts) {
+        Assert-Condition ($context -in $contexts) "Virtual-printer install evidence omitted queue-persistence context '$context'."
+    }
+}
+
+function Assert-SpooledPdlEvidence {
+    param(
+        [object[]] $Artifact
+    )
+
+    Assert-Condition ($Artifact.Count -gt 0) 'Spooled PDL evidence did not include route summaries.'
+    Assert-SetEqual `
+        -Actual @($Artifact | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected $expectedQueues `
+        -Description 'Spooled PDL evidence queue names'
+
+    foreach ($expectedPrinter in $expectedVirtualPrinterDisplayNames) {
+        $summary = Get-ResultByQueue -Results $Artifact -Queue $expectedPrinter.queue
+        Assert-Condition ($null -ne $summary) "Spooled PDL evidence omitted $($expectedPrinter.queue)."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $summary -Name 'format'))) "Spooled PDL evidence omitted target format for $($expectedPrinter.queue)."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $summary -Name 'sourceApplication'))) "Spooled PDL evidence omitted source application for $($expectedPrinter.queue)."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $summary -Name 'documentName'))) "Spooled PDL evidence omitted document name for $($expectedPrinter.queue)."
+
+        $route = [string](Get-ResultProperty -Object $summary -Name 'route')
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace($route)) "Spooled PDL evidence omitted route for $($expectedPrinter.queue)."
+        Assert-Condition (
+            $route.StartsWith("$($expectedPrinter.preferredInputFormat) ->", [System.StringComparison]::Ordinal)) `
+            "Spooled PDL evidence for $($expectedPrinter.queue) did not record source content type $($expectedPrinter.preferredInputFormat): $route"
+    }
+}
+
 function Assert-PreferredInputFormatEvidence {
     param(
         [object] $Artifact
@@ -1210,6 +1295,14 @@ function Assert-FeatureEvidence {
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."
         if ($artifact -is [System.Array]) {
             Assert-Condition ($artifact.Length -gt 0) "Feature evidence #$number had an empty artifact."
+        }
+
+        if ($number -eq 1) {
+            Assert-VirtualPrinterInstallEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 2) {
+            Assert-SpooledPdlEvidence -Artifact @($artifact)
         }
 
         if ($number -eq 3) {
