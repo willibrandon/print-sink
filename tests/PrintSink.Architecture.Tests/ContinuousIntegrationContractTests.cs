@@ -154,6 +154,21 @@ internal sealed partial class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies release MSIX packages use revision auto-incrementing without changing deterministic Debug E2E packages.
+    /// </summary>
+    [TestMethod]
+    public void AppProjectAutoIncrementsPackageRevisionForReleaseOnly()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string appProjectPath = Path.Combine(repositoryRoot, "src", "PrintSink.App", "PrintSink.App.csproj");
+        string appProject = File.ReadAllText(appProjectPath);
+
+        Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", appProject);
+        Assert.Contains("<EnableMsixTooling>true</EnableMsixTooling>", appProject);
+        Assert.Contains("<AppxAutoIncrementPackageRevision Condition=\"'$(Configuration)' == 'Release'\">True</AppxAutoIncrementPackageRevision>", appProject);
+    }
+
+    /// <summary>
     /// Verifies the root E2E wrapper remains the signed-package cleanup-aware proof gate.
     /// </summary>
     [TestMethod]
