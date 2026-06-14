@@ -25,6 +25,7 @@ internal sealed class ManagementScreen : Component
         IReadOnlyList<VirtualEndpoint> endpoints = EndpointCatalog.All;
         var (selectedKind, setSelectedKind) = UseState(EndpointKind.Pdf);
         var (statusText, setStatusText) = UseState("Ready.");
+        var (defaultCopies, setDefaultCopies) = UseState(1.0);
         var (jobUiOptions, setJobUiOptions) = UseState(JobUiOptions.Default);
         var (diagnosticEvents, setDiagnosticEvents) = UseState(Array.Empty<DiagnosticEventRecord>());
         var (installedPrinters, setInstalledPrinters) =
@@ -36,6 +37,15 @@ internal sealed class ManagementScreen : Component
         PdlPlan route = router.Resolve(
             PdlFormatInfo.GetContentType(selectedEndpoint.PreferredInputFormat),
             selectedEndpoint);
+
+        void SelectEndpoint(EndpointKind endpointKind, int? userDefaultCopies)
+        {
+            setSelectedKind(endpointKind);
+            if (userDefaultCopies is int copies)
+            {
+                setDefaultCopies(copies);
+            }
+        }
 
         UseEffect(() =>
         {
@@ -51,13 +61,17 @@ internal sealed class ManagementScreen : Component
                 Grid(
                     columns: [GridSize.Star(1.35), GridSize.Star()],
                     rows: [GridSize.Auto],
-                    QueuesPanel(endpoints, installedPrinters, selectedKind, setSelectedKind)
+                    QueuesPanel(endpoints, installedPrinters, selectedKind, SelectEndpoint)
                         .Grid(row: 0, column: 0),
                     EndpointPanel(selectedEndpoint, selectedSnapshot, route)
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
                     RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
                     () => RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText),
+                    defaultCopies,
+                    setDefaultCopies,
+                    selectedSnapshot.CanModifyUserDefaultPrintTicket == true,
+                    () => _ = SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText),
                     jobUiOptions.LaunchJobUi,
                     () => _ = SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText),
                     () => _ = SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText)),
@@ -99,7 +113,7 @@ internal sealed class ManagementScreen : Component
         IReadOnlyList<VirtualEndpoint> endpoints,
         IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> installedPrinters,
         EndpointKind selectedKind,
-        Action<EndpointKind> setSelectedKind)
+        Action<EndpointKind, int?> selectEndpoint)
     {
         return CardSurface(
             VStack(12,
@@ -113,7 +127,7 @@ internal sealed class ManagementScreen : Component
                             endpoint,
                             GetSnapshot(installedPrinters, endpoint),
                             endpoint.Kind == selectedKind,
-                            setSelectedKind)
+                            selectEndpoint)
                     ))));
     }
 
@@ -130,6 +144,7 @@ internal sealed class ManagementScreen : Component
             ("Device kind", snapshot.DeviceKind ?? "Unavailable"),
             ("Default ticket", FormatDefaultTicket(snapshot.CanModifyUserDefaultPrintTicket)),
             ("Ticket name", snapshot.UserDefaultPrintTicketName ?? "Unavailable"),
+            ("Default copies", snapshot.UserDefaultCopies?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "Unavailable"),
             ("Target", FormatPdl(endpoint.TargetFormat)),
             ("Preferred input", FormatPdl(endpoint.PreferredInputFormat)),
             ("Passthrough", FormatPassthrough(endpoint)),
@@ -155,6 +170,10 @@ internal sealed class ManagementScreen : Component
         string statusText,
         Action refreshQueues,
         Action refreshCapabilities,
+        double defaultCopies,
+        Action<double> setDefaultCopies,
+        bool canSetDefaultCopies,
+        Action setUserDefaultCopies,
         bool launchJobUi,
         Action enableJobUi,
         Action disableJobUi)
@@ -170,6 +189,13 @@ internal sealed class ManagementScreen : Component
                 HStack(12,
                     Button("Refresh queues", refreshQueues),
                     Button("Refresh capabilities", refreshCapabilities),
+                    NumberBox(defaultCopies, setDefaultCopies, "Default copies")
+                        .Range(1, 999)
+                        .SpinButtons()
+                        .AutomationName("Default copies")
+                        .Width(180),
+                    Button("Set default copies", setUserDefaultCopies)
+                        .IsEnabled(canSetDefaultCopies),
                     Button("Enable Job UI", enableJobUi)
                         .IsEnabled(!launchJobUi),
                     Button("Headless jobs", disableJobUi)
@@ -220,11 +246,11 @@ internal sealed class ManagementScreen : Component
         VirtualEndpoint endpoint,
         InstalledVirtualPrinterSnapshot snapshot,
         bool isSelected,
-        Action<EndpointKind> setSelectedKind)
+        Action<EndpointKind, int?> selectEndpoint)
     {
         return Button(
             endpoint.QueueName,
-            () => setSelectedKind(endpoint.Kind))
+            () => selectEndpoint(endpoint.Kind, snapshot.UserDefaultCopies))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName($"Select {endpoint.QueueName}")
             .Set(button =>
@@ -365,6 +391,7 @@ internal sealed class ManagementScreen : Component
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -451,6 +478,44 @@ internal sealed class ManagementScreen : Component
         {
             UiDispatch.Post(() => setStatusText($"Diagnostic load failed: {ex.Message}"));
         }
+    }
+
+    private static async Task SetUserDefaultCopiesAsync(
+        EndpointKind selectedKind,
+        double defaultCopies,
+        Action<double> setDefaultCopies,
+        Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
+        Action<string> setStatusText)
+    {
+        int copies = NormalizeCopies(defaultCopies);
+        try
+        {
+            string status = await UserDefaultPrintTicketEditor
+                .SetCopiesAsync(selectedKind, copies, CancellationToken.None)
+                .ConfigureAwait(false);
+            IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+
+            UiDispatch.Post(() =>
+            {
+                setDefaultCopies(copies);
+                setInstalledPrinters(snapshots);
+                setStatusText(status);
+            });
+        }
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
+        {
+            UiDispatch.Post(() => setStatusText($"Default ticket update failed: {ex.Message}"));
+        }
+    }
+
+    internal static int NormalizeCopies(double copies)
+    {
+        if (double.IsNaN(copies))
+        {
+            return 1;
+        }
+
+        return (int)Math.Clamp(Math.Round(copies, MidpointRounding.AwayFromZero), 1, 999);
     }
 
     private static async Task SaveJobUiOptionsAsync(

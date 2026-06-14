@@ -56,8 +56,11 @@ internal static class UserDefaultPrintTicketEditor
         return $"User default print ticket updated for {endpoint.QueueName}: copies={copies}; verifiedCopies={verifiedCopies?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}";
     }
 
-    private static void SetCopies(XDocument document, int copies)
+    internal static void SetCopies(XDocument document, int copies)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(copies);
+
         XElement root = document.Root
             ?? throw new ArgumentException("Print ticket XML does not have a root element.", nameof(document));
 
@@ -90,9 +93,18 @@ internal static class UserDefaultPrintTicketEditor
         value.Value = copies.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static int? ReadCopies(WorkflowPrintTicket ticket)
+    internal static int? ReadCopies(WorkflowPrintTicket ticket)
     {
+        ArgumentNullException.ThrowIfNull(ticket);
+
         XDocument document = XDocument.Parse(ticket.XmlNode.GetXml(), LoadOptions.PreserveWhitespace);
+        return ReadCopies(document);
+    }
+
+    internal static int? ReadCopies(XDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
         XElement? initializer = document
             .Root?
             .Elements(Psf + "ParameterInit")

@@ -1,5 +1,6 @@
 using Windows.ApplicationModel;
 using Windows.Devices.Printers;
+using Windows.Graphics.Printing.PrintTicket;
 using PrintSink.Core.Endpoints;
 
 namespace PrintSink.App;
@@ -30,6 +31,7 @@ internal static class InstalledVirtualPrinterReader
                         null,
                         null,
                         null,
+                        null,
                         null);
             }
 
@@ -43,6 +45,7 @@ internal static class InstalledVirtualPrinterReader
                     endpoint.Kind,
                     false,
                     "Unavailable",
+                    null,
                     null,
                     null,
                     null,
@@ -90,6 +93,7 @@ internal static class InstalledVirtualPrinterReader
         try
         {
             IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
+            WorkflowPrintTicket? defaultPrintTicket = printDevice.UserDefaultPrintTicket;
             return new InstalledVirtualPrinterSnapshot(
                 endpoint.Kind,
                 true,
@@ -97,7 +101,8 @@ internal static class InstalledVirtualPrinterReader
                 printDevice.PrinterUri?.ToString(),
                 printDevice.DeviceKind.ToString(),
                 printDevice.CanModifyUserDefaultPrintTicket,
-                printDevice.UserDefaultPrintTicket?.Name,
+                defaultPrintTicket?.Name,
+                defaultPrintTicket is null ? null : UserDefaultPrintTicketEditor.ReadCopies(defaultPrintTicket),
                 null);
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
@@ -106,6 +111,7 @@ internal static class InstalledVirtualPrinterReader
                 endpoint.Kind,
                 true,
                 "Installed, details unavailable",
+                null,
                 null,
                 null,
                 null,

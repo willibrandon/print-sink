@@ -1,5 +1,6 @@
 extern alias PrintSinkApp;
 
+using System.Xml.Linq;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.VisualStudio.TestTools.UnitTesting.AppContainer;
@@ -226,6 +227,61 @@ internal sealed class AppPackageTests
         string[] actual = PrintSinkApp::PrintSink.App.VirtualPrinterCommandLine.SplitArguments(arguments);
 
         CollectionAssert.AreEqual(expected, actual);
+    }
+
+    /// <summary>
+    /// Verifies management default-copy input is normalized to the supported ticket range.
+    /// </summary>
+    [TestMethod]
+    public void ManagementDefaultCopiesInputIsNormalized()
+    {
+        Assert.AreEqual(1, PrintSinkApp::PrintSink.App.ManagementScreen.NormalizeCopies(double.NaN));
+        Assert.AreEqual(1, PrintSinkApp::PrintSink.App.ManagementScreen.NormalizeCopies(-10));
+        Assert.AreEqual(2, PrintSinkApp::PrintSink.App.ManagementScreen.NormalizeCopies(1.5));
+        Assert.AreEqual(999, PrintSinkApp::PrintSink.App.ManagementScreen.NormalizeCopies(1000));
+    }
+
+    /// <summary>
+    /// Verifies print-ticket XML copy edits add the required parameter initializer.
+    /// </summary>
+    [TestMethod]
+    public void UserDefaultPrintTicketEditorAddsCopiesInitializer()
+    {
+        XDocument document = XDocument.Parse(
+            """
+            <psf:PrintTicket
+                xmlns:psf="http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework"
+                xmlns:psk="http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords" />
+            """);
+
+        PrintSinkApp::PrintSink.App.UserDefaultPrintTicketEditor.SetCopies(document, 7);
+
+        Assert.AreEqual(7, PrintSinkApp::PrintSink.App.UserDefaultPrintTicketEditor.ReadCopies(document));
+        Assert.Contains("JobCopiesAllDocuments", document.ToString(SaveOptions.DisableFormatting));
+    }
+
+    /// <summary>
+    /// Verifies print-ticket XML copy edits update an existing parameter initializer.
+    /// </summary>
+    [TestMethod]
+    public void UserDefaultPrintTicketEditorUpdatesCopiesInitializer()
+    {
+        XDocument document = XDocument.Parse(
+            """
+            <psf:PrintTicket
+                xmlns:psf="http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework"
+                xmlns:psk="http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords"
+                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+              <psf:ParameterInit name="psk:JobCopiesAllDocuments">
+                <psf:Value xsi:type="xsd:integer">3</psf:Value>
+              </psf:ParameterInit>
+            </psf:PrintTicket>
+            """);
+
+        PrintSinkApp::PrintSink.App.UserDefaultPrintTicketEditor.SetCopies(document, 4);
+
+        Assert.AreEqual(4, PrintSinkApp::PrintSink.App.UserDefaultPrintTicketEditor.ReadCopies(document));
     }
 
     /// <summary>
