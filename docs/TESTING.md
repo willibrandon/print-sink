@@ -224,8 +224,8 @@ Real output assertions:
 - Route diagnostics, or the route carried by `Job completed`, must prove the expected copy or conversion path for the source content type.
 - Concurrent output diagnostics must prove two real jobs overlapped by comparing route and completion
   timestamps for the two activated queues.
-- Extension diagnostics must prove real ticket validation for every queue, PDC/PDR refresh, MXDC image
-  quality configuration, and printer-selected adaptive-card setup.
+- Extension diagnostics must prove real ticket validation for every queue, PDC/PDR refresh, the full
+  MXDC output-quality mapping, and printer-selected adaptive-card setup.
 - User default print-ticket diagnostics must prove a real default copy-count update and restore through
   `IppPrintDevice.UserDefaultPrintTicket`.
 - Virtual-printer IPP attribute reads must prove `GetPrinterAttributes` exposes no usable

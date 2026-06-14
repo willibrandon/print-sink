@@ -23,6 +23,8 @@ if ($actualWindowsVersion -lt $minimumWindowsVersion) {
     throw "PrintSink E2E tests require Windows build $minimumWindowsVersion or later. Current build: $actualWindowsVersion."
 }
 
+$expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Normal=JpegMediumCompression,High=JpegLowCompression,Photo=Png,Auto=JpegMediumCompression,Fax=JpegHighCompression'
+
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 
 $expectedQueues = @(
@@ -3420,6 +3422,7 @@ function Invoke-PrintSinkExtensionCapabilities {
         -DetailContains @(
             'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
             'mxdc=configured',
+            $expectedMxdcQualityDetail,
             'pdr=updated',
             'pdlPassthroughWithJobAttributes=enabled',
             'pdrResources=') `
@@ -3570,6 +3573,7 @@ function Invoke-PrintSinkManagementUi {
             -DetailContains @(
                 'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
                 'mxdc=configured',
+                $expectedMxdcQualityDetail,
                 'pdr=updated',
                 'pdlPassthroughWithJobAttributes=enabled',
                 'pdrResources=') `
@@ -5133,8 +5137,10 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 18 `
         -Feature 'MXDC image quality per output quality' `
-        -Passed ([string]$ExtensionCapabilities.detail -like '*mxdc=configured*') `
-        -Evidence 'A real capability refresh configured PrintSupportMxdcImageQualityConfiguration.' `
+        -Passed (
+            [string]$ExtensionCapabilities.detail -like '*mxdc=configured*' `
+                -and [string]$ExtensionCapabilities.detail -like "*$expectedMxdcQualityDetail*") `
+        -Evidence 'A real capability refresh configured PrintSupportMxdcImageQualityConfiguration for each output quality.' `
         -Artifact $ExtensionCapabilities
 
     Add-PrintSinkFeatureEvidence `

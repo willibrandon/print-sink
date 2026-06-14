@@ -118,6 +118,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 bool pdrUpdated = false;
                 bool ippTimeoutsConfigured = false;
                 int resourceCount = 0;
+                string mxdcQualityDetail = "mxdcQuality=<unavailable>";
                 string pdlPassthroughWithAttributesDetail =
                     UniversalApiContract19PrintSupport.EnablePdlPassthroughWithJobAttributes(args);
 
@@ -127,7 +128,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
 
                 if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
                 {
-                    ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
+                    mxdcQualityDetail = ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
                     mxdcConfigured = true;
                 }
 
@@ -158,6 +159,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                         "; ",
                         $"features={FormatBuiltInFeatureNames()}",
                         $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
+                        mxdcQualityDetail,
                         $"pdr={(pdrUpdated ? "updated" : "skipped")}",
                         $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
                         pdlPassthroughWithAttributesDetail,
@@ -181,17 +183,35 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         return result;
     }
 
-    private static void ConfigureMxdcImageQuality(PrintSupportMxdcImageQualityConfiguration configuration)
+    private static string ConfigureMxdcImageQuality(PrintSupportMxdcImageQualityConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        configuration.TextOutputQuality = XpsImageQuality.Png;
-        configuration.DraftOutputQuality = XpsImageQuality.JpegHighCompression;
-        configuration.NormalOutputQuality = XpsImageQuality.JpegMediumCompression;
-        configuration.HighOutputQuality = XpsImageQuality.JpegLowCompression;
-        configuration.PhotographicOutputQuality = XpsImageQuality.Png;
-        configuration.AutomaticOutputQuality = XpsImageQuality.JpegMediumCompression;
-        configuration.FaxOutputQuality = XpsImageQuality.JpegHighCompression;
+        const XpsImageQuality text = XpsImageQuality.Png;
+        const XpsImageQuality draft = XpsImageQuality.JpegHighCompression;
+        const XpsImageQuality normal = XpsImageQuality.JpegMediumCompression;
+        const XpsImageQuality high = XpsImageQuality.JpegLowCompression;
+        const XpsImageQuality photographic = XpsImageQuality.Png;
+        const XpsImageQuality automatic = XpsImageQuality.JpegMediumCompression;
+        const XpsImageQuality fax = XpsImageQuality.JpegHighCompression;
+
+        configuration.TextOutputQuality = text;
+        configuration.DraftOutputQuality = draft;
+        configuration.NormalOutputQuality = normal;
+        configuration.HighOutputQuality = high;
+        configuration.PhotographicOutputQuality = photographic;
+        configuration.AutomaticOutputQuality = automatic;
+        configuration.FaxOutputQuality = fax;
+
+        return "mxdcQuality=" + string.Join(
+            ",",
+            $"Text={text}",
+            $"Draft={draft}",
+            $"Normal={normal}",
+            $"High={high}",
+            $"Photo={photographic}",
+            $"Auto={automatic}",
+            $"Fax={fax}");
     }
 
     private static bool ConfigureIppCommunicationTimeouts(PrintSupportIppCommunicationConfiguration configuration)

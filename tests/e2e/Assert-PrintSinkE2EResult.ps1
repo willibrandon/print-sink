@@ -45,6 +45,8 @@ $requiredSnapshotContexts = @(
 
 $minimumWindowsVersion = [Version]'10.0.26100.0'
 
+$expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Normal=JpegMediumCompression,High=JpegLowCompression,Photo=Png,Auto=JpegMediumCompression,Fax=JpegHighCompression'
+
 function Assert-Condition {
     param(
         [bool] $Condition,
@@ -434,6 +436,7 @@ function Assert-ManagementUi {
     Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'message') -eq 'Capabilities updated') 'Management UI refresh did not trigger extension capability update.'
     Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*pdr=updated*') 'Management UI extension capability update did not report PDR refresh.'
     Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*mxdc=configured*') 'Management UI extension capability update did not report MXDC configuration.'
+    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like "*$expectedMxdcQualityDetail*") 'Management UI extension capability update did not report the full MXDC quality mapping.'
 
     $defaultCopiesSet = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesSet'
     Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesSet -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy set diagnostic.'

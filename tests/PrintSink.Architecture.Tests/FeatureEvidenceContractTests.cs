@@ -79,6 +79,31 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies MXDC feature evidence records each configured output-quality value.
+    /// </summary>
+    [TestMethod]
+    public void MxdcFeatureEvidenceRequiresPerOutputQualityMapping()
+    {
+        string extensionTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportExtensionBackgroundTask.cs");
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        const string expectedMxdcQualityDetail =
+            "mxdcQuality=Text=Png,Draft=JpegHighCompression,Normal=JpegMediumCompression,High=JpegLowCompression,Photo=Png,Auto=JpegMediumCompression,Fax=JpegHighCompression";
+
+        Assert.Contains("\"mxdcQuality=\"", extensionTask);
+        Assert.Contains("Text={text}", extensionTask);
+        Assert.Contains("Draft={draft}", extensionTask);
+        Assert.Contains("Normal={normal}", extensionTask);
+        Assert.Contains("High={high}", extensionTask);
+        Assert.Contains("Photo={photographic}", extensionTask);
+        Assert.Contains("Auto={automatic}", extensionTask);
+        Assert.Contains("Fax={fax}", extensionTask);
+        Assert.Contains(expectedMxdcQualityDetail, e2eScript);
+        Assert.Contains(expectedMxdcQualityDetail, validatorScript);
+    }
+
+    /// <summary>
     /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
     /// </summary>
     [TestMethod]

@@ -532,7 +532,7 @@ Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapab
   the `ResourceLanguage` context and inserts any missing localized strings, then
   `UpdatePrintDeviceResources`.
 - **MXDC image quality** — sets `args.MxdcImageQualityConfiguration` text/draft/normal/high/photo/auto/fax
-  to chosen `XpsImageQuality` values driven by current print quality.
+  to chosen `XpsImageQuality` values and records the full mapping during real capability refresh.
 - **Printer-selected adaptive card** — builds an Adaptive Card and requests additional features/parameters
   within `AllowedAdditionalFeaturesAndParametersCount`.
 - **IPP communication timeout recovery** — when Windows raises `CommunicationErrorDetected` for a
