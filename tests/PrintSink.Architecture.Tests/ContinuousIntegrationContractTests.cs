@@ -162,6 +162,35 @@ internal sealed partial class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the Core coverage gate enforces the documented minimum instead of only writing a report.
+    /// </summary>
+    [TestMethod]
+    public void CoreCoverageScriptEnforcesMinimumLineCoverage()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string coverageScriptPath = Path.Combine(repositoryRoot, "test-coverage.ps1");
+        string workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "windows-ci.yml");
+        string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
+        string testingPath = Path.Combine(repositoryRoot, "docs", "TESTING.md");
+        string coverageScript = File.ReadAllText(coverageScriptPath);
+        string workflow = File.ReadAllText(workflowPath);
+        string design = File.ReadAllText(designPath);
+        string testing = File.ReadAllText(testingPath);
+
+        Assert.Contains("[double] $MinimumLineRate = 0.90", coverageScript);
+        Assert.Contains("--coverage", coverageScript);
+        Assert.Contains("--coverage-output $coveragePath", coverageScript);
+        Assert.Contains("--coverage-output-format cobertura", coverageScript);
+        Assert.Contains("$_.name -eq 'PrintSink.Core'", coverageScript);
+        Assert.Contains("$corePackage.'line-rate'", coverageScript);
+        Assert.Contains("$lineRate -lt $MinimumLineRate", coverageScript);
+        Assert.Contains("below the required $minimumPercent", coverageScript);
+        Assert.Contains(".\\test-coverage.ps1 -Configuration Debug -Platform ${{ matrix.platform }}", workflow);
+        Assert.Contains("Core \u2265 90%", design);
+        Assert.Contains(".\\test-coverage.ps1 -Configuration Debug -Platform x64", testing);
+    }
+
+    /// <summary>
     /// Verifies the root clean-state script detects and can clean leaked PrintSink state.
     /// </summary>
     [TestMethod]
