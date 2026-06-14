@@ -24,6 +24,17 @@ $expectedFileBackedOutputs = @(
     [pscustomobject]@{ queue = 'PrintSink - PWG Raster'; format = 'pwg'; route = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.'; contains = '' },
     [pscustomobject]@{ queue = 'PrintSink - PCLm'; format = 'pclm'; route = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'; contains = '' }
 )
+$expectedConvertedOutputs = @(
+    [pscustomobject]@{ queue = 'PrintSink - PDF'; format = 'pdf'; route = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'; contains = 'foo' },
+    [pscustomobject]@{ queue = 'PrintSink - PWG Raster'; format = 'pwg'; route = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.'; contains = '' },
+    [pscustomobject]@{ queue = 'PrintSink - PCLm'; format = 'pclm'; route = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'; contains = '' }
+)
+$expectedXpsCopyOutput = [pscustomobject]@{
+    queue = 'PrintSink - XPS'
+    format = 'oxps'
+    route = 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.'
+    contains = 'foo'
+}
 
 $requiredSnapshotContexts = @(
     'after provisioning',
@@ -360,6 +371,61 @@ function Assert-FilePrinterSaveAsEvidence {
     Assert-Document -Format 'pdf' -Path $notepad.outputPath -ExpectedBytes $notepad.bytes -Contains 'foo'
 }
 
+function Assert-CloudSinkEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Cloud sink evidence did not include an artifact.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'queue') -eq 'PrintSink - Cloud') 'Cloud sink evidence reported the wrong queue.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'format') -eq 'cloud') 'Cloud sink evidence reported the wrong format.'
+    Assert-CompletedJob -Result $Artifact -Queue 'Cloud sink feature evidence'
+    Assert-SourceApplication -Result $Artifact -ExpectedSourceApplication 'powershell.exe' -Description 'Cloud sink feature evidence'
+    Assert-Route -Result $Artifact -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Cloud sink feature evidence'
+    Assert-Condition ([string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Artifact -Name 'outputPath'))) 'Cloud sink evidence unexpectedly reported a Save-As output path.'
+    Assert-Condition ([long](Get-ResultProperty -Object $Artifact -Name 'bytes') -eq 0) 'Cloud sink evidence unexpectedly reported file-backed bytes.'
+
+    $sinkArtifact = Get-ResultProperty -Object $Artifact -Name 'sinkArtifact'
+    Assert-Condition ($null -ne $sinkArtifact) 'Cloud sink evidence omitted the package-local sink artifact.'
+    Assert-Condition ([string](Get-ResultProperty -Object $sinkArtifact -Name 'contentType') -eq 'application/pdf') 'Cloud sink artifact content type was not application/pdf.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $sinkArtifact -Name 'path'))) 'Cloud sink artifact omitted the package-local source path.'
+    Assert-Document `
+        -Format 'pdf' `
+        -Path ([string](Get-ResultProperty -Object $sinkArtifact -Name 'artifactCopyPath')) `
+        -ExpectedBytes ([long](Get-ResultProperty -Object $sinkArtifact -Name 'bytes')) `
+        -Contains 'foo'
+}
+
+function Assert-ConvertedOutputEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Conversion evidence did not include an artifact.'
+    $outputs = @(Get-ResultProperty -Object $Artifact -Name 'outputs')
+    Assert-SetEqual `
+        -Actual @($outputs | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected @($expectedConvertedOutputs | ForEach-Object { $_.queue }) `
+        -Description 'Conversion feature output queue names'
+
+    foreach ($expectedOutput in $expectedConvertedOutputs) {
+        $result = Get-ResultByQueue -Results $outputs -Queue $expectedOutput.queue
+        Assert-FileResultSummary -Result $result -Expected $expectedOutput -Description 'Conversion feature output'
+        Assert-Condition ([string](Get-ResultProperty -Object $result -Name 'sourceApplication') -eq 'powershell.exe') "Conversion feature evidence reported the wrong source application for $($expectedOutput.queue)."
+    }
+}
+
+function Assert-XpsCopyEvidence {
+    param(
+        [object[]] $Artifact
+    )
+
+    Assert-Condition ($Artifact.Count -eq 1) 'XPS copy evidence must include exactly one output artifact.'
+    $result = Get-ResultByQueue -Results $Artifact -Queue 'PrintSink - XPS'
+    Assert-FileResultSummary -Result $result -Expected $expectedXpsCopyOutput -Description 'XPS copy feature output'
+    Assert-Condition ([string](Get-ResultProperty -Object $result -Name 'sourceApplication') -eq 'powershell.exe') 'XPS copy feature evidence reported the wrong source application.'
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -576,6 +642,18 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 5) {
             Assert-FilePrinterSaveAsEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 6) {
+            Assert-CloudSinkEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 7) {
+            Assert-ConvertedOutputEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 8) {
+            Assert-XpsCopyEvidence -Artifact @($artifact)
         }
 
         if ($number -eq 19) {

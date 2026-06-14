@@ -137,6 +137,8 @@ The required E2E suite proves the current installed-package behavior:
 
 1. Print from a Win32 source through the common print path to each file-backed queue.
 2. Print to the cloud queue and confirm no Save As target is requested.
+   Cloud evidence must prove no Save-As output, zero file-backed bytes, a copied package-local PDF
+   sink artifact, matching byte count, and extracted `foo` text.
 3. Print a real Notepad `/p` text document to `PrintSink - PDF`, then assert the selected PDF is
    non-empty, opens with PDFPig, contains `foo`, and all queues remain installed.
    Save-As evidence must include exact file-backed queue names, selected output paths, byte counts,
@@ -152,6 +154,9 @@ The required E2E suite proves the current installed-package behavior:
    action, conversion kind, and route reason must match the expected endpoint behavior. The standalone
    `Route resolved` event is preferred; the `Job completed` event also carries the route so completion
    evidence remains self-contained.
+   Conversion evidence must include exact converted queue names for PDF, PWG Raster, and PCLm,
+   matching routes, byte counts, and document validation. XPS copy evidence must include the exact
+   OXPS copy route and a validated OXPS package containing the source text.
    Preferred-input evidence must include the signed manifest preference and the observed source content type
    for each real queue.
    Passthrough evidence must include signed-package `SupportedFormat` declarations, byte-for-byte PDF

@@ -165,6 +165,38 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies sink, conversion, and copy feature evidence validates exact real outputs.
+    /// </summary>
+    [TestMethod]
+    public void SinkConversionAndCopyEvidenceRequiresExactRealOutputs()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-CloudSinkEvidence", e2eScript);
+        Assert.Contains("Test-ConvertedOutputEvidence", e2eScript);
+        Assert.Contains("Test-XpsCopyEvidence", e2eScript);
+        Assert.Contains("package-local PDF sink artifact", e2eScript);
+        Assert.Contains("exact PDF, PWG Raster, and PCLm queue outputs", e2eScript);
+        Assert.Contains("exact OXPS copy route", e2eScript);
+
+        Assert.Contains("Assert-CloudSinkEvidence", validatorScript);
+        Assert.Contains("Assert-ConvertedOutputEvidence", validatorScript);
+        Assert.Contains("Assert-XpsCopyEvidence", validatorScript);
+        Assert.Contains("expectedConvertedOutputs", validatorScript);
+        Assert.Contains("expectedXpsCopyOutput", validatorScript);
+        Assert.Contains("Conversion feature output queue names", validatorScript);
+
+        Assert.Contains("validated PDF text", design);
+        Assert.Contains("exact PDF/PWG-Raster/PCLm converted queue set", design);
+        Assert.Contains("validated OXPS output containing source text", design);
+        Assert.Contains("Conversion evidence must include exact converted queue names", testing);
+        Assert.Contains("Cloud evidence must prove no Save-As output", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]

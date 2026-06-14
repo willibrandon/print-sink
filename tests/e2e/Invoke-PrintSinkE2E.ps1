@@ -4789,6 +4789,80 @@ function Test-FileBackedOutputEvidence {
         -and (Test-RouteEquals -Result $NotepadPrint -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.')
 }
 
+function Test-CloudSinkEvidence {
+    param(
+        [object] $CloudPrint
+    )
+
+    if ($null -eq $CloudPrint) {
+        return $false
+    }
+
+    $sinkArtifact = Get-ObjectPropertyValue -Object $CloudPrint -Name 'sinkArtifact'
+    if ($null -eq $sinkArtifact) {
+        return $false
+    }
+
+    $artifactCopyPath = [string](Get-ObjectPropertyValue -Object $sinkArtifact -Name 'artifactCopyPath')
+    $artifactBytes = [long](Get-ObjectPropertyValue -Object $sinkArtifact -Name 'bytes')
+    return [string](Get-ObjectPropertyValue -Object $CloudPrint -Name 'queue') -eq 'PrintSink - Cloud' `
+        -and [string](Get-ObjectPropertyValue -Object $CloudPrint -Name 'format') -eq 'cloud' `
+        -and [string](Get-ObjectPropertyValue -Object $CloudPrint -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $CloudPrint -Name 'outputPath')) `
+        -and [long](Get-ObjectPropertyValue -Object $CloudPrint -Name 'bytes') -eq 0 `
+        -and [string](Get-ObjectPropertyValue -Object $sinkArtifact -Name 'contentType') -eq 'application/pdf' `
+        -and (-not [string]::IsNullOrWhiteSpace($artifactCopyPath)) `
+        -and (Test-Path -LiteralPath $artifactCopyPath -PathType Leaf) `
+        -and $artifactBytes -gt 0 `
+        -and (Get-Item -LiteralPath $artifactCopyPath).Length -eq $artifactBytes `
+        -and (Test-RouteEquals -Result $CloudPrint -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.')
+}
+
+function Test-ConvertedOutputEvidence {
+    param(
+        [object[]] $RealPrints
+    )
+
+    $expectedConversions = @(
+        [ordered]@{ queue = 'PrintSink - PDF'; format = 'pdf'; route = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' },
+        [ordered]@{ queue = 'PrintSink - PWG Raster'; format = 'pwg'; route = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.' },
+        [ordered]@{ queue = 'PrintSink - PCLm'; format = 'pclm'; route = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.' }
+    )
+
+    foreach ($expectedConversion in $expectedConversions) {
+        $result = Get-ResultByQueue -Results $RealPrints -Queue $expectedConversion.queue
+        if (-not (Test-FileOutputResult -Result $result)) {
+            return $false
+        }
+
+        if ([string](Get-ObjectPropertyValue -Object $result -Name 'format') -ne $expectedConversion.format) {
+            return $false
+        }
+
+        if ([string](Get-ObjectPropertyValue -Object $result -Name 'sourceApplication') -ne 'powershell.exe') {
+            return $false
+        }
+
+        if (-not (Test-RouteEquals -Result $result -ExpectedRoute $expectedConversion.route)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Test-XpsCopyEvidence {
+    param(
+        [object] $XpsPrint
+    )
+
+    return (Test-FileOutputResult -Result $XpsPrint) `
+        -and [string](Get-ObjectPropertyValue -Object $XpsPrint -Name 'queue') -eq 'PrintSink - XPS' `
+        -and [string](Get-ObjectPropertyValue -Object $XpsPrint -Name 'format') -eq 'oxps' `
+        -and [string](Get-ObjectPropertyValue -Object $XpsPrint -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and (Test-RouteEquals -Result $XpsPrint -ExpectedRoute 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.')
+}
+
 function Test-PreferredInputFormatEvidence {
     param(
         [object[]] $VirtualPrinters,
@@ -5222,46 +5296,35 @@ function New-PrintSinkFeatureEvidence {
         })
 
     $cloudPrint = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - Cloud'
-    $cloudArtifact = Get-ObjectPropertyValue -Object $cloudPrint -Name 'sinkArtifact'
-    $cloudArtifactBytes = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'bytes'
-    $cloudArtifactContentType = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'contentType'
-    $cloudArtifactCopyPath = Get-ObjectPropertyValue -Object $cloudArtifact -Name 'artifactCopyPath'
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 6 `
         -Feature 'Non-file sinks (cloud / OneNote-style)' `
-        -Passed (
-            $null -ne $cloudPrint `
-                -and $null -ne $cloudArtifact `
-                -and [string]::IsNullOrWhiteSpace([string]$cloudPrint.outputPath) `
-                -and $cloudPrint.bytes -eq 0 `
-                -and ($cloudArtifactBytes -gt 0) `
-                -and [string]$cloudArtifactContentType -eq 'application/pdf' `
-                -and (Test-Path -LiteralPath $cloudArtifactCopyPath) `
-                -and [string]$cloudPrint.diagnostic.message -eq 'Job completed') `
-        -Evidence 'The cloud endpoint omits Save-As output, writes a package-local sink artifact from a real print job, and validates that artifact as PDF output.' `
+        -Passed (Test-CloudSinkEvidence -CloudPrint $cloudPrint) `
+        -Evidence 'The cloud endpoint omits Save-As output, writes a package-local PDF sink artifact from a real print job, and validates that artifact by byte count and content.' `
         -Artifact $cloudPrint
 
+    $convertedPrints = @($realPrints | Where-Object {
+        (Get-ObjectPropertyValue -Object $_ -Name 'queue') -in @('PrintSink - PDF', 'PrintSink - PWG Raster', 'PrintSink - PCLm')
+    })
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 7 `
         -Feature 'OXPS → PDF / PWG-Raster / PCLm conversion' `
-        -Passed (
-            (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PDF') -ExpectedText 'Convert XPS to PDF') `
-                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PWG Raster') -ExpectedText 'Convert XPS to PWG Raster') `
-                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PCLm') -ExpectedText 'Convert XPS to PCLm')) `
-        -Evidence 'The Windows converter produced valid PDF, PWG Raster, and PCLm outputs from real OXPS jobs.' `
-        -Artifact (New-PrintResultSummary `
-            -Results @($realPrints | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'queue') -in @('PrintSink - PDF', 'PrintSink - PWG Raster', 'PrintSink - PCLm') }) `
-            -IncludeRoute)
+        -Passed (Test-ConvertedOutputEvidence -RealPrints $realPrints) `
+        -Evidence 'The Windows converter produced exact PDF, PWG Raster, and PCLm queue outputs from real OXPS jobs, with matching routes and byte counts.' `
+        -Artifact ([ordered]@{
+            outputs = New-PrintResultSummary -Results $convertedPrints -IncludeRoute
+        })
 
+    $xpsPrint = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS'
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 8 `
         -Feature 'XPS/OXPS passthrough (copy)' `
-        -Passed (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
-        -Evidence 'The XPS endpoint completed a copy route and produced a valid OXPS package.' `
-        -Artifact (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS')
+        -Passed (Test-XpsCopyEvidence -XpsPrint $xpsPrint) `
+        -Evidence 'The XPS endpoint completed the exact OXPS copy route and produced a validated OXPS package containing the source text.' `
+        -Artifact (New-PrintResultSummary -Results @($xpsPrint) -IncludeRoute)
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
