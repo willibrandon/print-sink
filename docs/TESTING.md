@@ -151,7 +151,8 @@ The required E2E suite proves the current installed-package behavior:
 8. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, MXDC
    configuration, contract-19 PDL passthrough-with-job-attributes enablement, and printer selection
-   records the adaptive-card/additional-field request.
+   records Adaptive Card 1.0 plus `PageMediaType`, `PageOutputQuality`, and
+   `JobCopiesAllDocuments`.
 9. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
 10. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable

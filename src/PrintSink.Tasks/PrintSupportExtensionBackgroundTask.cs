@@ -1,6 +1,7 @@
+using System.Text.Json;
 using System.Xml.Linq;
-using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Capabilities;
+using PrintSink.Core.Diagnostics;
 using PrintSink.Core.Tickets;
 using Windows.ApplicationModel.Background;
 using Windows.ApplicationModel.Resources.Core;
@@ -382,9 +383,10 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         {
             state.Run(() =>
             {
-                string printerName = sender.Printer.PrinterName.Replace("\\", "\\\\", StringComparison.Ordinal);
+                string printerName = sender.Printer.PrinterName;
+                string cardText = $"PrintSink is managing {printerName}.";
                 string json = $$"""
-                    {"body":[{"type":"TextBlock","text":"PrintSink is managing {{printerName}}."}],"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","type":"AdaptiveCard","version":"1.0"}
+                    {"body":[{"type":"TextBlock","text":{{JsonSerializer.Serialize(cardText)}}}],"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","type":"AdaptiveCard","version":"1.0"}
                     """;
 
                 args.SetAdaptiveCard(Windows.UI.Shell.AdaptiveCardBuilder.CreateAdaptiveCardFromJson(json));
@@ -392,7 +394,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 AppendDiagnostic(
                     "Printer selected",
                     sender.Printer.PrinterName,
-                    $"adaptiveCard=set; {requestDetail}");
+                    $"adaptiveCard=set; adaptiveCardVersion=1.0; adaptiveCardPrinter={SanitizeDiagnosticValue(printerName)}; {requestDetail}");
             });
         }
         finally
@@ -451,6 +453,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 "; ",
                 "additionalFields=requested",
                 $"allowed={args.AllowedAdditionalFeaturesAndParametersCount}",
+                $"requested={requestedCount}",
                 $"features={FormatPrintTicketElementNames(additionalFeatures)}",
                 $"parameters={FormatPrintTicketElementNames(additionalParameters)}");
         }
@@ -481,6 +484,14 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
     private static string FormatPrintTicketElementNames(PrintSupportPrintTicketElement[] elements)
     {
         return string.Join(",", elements.Select(static element => element.LocalName));
+    }
+
+    private static string SanitizeDiagnosticValue(string value)
+    {
+        return value
+            .ReplaceLineEndings(" ")
+            .Replace(';', ',')
+            .Trim();
     }
 
     private static void AppendDiagnostic(string message, string endpoint, string detail)

@@ -204,7 +204,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 16 | Get/set user default print ticket | `IppPrintDevice.UserDefaultPrintTicket`, `CanModifyUserDefaultPrintTicket` | `PrintSink.App` | |
 | 17 | Physical IPP PSA association + workflow activation | Temporary signed PSA extension INF, Microsoft IPP Class Driver queue, `windows.printSupportWorkflow` activation | Extension task + workflow task + E2E | Association probe only; physical target-stream replacement is not claimed |
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
-| 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation` |
+| 19 | Printer-selected adaptive card in MPD | `PrintSupportExtensionSession.PrinterSelected`, `SetAdaptiveCard`, additional features/params | Extension task | API-gated via `ApiInformation`; E2E records Adaptive Card 1.0, selected queue, `PageMediaType`, `PageOutputQuality`, and `JobCopiesAllDocuments` |
 | 20 | IPP attribute get behavior for installed virtual queues | `IppPrintDevice.GetPrinterAttributes` | Package command + Core adapter | Assert document-format reads expose no usable virtual-printer IPP values, matching v4 platform behavior |
 | 21 | Multiple instances for concurrent jobs | `uap10:SupportsMultipleInstances="true"` + real simultaneous print submissions | Manifest + E2E | CI asserts overlapping diagnostics and valid outputs |
 | 22 | Job notification compatibility hook | `PrintWorkflowJobUISession.JobNotification`, `PrintWorkflowJobBackgroundSession.JobIssueDetected` | App Job UI + workflow task | Tracked only. Defensive handlers record OS error-toast/job-issue activations; not a supported virtual-printer behavior until a deterministic E2E exists. |
@@ -534,8 +534,9 @@ Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapab
   `UpdatePrintDeviceResources`. Real capability-refresh diagnostics record the localized resource names.
 - **MXDC image quality** — sets `args.MxdcImageQualityConfiguration` text/draft/normal/high/photo/auto/fax
   to chosen `XpsImageQuality` values and records the full mapping during real capability refresh.
-- **Printer-selected adaptive card** — builds an Adaptive Card and requests additional features/parameters
-  within `AllowedAdditionalFeaturesAndParametersCount`.
+- **Printer-selected adaptive card** — builds an Adaptive Card, records the selected queue and card version,
+  and requests `PageMediaType`, `PageOutputQuality`, and `JobCopiesAllDocuments` within
+  `AllowedAdditionalFeaturesAndParametersCount`.
 - **IPP communication timeout recovery** — when Windows raises `CommunicationErrorDetected` for a
   timeout, updates `PrintSupportIppCommunicationConfiguration` timeouts when the platform allows it and
   records diagnostic evidence.
@@ -729,7 +730,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      `Job completed` event; the event carries route details so completion evidence is self-contained.
    - Assert `PrintSupportExtensionBackgroundTask` diagnostics from real OS activations: ticket
      validation on every queue, capability refresh with custom features, PDR update, MXDC image
-     quality configuration, and printer-selected adaptive-card/additional-field setup.
+     quality configuration, and printer-selected Adaptive Card 1.0 setup with `PageMediaType`,
+     `PageOutputQuality`, and `JobCopiesAllDocuments`.
    - Set and restore `IppPrintDevice.UserDefaultPrintTicket` for a real virtual queue, then assert the
      persisted default copy count through package-local diagnostics.
    - Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable

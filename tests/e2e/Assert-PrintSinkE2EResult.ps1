@@ -49,6 +49,16 @@ $expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Nor
 $expectedPdcFeatureDetail = 'pdcFeatures=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode'
 $expectedPdcOptionDetail = 'pdcOptions=Receipt80Millimeter,ArchivePaper,ThermalReceiptMedia,AutomationInputBin,AutomationOutputBin,OddPagesThenEvenPages,StapleUpperLeft,Dpi600,Dpi1200,WatermarkOff,WatermarkText,WatermarkImage'
 $expectedPdrResourceDetail = 'pdrResourceNames=ArchivePaper,AutomationInputBin,AutomationOutputBin,Dpi1200,Dpi600,JobWatermarkMode,OddPagesThenEvenPages,Receipt80Millimeter,StapleUpperLeft,ThermalReceiptMedia,WatermarkImage,WatermarkOff,WatermarkText'
+$expectedPrinterSelectedDetailParts = @(
+    'adaptiveCard=set',
+    'adaptiveCardVersion=1.0',
+    'adaptiveCardPrinter=PrintSink - PDF',
+    'additionalFields=requested',
+    'allowed=',
+    'requested=3',
+    'features=PageMediaType,PageOutputQuality',
+    'parameters=JobCopiesAllDocuments'
+)
 
 function Assert-Condition {
     param(
@@ -123,6 +133,33 @@ function Get-ResultByQueue {
                 -or (Get-ResultProperty -Object $_ -Name 'name') -eq $Queue
         } |
         Select-Object -First 1)[0]
+}
+
+function Assert-DetailContainsParts {
+    param(
+        [string] $Detail,
+        [string[]] $ExpectedParts,
+        [string] $Description
+    )
+
+    foreach ($expectedPart in $ExpectedParts) {
+        Assert-Condition ($Detail -like "*$expectedPart*") "$Description omitted required detail: $expectedPart"
+    }
+}
+
+function Assert-PrinterSelectedDiagnostic {
+    param(
+        [object] $PrinterSelected,
+        [string] $Description
+    )
+
+    Assert-Condition ($null -ne $PrinterSelected) "$Description did not include printer-selected evidence."
+    Assert-Condition ([string](Get-ResultProperty -Object $PrinterSelected -Name 'message') -eq 'Printer selected') "$Description did not report the Printer selected diagnostic."
+    Assert-Condition ([string](Get-ResultProperty -Object $PrinterSelected -Name 'endpoint') -eq 'PrintSink - PDF') "$Description did not target the PDF queue."
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $PrinterSelected -Name 'detail')) `
+        -ExpectedParts $expectedPrinterSelectedDetailParts `
+        -Description $Description
 }
 
 function Assert-NonEmptyFile {
@@ -300,6 +337,10 @@ function Assert-FeatureEvidence {
         if ($artifact -is [System.Array]) {
             Assert-Condition ($artifact.Length -gt 0) "Feature evidence #$number had an empty artifact."
         }
+
+        if ($number -eq 19) {
+            Assert-PrinterSelectedDiagnostic -PrinterSelected $artifact -Description 'Feature evidence #19 artifact'
+        }
     }
 
     $deferredNumbers = @($DeferredFeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
@@ -470,6 +511,17 @@ function Assert-ManagementUi {
     $jobUiHeadless = Get-ResultProperty -Object $ManagementUi -Name 'jobUiHeadless'
     Assert-Condition ([string](Get-ResultProperty -Object $jobUiHeadless -Name 'message') -eq 'Management UI Job UI mode updated') 'Management UI did not record the headless jobs diagnostic.'
     Assert-Condition ([string](Get-ResultProperty -Object $jobUiHeadless -Name 'detail') -like '*Headless jobs enabled.*') 'Management UI headless jobs diagnostic did not report headless mode.'
+}
+
+function Assert-SettingsUiOwner {
+    param(
+        [object] $SettingsUiOwner
+    )
+
+    Assert-Condition ($null -ne $SettingsUiOwner) 'The E2E result did not include settings UI owner evidence.'
+    Assert-PrinterSelectedDiagnostic `
+        -PrinterSelected (Get-ResultProperty -Object $SettingsUiOwner -Name 'printerSelected') `
+        -Description 'Settings UI owner printer selection'
 }
 
 function Assert-CleanupEvidence {
@@ -644,6 +696,7 @@ Assert-FeatureEvidence `
 Assert-QueuePersistence -Result $result
 Assert-ExtensionCapabilities -ExtensionCapabilities $result.extensionCapabilities
 Assert-ManagementUi -ManagementUi $result.managementUi
+Assert-SettingsUiOwner -SettingsUiOwner $result.settingsUiOwner
 Assert-CleanupEvidence -Cleanup $result.cleanup
 Assert-RealPrintOutputs -RealPrints @($result.realPrints)
 Assert-AdditionalOutputs -Result $result

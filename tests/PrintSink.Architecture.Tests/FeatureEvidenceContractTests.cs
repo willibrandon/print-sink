@@ -132,6 +132,42 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies printer-selected feature evidence records the adaptive card and requested print fields.
+    /// </summary>
+    [TestMethod]
+    public void PrinterSelectedFeatureEvidenceRequiresAdaptiveCardAndRequestedFields()
+    {
+        string extensionTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportExtensionBackgroundTask.cs");
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        string[] expectedDetails =
+        [
+            "adaptiveCard=set",
+            "adaptiveCardVersion=1.0",
+            "adaptiveCardPrinter=PrintSink - PDF",
+            "additionalFields=requested",
+            "requested=3",
+            "features=PageMediaType,PageOutputQuality",
+            "parameters=JobCopiesAllDocuments",
+        ];
+
+        Assert.Contains("JsonSerializer.Serialize(cardText)", extensionTask);
+        Assert.Contains("SetAdaptiveCard", extensionTask);
+        Assert.Contains("SetAdditionalFeatures(additionalFeatures)", extensionTask);
+        Assert.Contains("SetAdditionalParameters(additionalParameters)", extensionTask);
+        Assert.Contains("CreatePrintTicketElement(\"PageMediaType\")", extensionTask);
+        Assert.Contains("CreatePrintTicketElement(\"PageOutputQuality\")", extensionTask);
+        Assert.Contains("CreatePrintTicketElement(\"JobCopiesAllDocuments\")", extensionTask);
+
+        foreach (string expectedDetail in expectedDetails)
+        {
+            Assert.Contains(expectedDetail, e2eScript);
+            Assert.Contains(expectedDetail, validatorScript);
+        }
+    }
+
+    /// <summary>
     /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
     /// </summary>
     [TestMethod]

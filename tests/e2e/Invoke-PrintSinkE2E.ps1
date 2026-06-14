@@ -27,6 +27,16 @@ $expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Nor
 $expectedPdcFeatureDetail = 'pdcFeatures=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode'
 $expectedPdcOptionDetail = 'pdcOptions=Receipt80Millimeter,ArchivePaper,ThermalReceiptMedia,AutomationInputBin,AutomationOutputBin,OddPagesThenEvenPages,StapleUpperLeft,Dpi600,Dpi1200,WatermarkOff,WatermarkText,WatermarkImage'
 $expectedPdrResourceDetail = 'pdrResourceNames=ArchivePaper,AutomationInputBin,AutomationOutputBin,Dpi1200,Dpi600,JobWatermarkMode,OddPagesThenEvenPages,Receipt80Millimeter,StapleUpperLeft,ThermalReceiptMedia,WatermarkImage,WatermarkOff,WatermarkText'
+$expectedPrinterSelectedDetailParts = @(
+    'adaptiveCard=set',
+    'adaptiveCardVersion=1.0',
+    'adaptiveCardPrinter=PrintSink - PDF',
+    'additionalFields=requested',
+    'allowed=',
+    'requested=3',
+    'features=PageMediaType,PageOutputQuality',
+    'parameters=JobCopiesAllDocuments'
+)
 
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 
@@ -3284,7 +3294,7 @@ function Invoke-PrintSinkSettingsUiOwner {
             -Endpoint 'PrintSink - PDF' `
             -Message 'Printer selected' `
             -StartedUtc $startedUtc `
-            -DetailContains @('adaptiveCard=set', 'additionalFields=')
+            -DetailContains $expectedPrinterSelectedDetailParts
 
         $moreSettings = Find-EnabledDescendantByFilter `
             -Root $printDialog `
@@ -5161,8 +5171,8 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 19 `
         -Feature 'Printer-selected adaptive card in MPD' `
-        -Passed ([string]$SettingsUiOwner.printerSelected.detail -like '*adaptiveCard=set*' -and [string]$SettingsUiOwner.printerSelected.detail -like '*additionalFields=*') `
-        -Evidence 'The Windows print dialog selected a PrintSink queue and the extension set adaptive-card and additional-field metadata.' `
+        -Passed (@($expectedPrinterSelectedDetailParts | Where-Object { [string]$SettingsUiOwner.printerSelected.detail -notlike "*$_*" }).Count -eq 0) `
+        -Evidence 'The Windows print dialog selected a PrintSink queue and the extension set an adaptive card plus the requested feature and parameter fields.' `
         -Artifact $SettingsUiOwner.printerSelected
 
     Add-PrintSinkFeatureEvidence `
