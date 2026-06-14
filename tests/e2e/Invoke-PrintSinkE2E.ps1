@@ -1502,6 +1502,9 @@ finally {
         scriptPath = $scriptPath
         stdoutPath = $stdoutPath
         stderrPath = $stderrPath
+        sourceApplication = 'powershell.exe'
+        documentName = $DocumentName
+        pageCount = $PageCount
     }
 }
 
@@ -2365,6 +2368,8 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
 
         return [ordered]@{
             printer = $PrinterName
+            sourceApplication = $printProcess.sourceApplication
+            documentName = 'PrintSink E2E IPP Workflow'
             workflowStart = $workflowStart
             workflow = $workflow
             workflowStatus = $workflowStatus
@@ -2601,6 +2606,8 @@ function Invoke-PrintSinkRealPrint {
             return [ordered]@{
                 queue = $printerName
                 format = $PrintCase.format
+                sourceApplication = $printProcess.sourceApplication
+                documentName = $printProcess.documentName
                 outputPath = $file.FullName
                 bytes = $file.Length
                 diagnostic = $diagnostic
@@ -2640,6 +2647,8 @@ function Invoke-PrintSinkRealPrint {
         return [ordered]@{
             queue = $printerName
             format = $PrintCase.format
+            sourceApplication = $printProcess.sourceApplication
+            documentName = $printProcess.documentName
             outputPath = $null
             bytes = 0
             sinkArtifact = $sinkArtifact
@@ -2739,6 +2748,8 @@ function Invoke-PrintSinkNotepadPrint {
         return [ordered]@{
             queue = $printCase.queue
             format = $printCase.format
+            sourceApplication = 'notepad.exe'
+            documentName = [System.IO.Path]::GetFileName($sourcePath)
             sourcePath = $sourcePath
             outputPath = $outputPath
             bytes = $file.Length
@@ -2826,6 +2837,8 @@ function Invoke-PrintSinkConcurrentPrints {
                 scriptPath = $printProcess.scriptPath
                 stdoutPath = $printProcess.stdoutPath
                 stderrPath = $printProcess.stderrPath
+                sourceApplication = $printProcess.sourceApplication
+                documentName = $printProcess.documentName
             })
         }
 
@@ -2900,6 +2913,8 @@ function Invoke-PrintSinkConcurrentPrints {
                 $results += [ordered]@{
                     queue = $printCase.queue
                     format = $printCase.format
+                    sourceApplication = $job.sourceApplication
+                    documentName = $job.documentName
                     outputPath = $null
                     bytes = 0
                     pageCount = $printCase.pageCount
@@ -2918,6 +2933,8 @@ function Invoke-PrintSinkConcurrentPrints {
             $results += [ordered]@{
                 queue = $printCase.queue
                 format = $printCase.format
+                sourceApplication = $job.sourceApplication
+                documentName = $job.documentName
                 outputPath = $file.FullName
                 bytes = $file.Length
                 pageCount = $printCase.pageCount
@@ -3031,6 +3048,8 @@ function Invoke-PrintSinkPdfPassthroughPrint {
         return [ordered]@{
             queue = $printCase.queue
             format = $printCase.format
+            sourceApplication = 'printsink-app.exe'
+            documentName = [System.IO.Path]::GetFileName($sourcePath)
             sourcePath = $sourcePath
             outputPath = $outputPath
             bytes = $file.Length
@@ -3144,6 +3163,8 @@ function Invoke-PrintSinkWinRtSourcePrint {
         return [ordered]@{
             queue = $printCase.queue
             format = $printCase.format
+            sourceApplication = 'printsink-app.exe'
+            documentName = 'PrintSink WinRT E2E Source'
             outputPath = $outputPath
             bytes = $file.Length
             mode = 'winrt-source'
@@ -3582,6 +3603,8 @@ Add-Type -AssemblyName System.Drawing
             return [ordered]@{
                 queue = $printerName
                 format = 'pdf'
+                sourceApplication = 'powershell.exe'
+                documentName = 'PrintSink E2E Failed Image Watermark'
                 outputPath = $outputPath
                 outputExists = $outputExists
                 bytes = $bytes
@@ -3725,6 +3748,8 @@ Add-Type -AssemblyName System.Drawing
         return [ordered]@{
             queue = $printerName
             format = 'pdf'
+            sourceApplication = 'powershell.exe'
+            documentName = 'PrintSink E2E Job UI Watermark'
             outputPath = $outputPath
             bytes = $file.Length
             mode = 'job-ui-watermark'
@@ -3863,6 +3888,8 @@ Add-Type -AssemblyName System.Drawing
         return [ordered]@{
             queue = $printerName
             format = 'pdf'
+            sourceApplication = 'powershell.exe'
+            documentName = 'PrintSink E2E Job UI Cancel'
             outputPath = $outputPath
             outputExists = $outputExists
             bytes = $bytes
@@ -4412,6 +4439,8 @@ function New-PrintResultSummary {
         $summary = [ordered]@{
             queue = Get-ObjectPropertyValue -Object $_ -Name 'queue'
             format = Get-ObjectPropertyValue -Object $_ -Name 'format'
+            sourceApplication = Get-ObjectPropertyValue -Object $_ -Name 'sourceApplication'
+            documentName = Get-ObjectPropertyValue -Object $_ -Name 'documentName'
             outputPath = Get-ObjectPropertyValue -Object $_ -Name 'outputPath'
             bytes = Get-ObjectPropertyValue -Object $_ -Name 'bytes'
         }
