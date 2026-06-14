@@ -1199,10 +1199,12 @@ function Assert-FeatureEvidence {
         $number = [int](Get-ResultProperty -Object $evidence -Name 'number')
         $feature = [string](Get-ResultProperty -Object $evidence -Name 'feature')
         $expectedFeature = $expectedSupportedFeatures[[string]$number]
+        $status = [string](Get-ResultProperty -Object $evidence -Name 'status')
         $passed = Get-ResultProperty -Object $evidence -Name 'passed'
         $evidenceText = [string](Get-ResultProperty -Object $evidence -Name 'evidence')
         $artifact = Get-ResultProperty -Object $evidence -Name 'artifact'
         Assert-Condition ($feature -eq $expectedFeature) "Feature evidence #$number had name '$feature'; expected '$expectedFeature'."
+        Assert-Condition ($status -eq 'supported') "Feature evidence #$number was not marked supported."
         Assert-Condition ([bool]$passed) "Feature evidence #$number was not marked as passed."
         Assert-Condition (-not [string]::IsNullOrWhiteSpace($evidenceText)) "Feature evidence #$number had no evidence description."
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."

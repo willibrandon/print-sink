@@ -5321,6 +5321,7 @@ function Add-PrintSinkFeatureEvidence {
     $FeatureEvidence.Add([ordered]@{
         number = $Number
         feature = $Feature
+        status = 'supported'
         passed = $true
         evidence = $Evidence
         artifact = $Artifact
@@ -5360,7 +5361,12 @@ function Assert-PrintSinkFeatureEvidenceComplete {
     foreach ($evidence in $FeatureEvidence) {
         $number = [int](Get-ObjectPropertyValue -Object $evidence -Name 'number')
         $feature = [string](Get-ObjectPropertyValue -Object $evidence -Name 'feature')
+        $status = [string](Get-ObjectPropertyValue -Object $evidence -Name 'status')
         $expectedFeature = $supportedFeatures[[string]$number]
+        if ($status -ne 'supported') {
+            throw "Feature evidence #$number had status '$status'; expected 'supported'."
+        }
+
         if ($feature -ne $expectedFeature) {
             throw "Feature evidence #$number had name '$feature'; expected '$expectedFeature' from docs\DESIGN.md."
         }

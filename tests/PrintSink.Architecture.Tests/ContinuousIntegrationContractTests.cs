@@ -343,7 +343,7 @@ internal sealed partial class ContinuousIntegrationContractTests
     }
 
     /// <summary>
-    /// Verifies supported E2E feature evidence must be marked as passed in the persisted result.
+    /// Verifies supported E2E feature evidence must be marked as supported and passed in the persisted result.
     /// </summary>
     [TestMethod]
     public void E2eResultValidatorRequiresPassedFeatureEvidence()
@@ -354,9 +354,12 @@ internal sealed partial class ContinuousIntegrationContractTests
         string e2eScript = File.ReadAllText(e2ePath);
         string validatorScript = File.ReadAllText(validatorPath);
 
+        Assert.Contains("status = 'supported'", e2eScript);
         Assert.Contains("passed = $true", e2eScript);
+        Assert.Contains("Get-ResultProperty -Object $evidence -Name 'status'", validatorScript);
         Assert.Contains("Get-ResultProperty -Object $evidence -Name 'passed'", validatorScript);
         Assert.Contains("Get-ResultProperty -Object $evidence -Name 'evidence'", validatorScript);
+        Assert.Contains("Feature evidence #$number was not marked supported.", validatorScript);
         Assert.Contains("Feature evidence #$number was not marked as passed.", validatorScript);
         Assert.Contains("Feature evidence #$number had no evidence description.", validatorScript);
         Assert.Contains("Feature evidence #$number had an empty artifact.", validatorScript);
