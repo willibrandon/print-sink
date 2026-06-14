@@ -131,7 +131,11 @@ internal sealed class ContinuousIntegrationContractTests
 
         Assert.Contains("passed = $true", e2eScript);
         Assert.Contains("Get-ResultProperty -Object $evidence -Name 'passed'", validatorScript);
+        Assert.Contains("Get-ResultProperty -Object $evidence -Name 'evidence'", validatorScript);
         Assert.Contains("Feature evidence #$number was not marked as passed.", validatorScript);
+        Assert.Contains("Feature evidence #$number had no evidence description.", validatorScript);
+        Assert.Contains("Feature evidence #$number had an empty artifact.", validatorScript);
+        Assert.Contains("Deferred feature evidence #$number had no evidence description.", validatorScript);
     }
 
     /// <summary>

@@ -285,10 +285,15 @@ function Assert-FeatureEvidence {
         $feature = [string](Get-ResultProperty -Object $evidence -Name 'feature')
         $expectedFeature = $expectedSupportedFeatures[[string]$number]
         $passed = Get-ResultProperty -Object $evidence -Name 'passed'
+        $evidenceText = [string](Get-ResultProperty -Object $evidence -Name 'evidence')
         $artifact = Get-ResultProperty -Object $evidence -Name 'artifact'
         Assert-Condition ($feature -eq $expectedFeature) "Feature evidence #$number had name '$feature'; expected '$expectedFeature'."
         Assert-Condition ([bool]$passed) "Feature evidence #$number was not marked as passed."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace($evidenceText)) "Feature evidence #$number had no evidence description."
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."
+        if ($artifact -is [System.Array]) {
+            Assert-Condition ($artifact.Length -gt 0) "Feature evidence #$number had an empty artifact."
+        }
     }
 
     $deferredNumbers = @($DeferredFeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
@@ -302,8 +307,10 @@ function Assert-FeatureEvidence {
         $feature = [string](Get-ResultProperty -Object $evidence -Name 'feature')
         $expectedFeature = $expectedDeferredFeatures[[string]$number]
         $status = [string](Get-ResultProperty -Object $evidence -Name 'status')
+        $evidenceText = [string](Get-ResultProperty -Object $evidence -Name 'evidence')
         Assert-Condition ($feature -eq $expectedFeature) "Deferred feature evidence #$number had name '$feature'; expected '$expectedFeature'."
         Assert-Condition ($status -eq 'deferred') "Deferred feature evidence #$number was not marked deferred."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace($evidenceText)) "Deferred feature evidence #$number had no evidence description."
     }
 
     $pdlPassthroughWithAttributes = @($DeferredFeatureEvidence |
