@@ -230,15 +230,20 @@ same change. The E2E script also writes `featureEvidence` into `e2e-result.json`
 marked `status: supported` and `passed: true`, built from the live assertions above, and fails the run if
 a supported print-stack feature lacks evidence.
 Tracked compatibility hooks that are not claimed as supported behavior are written separately as
-`deferredFeatureEvidence` and must not be used to satisfy supported feature coverage. The current
-deferred hooks are job notification/job-issue activation and IPP communication-error timeout recovery
-because Windows does not expose deterministic triggers for those events in the supported E2E path,
-plus provider-v2 PDL passthrough with job attributes when the live provider reports provider2 as
-unsupported or the runtime cannot deliver the full passthrough-attribute workflow. For the
-provider-v2 hook, deferred evidence must still carry the live capability-refresh,
-PDL-passthrough-provider, IPP attribute source, mapped fallback attribute names when that fallback is
-used, and buffer-size details when provider-v2 submission is used, plus physical-workflow diagnostics
-observed during the run.
+`deferredFeatureEvidence`. They must not be used to satisfy supported feature coverage.
+
+The current deferred rows are:
+
+- 22 - Job notification compatibility hook.
+- 26 - IPP communication-error timeout recovery.
+- 28 - PDL passthrough with IPP job-attribute compatibility.
+
+Rows 22 and 26 are deferred because Windows does not expose deterministic triggers for those events in
+the supported E2E path. Row 28 is deferred when the live provider reports provider2 as unsupported or
+the runtime cannot deliver the full passthrough-attribute workflow. For row 28, deferred evidence must
+still carry the live capability-refresh, PDL-passthrough-provider, IPP attribute source, mapped
+fallback attribute names when that fallback is used, and buffer-size details when provider-v2
+submission is used, plus physical-workflow diagnostics observed during the run.
 
 Real output assertions:
 

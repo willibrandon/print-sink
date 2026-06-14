@@ -79,6 +79,22 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies the testing guide names every deferred feature row explicitly.
+    /// </summary>
+    [TestMethod]
+    public void TestingGuideListsDeferredFeatureRowsExplicitly()
+    {
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("The current deferred rows are:", testing);
+        Assert.Contains("22 - Job notification compatibility hook.", testing);
+        Assert.Contains("26 - IPP communication-error timeout recovery.", testing);
+        Assert.Contains("28 - PDL passthrough with IPP job-attribute compatibility.", testing);
+        Assert.Contains("deferredFeatureEvidence", testing);
+        Assert.Contains("must not be used to satisfy supported feature coverage", testing);
+    }
+
+    /// <summary>
     /// Verifies every supported feature row has an explicit E2E artifact validator branch.
     /// </summary>
     [TestMethod]
