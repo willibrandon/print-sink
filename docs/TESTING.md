@@ -197,6 +197,8 @@ Tracked compatibility hooks that are not claimed as supported behavior are writt
 deferred hooks are job notification/job-issue activation and IPP communication-error timeout recovery
 because Windows does not expose deterministic triggers for those events in the supported E2E path,
 plus provider-v2 PDL passthrough with job attributes until the attribute-buffer submission path is real.
+For the provider-v2 hook, deferred evidence must still carry the live capability-refresh,
+PDL-passthrough-provider, and physical-workflow diagnostics observed during the run.
 
 Real output assertions:
 

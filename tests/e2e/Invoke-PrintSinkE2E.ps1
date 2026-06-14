@@ -4405,6 +4405,12 @@ function Assert-PrintSinkFeatureEvidenceComplete {
 }
 
 function New-PrintSinkDeferredFeatureEvidence {
+    param(
+        [object] $ExtensionCapabilities,
+        [object] $PdfPassthrough,
+        [object] $IppAssociation
+    )
+
     return @(
         [ordered]@{
             number = 22
@@ -4422,7 +4428,12 @@ function New-PrintSinkDeferredFeatureEvidence {
             number = 28
             feature = 'PDL passthrough with IPP job-attribute compatibility'
             status = 'deferred'
-            evidence = 'Windows exposes contract-19 passthrough-with-job-attributes APIs before the .NET projection exposes IppAttributeConverter. PrintSink records availability, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job and operation attribute buffers are implemented and proven by real E2E.'
+            evidence = 'Windows exposes passthrough-with-job-attributes APIs in system metadata, but the stock .NET ref pack used by this project does not expose the managed converter/provider types. PrintSink records live availability, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job and operation attribute buffers are implemented and proven by real E2E.'
+            artifact = [ordered]@{
+                capabilityRefresh = $ExtensionCapabilities
+                pdfPassthroughProvider = $PdfPassthrough.provider
+                physicalWorkflow = $IppAssociation.workflowActivationPrint.workflow
+            }
         }
     )
 }
@@ -5400,7 +5411,10 @@ try {
         -FailedImageWatermark $failedImageWatermarkResult `
         -JobUiWatermark $jobUiResult `
         -JobUiCancel $jobUiCancelResult
-    $deferredFeatureEvidence = New-PrintSinkDeferredFeatureEvidence
+    $deferredFeatureEvidence = New-PrintSinkDeferredFeatureEvidence `
+        -ExtensionCapabilities $extensionCapabilitiesResult `
+        -PdfPassthrough $pdfPassthroughResult `
+        -IppAssociation $ippAssociationResult
 
     $result = [ordered]@{
         windowsVersion = [Environment]::OSVersion.Version.ToString()

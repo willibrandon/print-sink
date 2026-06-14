@@ -244,6 +244,21 @@ function Assert-FeatureEvidence {
 
     $deferredNumbers = @($DeferredFeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
     Assert-SetEqual -Actual $deferredNumbers -Expected @(22, 26, 28) -Description 'Deferred feature evidence numbers'
+
+    $pdlPassthroughWithAttributes = @($DeferredFeatureEvidence |
+        Where-Object { [int](Get-ResultProperty -Object $_ -Name 'number') -eq 28 } |
+        Select-Object -First 1)[0]
+    Assert-Condition ($null -ne $pdlPassthroughWithAttributes) 'Deferred feature evidence omitted row 28.'
+
+    $artifact = Get-ResultProperty -Object $pdlPassthroughWithAttributes -Name 'artifact'
+    Assert-Condition ($null -ne $artifact) 'Deferred row 28 did not include runtime artifact evidence.'
+
+    $capabilityRefresh = Get-ResultProperty -Object $artifact -Name 'capabilityRefresh'
+    $pdfPassthroughProvider = Get-ResultProperty -Object $artifact -Name 'pdfPassthroughProvider'
+    $physicalWorkflow = Get-ResultProperty -Object $artifact -Name 'physicalWorkflow'
+    Assert-Condition ([string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail') -like '*pdlPassthroughWithJobAttributes=*') 'Deferred row 28 omitted capability refresh availability detail.'
+    Assert-Condition ([string](Get-ResultProperty -Object $pdfPassthroughProvider -Name 'detail') -like '*provider2=*') 'Deferred row 28 omitted provider-v2 availability detail.'
+    Assert-Condition ([string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail') -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
 }
 
 function Assert-QueuePersistence {
