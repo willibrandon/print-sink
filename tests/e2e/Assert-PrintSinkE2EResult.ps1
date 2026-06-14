@@ -115,6 +115,34 @@ function Assert-SupportedWindowsVersion {
     Assert-Condition ($version -ge $minimumWindowsVersion) "The E2E result came from Windows build $version; expected $minimumWindowsVersion or later."
 }
 
+function Assert-PackageEvidence {
+    param(
+        [object] $Package
+    )
+
+    Assert-Condition ($null -ne $Package) 'The E2E result did not include package evidence.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Package -Name 'name') -eq 'PrintSink') 'The E2E package evidence had the wrong package name.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Package -Name 'fullName'))) 'The E2E package evidence omitted the full package name.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Package -Name 'familyName'))) 'The E2E package evidence omitted the package family name.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Package -Name 'version'))) 'The E2E package evidence omitted the package version.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Package -Name 'installLocation'))) 'The E2E package evidence omitted the install location.'
+
+    $sourcePath = [string](Get-ResultProperty -Object $Package -Name 'sourcePath')
+    if (-not [string]::IsNullOrWhiteSpace($sourcePath)) {
+        Assert-Condition ([System.IO.Path]::GetExtension($sourcePath) -eq '.msix') "The E2E package source path was not an MSIX: $sourcePath"
+    }
+
+    $buildConfiguration = [string](Get-ResultProperty -Object $Package -Name 'buildConfiguration')
+    if (-not [string]::IsNullOrWhiteSpace($buildConfiguration)) {
+        Assert-Condition ($buildConfiguration -in @('Debug', 'Release')) "The E2E package build configuration was invalid: $buildConfiguration"
+    }
+
+    $buildPlatform = [string](Get-ResultProperty -Object $Package -Name 'buildPlatform')
+    if (-not [string]::IsNullOrWhiteSpace($buildPlatform)) {
+        Assert-Condition ($buildPlatform -in @('x64', 'ARM64')) "The E2E package build platform was invalid: $buildPlatform"
+    }
+}
+
 function Assert-SetEqual {
     param(
         [object[]] $Actual,
@@ -1548,6 +1576,7 @@ Assert-Condition (Test-Path -LiteralPath $ResultPath -PathType Leaf) "E2E result
 $result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json
 Assert-Condition ($null -ne $result) "E2E result could not be parsed: $ResultPath"
 Assert-SupportedWindowsVersion -WindowsVersion ([string]$result.windowsVersion)
+Assert-PackageEvidence -Package $result.package
 Assert-SetEqual -Actual @($result.queues) -Expected $expectedQueues -Description 'E2E queue list'
 
 Assert-FeatureEvidence `

@@ -1,6 +1,8 @@
 param(
     [string] $PackageName = 'PrintSink',
     [string] $PackagePath,
+    [string] $PackageBuildConfiguration,
+    [string] $PackageBuildPlatform,
     [switch] $SkipPackageInstall,
     [string] $OutputDirectory = (Join-Path $env:TEMP "PrintSink.E2E.$([Guid]::NewGuid())"),
     [switch] $Cleanup
@@ -6292,6 +6294,9 @@ try {
             familyName = $package.PackageFamilyName
             version = $package.Version.ToString()
             installLocation = $package.InstallLocation
+            sourcePath = if ($SkipPackageInstall) { $null } else { [System.IO.Path]::GetFullPath($PackagePath) }
+            buildConfiguration = if ([string]::IsNullOrWhiteSpace($PackageBuildConfiguration)) { $null } else { $PackageBuildConfiguration }
+            buildPlatform = if ([string]::IsNullOrWhiteSpace($PackageBuildPlatform)) { $null } else { $PackageBuildPlatform }
         }
         packageShape = $packageShape
         queues = @($expectedQueues)

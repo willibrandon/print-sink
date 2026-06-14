@@ -228,6 +228,8 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("$shouldRemovePackageAfterRun = (-not $SkipPackageInstall) -and (-not $KeepPackage) -and (-not $KeepQueues)", e2eWrapper);
         Assert.Contains("Assert-PrintSinkE2EResult.ps1", e2eWrapper);
         Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
+        Assert.Contains("$e2eParameters.PackageBuildConfiguration = $Configuration", e2eWrapper);
+        Assert.Contains("$e2eParameters.PackageBuildPlatform = $Platform", e2eWrapper);
         Assert.Contains("Remove-PrintSinkPackage -ResultPath $resultPath", e2eWrapper);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
         AssertBefore(e2eWrapper, "& $resultAssertionScript @resultAssertionParameters", "if ($shouldRemovePackageAfterRun) {");
@@ -396,6 +398,11 @@ internal sealed partial class ContinuousIntegrationContractTests
         string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
         string validatorScript = File.ReadAllText(validatorPath);
 
+        Assert.Contains("function Assert-PackageEvidence", validatorScript);
+        Assert.Contains("sourcePath", validatorScript);
+        Assert.Contains("buildConfiguration", validatorScript);
+        Assert.Contains("buildPlatform", validatorScript);
+        Assert.Contains("Assert-PackageEvidence -Package $result.package", validatorScript);
         Assert.Contains("function Assert-Route", validatorScript);
         Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);
         Assert.Contains("application/oxps -> Pdf; Convert; Convert XPS to PDF.", validatorScript);

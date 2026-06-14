@@ -281,6 +281,11 @@ if (-not $KeepQueues) {
     $e2eParameters.Cleanup = $true
 }
 
+if ($BuildPackage) {
+    $e2eParameters.PackageBuildConfiguration = $Configuration
+    $e2eParameters.PackageBuildPlatform = $Platform
+}
+
 $shouldRemovePackageAfterRun = (-not $SkipPackageInstall) -and (-not $KeepPackage) -and (-not $KeepQueues)
 try {
     & $e2eScript @e2eParameters

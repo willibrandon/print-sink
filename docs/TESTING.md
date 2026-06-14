@@ -290,12 +290,13 @@ Real output assertions:
 - Queue persistence is checked against the real Windows printer list after every major E2E step; a job
   that removes, loses, or unregisters a PrintSink queue fails CI.
 
-The CI job records the package version, Windows build, architecture, source application, target queue,
-queue snapshots, queue-persistence evidence, management UI actions and queue snapshots, cleanup
+The CI job records the package version, package source path, package build configuration/platform,
+Windows build, architecture, source application, target queue, queue snapshots, queue-persistence evidence,
+management UI actions and queue snapshots, cleanup
 evidence, feature evidence, and output result for each run. The E2E script writes the full run record to
 `e2e-result.json` in the output directory, and the root wrapper runs
 `tests\e2e\Assert-PrintSinkE2EResult.ps1` against that file before CI uploads it with the generated
-documents. The validator rechecks the supported/deferred feature evidence, queue persistence snapshots,
+documents. The validator rechecks the package evidence, supported/deferred feature evidence, queue persistence snapshots,
 management UI evidence, cleanup state, output file byte counts, document validity, PDF passthrough byte
 equality, cloud sink artifacts, failed-job empty outputs, and Job UI cancel evidence.
 The root wrapper removes the installed PrintSink package after validation unless `-KeepPackage`,
