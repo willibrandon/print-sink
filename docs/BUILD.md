@@ -60,15 +60,11 @@ Virtual-printer provisioning requires an installed MSIX package. A loose package
 `dotnet run --project src\PrintSink.App` or Visual Studio F5 can launch the app, but it is not the
 right fixture for installing the queues.
 
-For a local debug package, remove any loose registration, trust the test certificate, and install the
-MSIX:
+For a local package, prefer the Release MSIX path used by CI. The E2E wrapper can build, sign, trust,
+and keep that package installed for manual inspection:
 
 ```powershell
-Get-AppxPackage PrintSink | Remove-AppxPackage
-$pkg = "artifacts\appxpackages\x64\PrintSink.App_1.0.0.0_x64_Debug_Test"
-certutil -user -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
-certutil -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
-Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+.\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64 -KeepPackage
 ```
 
 These low-level commands run through the packaged app execution alias and do not show the WinUI shell:
@@ -129,7 +125,7 @@ reuses or creates a local code-signing certificate, trusts it in `TrustedPeople`
 and removes the queues and installed package unless `-KeepPackage` or `-KeepQueues` is passed:
 
 ```powershell
-.\test-e2e.ps1 -BuildPackage -Platform x64
+.\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64
 ```
 
 To verify a local run left no PrintSink package, queue, or process state behind:

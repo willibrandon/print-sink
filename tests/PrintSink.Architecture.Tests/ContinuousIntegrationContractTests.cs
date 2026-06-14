@@ -139,6 +139,27 @@ internal sealed partial class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the local build and testing docs describe the same Release MSIX E2E path that CI runs.
+    /// </summary>
+    [TestMethod]
+    public void BuildAndTestingDocsUseReleaseMsixE2ePath()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string buildPath = Path.Combine(repositoryRoot, "docs", "BUILD.md");
+        string testingPath = Path.Combine(repositoryRoot, "docs", "TESTING.md");
+        string build = File.ReadAllText(buildPath);
+        string testing = File.ReadAllText(testingPath);
+
+        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64", build);
+        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64", testing);
+        Assert.Contains("signed Release MSIX", testing);
+        Assert.DoesNotContain("_Debug_Test", build);
+        Assert.DoesNotContain("_Debug_Test", testing);
+        Assert.DoesNotContain("_x64_Debug", build);
+        Assert.DoesNotContain("_x64_Debug", testing);
+    }
+
+    /// <summary>
     /// Verifies the root clean-state script detects and can clean leaked PrintSink state.
     /// </summary>
     [TestMethod]

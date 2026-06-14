@@ -24,7 +24,7 @@ also contains the native `PrintSink.Xps` project.
 
 ## Continuous Integration
 
-`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage` to build a signed MSIX and run the real print-stack E2E suite:
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage -Configuration Release` to build a signed Release MSIX and run the real print-stack E2E suite:
 
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`
@@ -51,10 +51,7 @@ Useful fixture checks:
 
 ```powershell
 Get-AppxPackage PrintSink | Remove-AppxPackage
-$pkg = "artifacts\appxpackages\x64\PrintSink.App_1.0.0.0_x64_Debug_Test"
-certutil -user -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
-certutil -addstore TrustedPeople "$pkg\PrintSink.App_1.0.0.0_x64_Debug.cer"
-Add-AppxPackage -Path "$pkg\PrintSink.App_1.0.0.0_x64_Debug.msix" -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+.\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64 -KeepPackage
 dotnet run --project src\PrintSink.Cli -- queues install
 dotnet run --project src\PrintSink.Cli -- queues
 dotnet run --project src\PrintSink.Cli -- ticket map --ticket tests\fixtures\print-ticket\standard.xml
@@ -81,7 +78,7 @@ reuses or creates a local code-signing certificate, builds a signed MSIX, instal
 print-stack assertions, then removes the queues and installed package by default:
 
 ```powershell
-.\test-e2e.ps1 -BuildPackage -Platform x64
+.\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64
 ```
 
 When the signed package is already installed:
