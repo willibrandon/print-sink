@@ -3545,6 +3545,15 @@ function Invoke-PrintSinkManagementUi {
             -ExpectedQueues $ExpectedQueues `
             -Context 'after management UI install'
 
+        Invoke-Button -Root $window -Name 'Refresh queues' -TimeoutSeconds 30
+        $queuesRefreshed = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Management UI queues refreshed' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('Installed queues refreshed:', '6 found.') `
+            -TimeoutSeconds 60
+
         Invoke-Button -Root $window -Name 'Refresh capabilities' -TimeoutSeconds 30
         $managementCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
@@ -3608,9 +3617,10 @@ function Invoke-PrintSinkManagementUi {
             windowTitle = $window.Current.Name
             processId = $process.Id
             visibleActions = $expectedActions
-            invokedActions = @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs')
+            invokedActions = @('Remove queues', 'Install queues', 'Refresh queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs')
             removedQueues = $removedQueues
             installedQueues = $installedQueues
+            queuesRefreshed = $queuesRefreshed
             managementCapabilityRefresh = $managementCapabilityRefresh
             extensionCapabilityRefresh = $extensionCapabilityRefresh
             defaultCopiesSet = $defaultCopiesSet
@@ -4886,11 +4896,14 @@ function New-PrintSinkFeatureEvidence {
                 -and [string]$CliQueueLifecycle.install -like '*Installed*yes*' `
                 -and $managementVisibleActions.Contains('Install queues') `
                 -and $managementVisibleActions.Contains('Remove queues') `
+                -and $managementVisibleActions.Contains('Refresh queues') `
                 -and $managementInvokedActions.Contains('Install queues') `
                 -and $managementInvokedActions.Contains('Remove queues') `
+                -and $managementInvokedActions.Contains('Refresh queues') `
+                -and [string]$ManagementUi.queuesRefreshed.message -eq 'Management UI queues refreshed' `
                 -and (@($managementRemovedQueues | Where-Object { $_.installed }).Count -eq 0) `
                 -and (Test-AllQueuesInstalled -QueueSnapshot $managementInstalledQueues -ExpectedQueues $ExpectedQueues)) `
-        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, the CLI observes them as installed, and the management UI removes and reinstalls them through the real printer list.' `
+        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, the CLI observes them as installed, and the management UI removes, reinstalls, and refreshes them through the real printer list.' `
         -Artifact ([ordered]@{
             virtualPrinters = $virtualPrinters.Count
             provisionedQueues = $provisionedQueues

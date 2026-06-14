@@ -66,7 +66,7 @@ internal sealed class ManagementScreen : Component
                     EndpointPanel(selectedEndpoint, selectedSnapshot, route)
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
-                    RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
+                    _ = RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText),
                     () => _ = InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText),
                     () => _ = RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText),
                     () => _ = RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText),
@@ -423,13 +423,31 @@ internal sealed class ManagementScreen : Component
             : $"{timestamp} | {detail}";
     }
 
-    private static void RefreshInstalledPrinters(
+    private static async Task RefreshInstalledPrintersAsync(
         Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
         Action<string> setStatusText)
     {
-        IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
-        setInstalledPrinters(snapshots);
-        setStatusText($"Installed queues refreshed: {CountInstalled(snapshots)} found.");
+        try
+        {
+            IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+            string status = $"Installed queues refreshed: {CountInstalled(snapshots)} found.";
+            await AppendDiagnosticAsync(
+                    "Management UI queues refreshed",
+                    null,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
+            UiDispatch.Post(() =>
+            {
+                setInstalledPrinters(snapshots);
+                setStatusText(status);
+            });
+        }
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
+        {
+            UiDispatch.Post(() => setStatusText($"Queue refresh failed: {ex.Message}"));
+        }
     }
 
     private static async Task InstallVirtualPrintersAsync(

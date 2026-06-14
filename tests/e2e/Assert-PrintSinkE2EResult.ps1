@@ -396,7 +396,7 @@ function Assert-ManagementUi {
     $invokedActions = @(Get-ResultProperty -Object $ManagementUi -Name 'invokedActions')
     Assert-SetEqual `
         -Actual $invokedActions `
-        -Expected @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs') `
+        -Expected @('Remove queues', 'Install queues', 'Refresh queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs') `
         -Description 'Management UI invoked actions'
 
     $removedQueues = @(Get-ResultProperty -Object $ManagementUi -Name 'removedQueues')
@@ -416,6 +416,10 @@ function Assert-ManagementUi {
     foreach ($queue in $installedQueues) {
         Assert-Condition ([bool](Get-ResultProperty -Object $queue -Name 'installed')) "Management UI install did not restore queue: $($queue.name)"
     }
+
+    $queuesRefreshed = Get-ResultProperty -Object $ManagementUi -Name 'queuesRefreshed'
+    Assert-Condition ([string](Get-ResultProperty -Object $queuesRefreshed -Name 'message') -eq 'Management UI queues refreshed') 'Management UI did not record a queue-refresh diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $queuesRefreshed -Name 'detail') -like '*Installed queues refreshed:*6 found.*') 'Management UI queue-refresh diagnostic did not report six queues.'
 
     $managementCapabilityRefresh = Get-ResultProperty -Object $ManagementUi -Name 'managementCapabilityRefresh'
     Assert-Condition ([string](Get-ResultProperty -Object $managementCapabilityRefresh -Name 'message') -eq 'Management UI capabilities refreshed') 'Management UI did not record a capability-refresh diagnostic.'
