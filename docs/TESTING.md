@@ -153,6 +153,8 @@ The required E2E suite proves the current installed-package behavior:
    configuration, contract-19 PDL passthrough-with-job-attributes enablement, and printer selection
    records Adaptive Card 1.0 plus `PageMediaType`, `PageOutputQuality`, and
    `JobCopiesAllDocuments`.
+   Management UI capability-refresh evidence must be request-ordered: the extension's
+   `Capabilities updated` diagnostic must be at or after the management request.
 9. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
 10. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable

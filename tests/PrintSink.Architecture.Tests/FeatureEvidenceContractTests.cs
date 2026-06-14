@@ -168,6 +168,30 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies capability-refresh evidence cannot reuse stale extension diagnostics.
+    /// </summary>
+    [TestMethod]
+    public void CapabilityRefreshFeatureEvidenceRequiresRequestOrderedExtensionUpdate()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        Assert.Contains("Get-PrintSinkDiagnosticTimestamp", e2eScript);
+        Assert.Contains("capabilityRefreshRequestedUtc", e2eScript);
+        Assert.Contains("-StartedUtc $capabilityRefreshRequestedUtc", e2eScript);
+        Assert.Contains("-StartedSkewSeconds 0", e2eScript);
+        Assert.Contains("-Event $ManagementUi.extensionCapabilityRefresh", e2eScript);
+        Assert.Contains("-Value ([string]$ManagementUi.capabilityRefreshRequestedUtc)", e2eScript);
+        Assert.Contains("recorded a later Capabilities updated event", e2eScript);
+
+        Assert.Contains("Assert-ResultTimestampIsNotBefore", validatorScript);
+        Assert.Contains("-Later $extensionCapabilityRefresh", validatorScript);
+        Assert.Contains("-Earlier $ManagementUi", validatorScript);
+        Assert.Contains("-EarlierTimestampName 'capabilityRefreshRequestedUtc'", validatorScript);
+        Assert.Contains("Management UI capability refresh extension diagnostic", validatorScript);
+    }
+
+    /// <summary>
     /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
     /// </summary>
     [TestMethod]

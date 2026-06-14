@@ -3573,6 +3573,7 @@ function Invoke-PrintSinkManagementUi {
             -DetailContains @('Installed queues refreshed:', '6 found.') `
             -TimeoutSeconds 60
 
+        $capabilityRefreshRequestedUtc = [DateTimeOffset]::UtcNow
         Invoke-Button -Root $window -Name 'Refresh capabilities' -TimeoutSeconds 30
         $managementCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
@@ -3585,7 +3586,7 @@ function Invoke-PrintSinkManagementUi {
             -PackageFamilyName $PackageFamilyName `
             -Endpoint 'PrintSink - PDF' `
             -Message 'Capabilities updated' `
-            -StartedUtc $StartedUtc `
+            -StartedUtc $capabilityRefreshRequestedUtc `
             -DetailContains @(
                 'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
                 $expectedPdcFeatureDetail,
@@ -3596,6 +3597,7 @@ function Invoke-PrintSinkManagementUi {
                 $expectedPdrResourceDetail,
                 'pdlPassthroughWithJobAttributes=enabled',
                 'pdrResources=') `
+            -StartedSkewSeconds 0 `
             -TimeoutSeconds 120
 
         Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 2
@@ -3644,6 +3646,7 @@ function Invoke-PrintSinkManagementUi {
             removedQueues = $removedQueues
             installedQueues = $installedQueues
             queuesRefreshed = $queuesRefreshed
+            capabilityRefreshRequestedUtc = $capabilityRefreshRequestedUtc.ToString('O')
             managementCapabilityRefresh = $managementCapabilityRefresh
             extensionCapabilityRefresh = $extensionCapabilityRefresh
             defaultCopiesSet = $defaultCopiesSet
@@ -4583,12 +4586,37 @@ function Test-PrintSinkDiagnosticStartedAfter {
         [double] $SkewSeconds = 0
     )
 
-    $timestamp = [DateTimeOffset]::MinValue
-    if (-not [DateTimeOffset]::TryParse([string]$Event.timestamp, [ref]$timestamp)) {
+    try {
+        $timestamp = Get-PrintSinkDiagnosticTimestamp -Event $Event -Description 'the diagnostic event'
+    }
+    catch {
         return $false
     }
 
     return $timestamp -ge $StartedUtc.AddSeconds(-$SkewSeconds)
+}
+
+function Get-PrintSinkTimestamp {
+    param(
+        [string] $Value,
+        [string] $Description
+    )
+
+    $timestamp = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($Value, [ref]$timestamp)) {
+        throw "$Description did not include a valid timestamp: $Value"
+    }
+
+    return $timestamp
+}
+
+function Get-PrintSinkDiagnosticTimestamp {
+    param(
+        [object] $Event,
+        [string] $Description
+    )
+
+    return Get-PrintSinkTimestamp -Value ([string]$Event.timestamp) -Description $Description
 }
 
 function Test-AllQueuesInstalled {
@@ -5113,12 +5141,19 @@ function New-PrintSinkFeatureEvidence {
         -Passed (
             [string]$ExtensionCapabilities.message -eq 'Capabilities updated' `
                 -and [string]$ManagementUi.managementCapabilityRefresh.message -eq 'Management UI capabilities refreshed' `
-                -and [string]$ManagementUi.extensionCapabilityRefresh.message -eq 'Capabilities updated') `
-        -Evidence 'The packaged management UI and packaged app command both invoked RefreshPrintDeviceCapabilities, and the extension recorded Capabilities updated.' `
+                -and [string]$ManagementUi.extensionCapabilityRefresh.message -eq 'Capabilities updated' `
+                -and (Test-PrintSinkDiagnosticStartedAfter `
+                    -Event $ManagementUi.extensionCapabilityRefresh `
+                    -StartedUtc (Get-PrintSinkTimestamp `
+                        -Value ([string]$ManagementUi.capabilityRefreshRequestedUtc) `
+                        -Description 'the management UI capability-refresh request') `
+                    -SkewSeconds 0)) `
+        -Evidence 'The packaged management UI and packaged app command both invoked RefreshPrintDeviceCapabilities, and the extension recorded a later Capabilities updated event.' `
         -Artifact ([ordered]@{
             command = $ExtensionCapabilities
             managementUi = [ordered]@{
-                request = $ManagementUi.managementCapabilityRefresh
+                requestStartedUtc = $ManagementUi.capabilityRefreshRequestedUtc
+                completion = $ManagementUi.managementCapabilityRefresh
                 extension = $ManagementUi.extensionCapabilityRefresh
             }
         })
@@ -5504,6 +5539,7 @@ function Wait-ForPrintSinkDiagnostic {
         [string] $Message,
         [DateTimeOffset] $StartedUtc,
         [string[]] $DetailContains = @(),
+        [double] $StartedSkewSeconds = 5,
         [int] $TimeoutSeconds = 45
     )
 
@@ -5528,7 +5564,7 @@ function Wait-ForPrintSinkDiagnostic {
                 Where-Object {
                     ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
                         -and $_.message -eq $Message `
-                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds 5)
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds $StartedSkewSeconds)
                 })
 
             foreach ($candidate in $candidates) {

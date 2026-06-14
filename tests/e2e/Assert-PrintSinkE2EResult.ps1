@@ -162,6 +162,36 @@ function Assert-PrinterSelectedDiagnostic {
         -Description $Description
 }
 
+function Get-ResultTimestamp {
+    param(
+        [object] $Result,
+        [string] $Description,
+        [string] $Name = 'timestamp'
+    )
+
+    $timestampText = [string](Get-ResultProperty -Object $Result -Name $Name)
+    $timestamp = [DateTimeOffset]::MinValue
+    Assert-Condition ([DateTimeOffset]::TryParse($timestampText, [ref]$timestamp)) "$Description did not include a valid timestamp: $timestampText"
+
+    return $timestamp
+}
+
+function Assert-ResultTimestampIsNotBefore {
+    param(
+        [object] $Later,
+        [object] $Earlier,
+        [string] $Description,
+        [string] $EarlierTimestampName = 'timestamp'
+    )
+
+    $laterTimestamp = Get-ResultTimestamp -Result $Later -Description $Description
+    $earlierTimestamp = Get-ResultTimestamp `
+        -Result $Earlier `
+        -Description "$Description lower bound" `
+        -Name $EarlierTimestampName
+    Assert-Condition ($laterTimestamp -ge $earlierTimestamp) "$Description was stale. Later timestamp: $laterTimestamp; lower bound: $earlierTimestamp."
+}
+
 function Assert-NonEmptyFile {
     param(
         [string] $Path,
@@ -495,6 +525,11 @@ function Assert-ManagementUi {
 
     $extensionCapabilityRefresh = Get-ResultProperty -Object $ManagementUi -Name 'extensionCapabilityRefresh'
     Assert-ExtensionCapabilities -ExtensionCapabilities $extensionCapabilityRefresh
+    Assert-ResultTimestampIsNotBefore `
+        -Later $extensionCapabilityRefresh `
+        -Earlier $ManagementUi `
+        -Description 'Management UI capability refresh extension diagnostic' `
+        -EarlierTimestampName 'capabilityRefreshRequestedUtc'
 
     $defaultCopiesSet = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesSet'
     Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesSet -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy set diagnostic.'

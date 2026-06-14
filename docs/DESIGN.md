@@ -200,7 +200,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 12 | Print-ticket validation / resolve | `PrintSupportExtensionSession.PrintTicketValidationRequested` | `PrintSupportExtensionBackgroundTask` | |
 | 13 | PDC regeneration / custom features | `PrintDeviceCapabilitiesChanged`, `UpdatePrintDeviceCapabilities` | `PrintSupportExtensionBackgroundTask` + `PrintSink.Core` PDC engine | Custom media size/type/resolution, bins, etc. |
 | 14 | PDR localization of custom features | `GetCurrentPrintDeviceResources` / `UpdatePrintDeviceResources`, `ResourceLanguage` | Extension task + `.resw` | |
-| 15 | Refresh PDC on settings change | `IppPrintDevice.RefreshPrintDeviceCapabilities()` | `PrintSink.App` → Extension task | |
+| 15 | Refresh PDC on settings change | `IppPrintDevice.RefreshPrintDeviceCapabilities()` | `PrintSink.App` → Extension task | E2E requires the extension capability update timestamp to be at or after the refresh request |
 | 16 | Get/set user default print ticket | `IppPrintDevice.UserDefaultPrintTicket`, `CanModifyUserDefaultPrintTicket` | `PrintSink.App` | |
 | 17 | Physical IPP PSA association + workflow activation | Temporary signed PSA extension INF, Microsoft IPP Class Driver queue, `windows.printSupportWorkflow` activation | Extension task + workflow task + E2E | Association probe only; physical target-stream replacement is not claimed |
 | 18 | MXDC image quality per output quality | `PrintSupportMxdcImageQualityConfiguration`, `XpsImageQuality` | `PrintSupportExtensionBackgroundTask` | Text/Draft/Normal/High/Photo/Auto/Fax |
@@ -732,6 +732,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
      validation on every queue, capability refresh with custom features, PDR update, MXDC image
      quality configuration, and printer-selected Adaptive Card 1.0 setup with `PageMediaType`,
      `PageOutputQuality`, and `JobCopiesAllDocuments`.
+   - Assert capability-refresh causality: management UI refresh requests must be followed by a later
+     `Capabilities updated` diagnostic from `PrintSupportExtensionBackgroundTask`.
    - Set and restore `IppPrintDevice.UserDefaultPrintTicket` for a real virtual queue, then assert the
      persisted default copy count through package-local diagnostics.
    - Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
