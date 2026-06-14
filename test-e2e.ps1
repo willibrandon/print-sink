@@ -286,6 +286,19 @@ if ($BuildPackage -and (-not [string]::IsNullOrWhiteSpace($PackagePath))) {
     throw 'Do not pass -PackagePath with -BuildPackage.'
 }
 
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
+[ordered]@{
+    startedUtc = [DateTimeOffset]::UtcNow.ToString('O')
+    configuration = $Configuration
+    platform = $Platform
+    buildPackage = [bool]$BuildPackage
+    skipPackageInstall = [bool]$SkipPackageInstall
+    packagePath = if ([string]::IsNullOrWhiteSpace($PackagePath)) { $null } else { $PackagePath }
+} |
+    ConvertTo-Json -Depth 3 |
+    Set-Content -LiteralPath (Join-Path $OutputDirectory 'e2e-run.json') -Encoding UTF8
+
 if (-not $SkipPackageInstall) {
     if ($BuildPackage) {
         $packageDirectory = Join-Path $PSScriptRoot "artifacts\appxpackages\$Platform"

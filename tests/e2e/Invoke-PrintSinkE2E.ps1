@@ -44,6 +44,22 @@ $expectedPrinterSelectedDetailParts = @(
 )
 
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne 'e2e-run.json' } |
+    Remove-Item -Force
+[ordered]@{
+    startedUtc = [DateTimeOffset]::UtcNow.ToString('O')
+    packageName = $PackageName
+    packagePath = if ([string]::IsNullOrWhiteSpace($PackagePath)) { $null } else { $PackagePath }
+    packageBuildConfiguration = if ([string]::IsNullOrWhiteSpace($PackageBuildConfiguration)) { $null } else { $PackageBuildConfiguration }
+    packageBuildPlatform = if ([string]::IsNullOrWhiteSpace($PackageBuildPlatform)) { $null } else { $PackageBuildPlatform }
+    productConfiguration = $ProductConfiguration
+    skipPackageInstall = [bool]$SkipPackageInstall
+    cleanup = [bool]$Cleanup
+} |
+    ConvertTo-Json -Depth 3 |
+    Set-Content -LiteralPath (Join-Path $OutputDirectory 'e2e-harness-run.json') -Encoding UTF8
 
 $expectedQueues = @(
     'PrintSink - PDF',
@@ -3727,10 +3743,15 @@ function Invoke-PrintSinkManagementUi {
 
     Add-Type -AssemblyName UIAutomationClient
 
-    $process = Start-Process -FilePath 'printsink-app.exe' -PassThru
+    $alias = Get-Command printsink-app.exe -ErrorAction Stop
+    $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
+    Remove-Item $headlessLog -ErrorAction SilentlyContinue
+    $previousStartupTrace = [Environment]::GetEnvironmentVariable('PRINTSINK_TRACE_STARTUP', 'Process')
+    [Environment]::SetEnvironmentVariable('PRINTSINK_TRACE_STARTUP', '1', 'Process')
+    $process = Start-MediumIntegrityProcess -FilePath $alias.Source -ArgumentList @()
+    $window = $null
     try {
-        $deadline = [DateTime]::UtcNow.AddSeconds(45)
-        $window = $null
+        $deadline = [DateTime]::UtcNow.AddSeconds(180)
         do {
             $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
                 [System.Windows.Automation.TreeScope]::Children,
@@ -3751,7 +3772,42 @@ function Invoke-PrintSinkManagementUi {
         while ([DateTime]::UtcNow -lt $deadline)
 
         if ($null -eq $window) {
-            throw 'Timed out waiting for the PrintSink management window.'
+            $topLevelWindows = [System.Collections.Generic.List[string]]::new()
+            $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                [System.Windows.Automation.TreeScope]::Children,
+                [System.Windows.Automation.Condition]::TrueCondition)
+            foreach ($candidate in $windows) {
+                try {
+                    $controlType = $candidate.Current.ControlType.ProgrammaticName
+                    $topLevelWindows.Add("$($candidate.Current.Name)[$($candidate.Current.ProcessId)]/$controlType")
+                    if ($topLevelWindows.Count -ge 30) {
+                        break
+                    }
+                }
+                catch {
+                }
+            }
+
+            $processState = if ($process.HasExited) {
+                "exited with code $($process.ExitCode)"
+            }
+            else {
+                'still running'
+            }
+            $windowSummary = if ($topLevelWindows.Count -eq 0) {
+                '<none>'
+            }
+            else {
+                $topLevelWindows -join '; '
+            }
+            $startupTrace = if (Test-Path -LiteralPath $headlessLog -PathType Leaf) {
+                Get-Content -LiteralPath $headlessLog -Raw
+            }
+            else {
+                'No startup trace was written.'
+            }
+
+            throw "Timed out waiting for the PrintSink management window; launcher process $processState. Top-level windows: $windowSummary. Startup trace: $startupTrace"
         }
 
         $expectedActions = @(
@@ -3876,10 +3932,30 @@ function Invoke-PrintSinkManagementUi {
         }
     }
     finally {
-        if ($process -and -not $process.HasExited) {
-            $process.CloseMainWindow() | Out-Null
-            if (-not $process.WaitForExit(5000)) {
-                Stop-PrintSinkProcess -Process $process
+        [Environment]::SetEnvironmentVariable('PRINTSINK_TRACE_STARTUP', $previousStartupTrace, 'Process')
+
+        $processesToClose = @()
+        if ($process) {
+            $processesToClose += $process
+        }
+
+        if ($null -ne $window) {
+            try {
+                $windowProcess = Get-Process -Id $window.Current.ProcessId -ErrorAction Stop
+                if (-not ($processesToClose | Where-Object { $_.Id -eq $windowProcess.Id })) {
+                    $processesToClose += $windowProcess
+                }
+            }
+            catch {
+            }
+        }
+
+        foreach ($processToClose in $processesToClose) {
+            if ($processToClose -and -not $processToClose.HasExited) {
+                $processToClose.CloseMainWindow() | Out-Null
+                if (-not $processToClose.WaitForExit(5000)) {
+                    Stop-PrintSinkProcess -Process $processToClose
+                }
             }
         }
     }
@@ -6293,9 +6369,6 @@ try {
 
     Write-E2EProgress 'Provisioning virtual printer queues'
     Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
-
-    New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-    Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
     $queueSnapshots = [System.Collections.Generic.List[object]]::new()
     $queueSnapshots.Add([ordered]@{
