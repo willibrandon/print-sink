@@ -22,6 +22,10 @@ internal sealed partial class ContinuousIntegrationContractTests
 
         Assert.Contains("platform: x64", workflow);
         Assert.Contains("platform: ARM64", workflow);
+        Assert.Contains("runner: windows-2025-vs2026", workflow);
+        Assert.Contains("runner: windows-11-vs2026-arm", workflow);
+        Assert.Contains("run_e2e: false", workflow);
+        Assert.Contains("run_e2e: true", workflow);
         Assert.Contains("Real print-stack E2E", workflow);
         Assert.Contains(".\\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}", workflow);
         Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
@@ -63,6 +67,7 @@ internal sealed partial class ContinuousIntegrationContractTests
             "- name: Real print-stack E2E",
             "- name: Assert clean PrintSink state");
 
+        Assert.Contains("if: ${{ matrix.run_e2e }}", e2eStep);
         Assert.DoesNotContain("continue-on-error", e2eStep);
         Assert.DoesNotContain("if: always()", e2eStep);
         Assert.DoesNotContain("|| true", e2eStep);
@@ -102,6 +107,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.IsGreaterThanOrEqualTo(0, msixUploadIndex, "Could not find the MSIX upload step.");
         string msixUploadStep = workflow[msixUploadIndex..];
 
+        Assert.Contains("if: ${{ matrix.run_e2e }}", e2eStep);
         Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform ${{ matrix.platform }}", e2eStep);
         Assert.DoesNotContain("-SkipPackageInstall", e2eStep);
         Assert.DoesNotContain("-KeepQueues", e2eStep);
@@ -123,14 +129,14 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("if-no-files-found: error", coverageUploadStep);
         Assert.DoesNotContain("if-no-files-found: ignore", coverageUploadStep);
 
-        Assert.Contains("if: always()", e2eUploadStep);
+        Assert.Contains("if: ${{ always() && matrix.run_e2e }}", e2eUploadStep);
         Assert.Contains("uses: actions/upload-artifact@v7", e2eUploadStep);
         Assert.Contains("name: e2e-outputs-${{ matrix.platform }}", e2eUploadStep);
         Assert.Contains("path: artifacts/e2e/${{ matrix.platform }}", e2eUploadStep);
         Assert.Contains("if-no-files-found: error", e2eUploadStep);
         Assert.DoesNotContain("if-no-files-found: ignore", e2eUploadStep);
 
-        Assert.Contains("if: always()", msixUploadStep);
+        Assert.Contains("if: ${{ always() && matrix.run_e2e }}", msixUploadStep);
         Assert.Contains("uses: actions/upload-artifact@v7", msixUploadStep);
         Assert.Contains("name: msix-${{ matrix.platform }}", msixUploadStep);
         Assert.Contains("path: artifacts/appxpackages/${{ matrix.platform }}", msixUploadStep);

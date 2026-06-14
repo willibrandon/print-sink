@@ -191,10 +191,14 @@ internal sealed class ManagementScreen : Component
                     .Foreground(Theme.SecondaryText)
                     .Set(text => text.TextWrapping = TextWrapping.Wrap),
                 HStack(12,
-                    Button("Install queues", installQueues),
-                    Button("Remove queues", removeQueues),
-                    Button("Refresh queues", refreshQueues),
-                    Button("Refresh capabilities", refreshCapabilities)),
+                    Button("Install queues", installQueues)
+                        .AutomationName("Install queues"),
+                    Button("Remove queues", removeQueues)
+                        .AutomationName("Remove queues"),
+                    Button("Refresh queues", refreshQueues)
+                        .AutomationName("Refresh queues"),
+                    Button("Refresh capabilities", refreshCapabilities)
+                        .AutomationName("Refresh capabilities")),
                 HStack(12,
                     NumberBox(defaultCopies, setDefaultCopies, "Default copies")
                         .Range(1, 999)
@@ -202,10 +206,13 @@ internal sealed class ManagementScreen : Component
                         .AutomationName("Default copies")
                         .Width(180),
                     Button("Set default copies", setUserDefaultCopies)
+                        .AutomationName("Set default copies")
                         .IsEnabled(canSetDefaultCopies),
                     Button("Enable Job UI", enableJobUi)
+                        .AutomationName("Enable Job UI")
                         .IsEnabled(!launchJobUi),
                     Button("Headless jobs", disableJobUi)
+                        .AutomationName("Headless jobs")
                         .IsEnabled(launchJobUi)),
                 TextBlock($"Job UI: {(launchJobUi ? "Enabled" : "Headless")}")
                     .Foreground(Theme.SecondaryText),

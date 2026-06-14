@@ -26,12 +26,12 @@ also contains the native `PrintSink.Xps` project.
 
 `.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage -Configuration Release` to build a signed Release MSIX and run the real print-stack E2E suite. The wrapper runs the CLI lifecycle checks with the same product configuration and records that in `e2e-result.json`:
 
-- `x64` on `windows-11-vs2026-arm`, through Windows on ARM x64 emulation.
-- `ARM64` on `windows-11-vs2026-arm`.
+- `x64` build, unit, packaged-app, and coverage checks on `windows-2025-vs2026`.
+- `ARM64` build, unit, packaged-app, coverage, and real print-stack E2E on `windows-11-vs2026-arm`.
 
 After E2E, CI runs `.\test-clean-state.ps1 -Cleanup` and fails if any `PrintSink*` package, queue, or
-process was left behind. Uploaded test results, coverage, E2E outputs, and MSIX artifacts are required;
-missing evidence fails the run.
+process was left behind. Uploaded test results and coverage are required for every platform. E2E outputs
+and MSIX artifacts are required for the Windows 11 client E2E platform.
 
 ## CLI Validation
 
@@ -74,8 +74,9 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 
 Use a Windows 11 24H2 VM or the GitHub `windows-11-vs2026-arm` runner. GitHub's x64 VS 2026 hosted image
 is Windows Server 2025, where `Windows.Devices.Printers.VirtualPrinterManager` is present but returns
-`E_NOTIMPL` for real virtual-printer provisioning. Run x64 hardware E2E on a self-hosted Windows 11 x64
-runner when that distinction matters. Run the E2E script from elevated PowerShell 7
+`E_NOTIMPL` for real virtual-printer provisioning. GitHub's Windows 11 ARM64 image cannot deploy X64
+MSIX packages to the local machine, so run x64 hardware E2E on a self-hosted Windows 11 x64 runner when
+that distinction matters. Run the E2E script from elevated PowerShell 7
 (`pwsh`): it installs a temporary signed extension INF for the local IPP association check. The root wrapper
 reuses or creates a local code-signing certificate, builds a signed MSIX, installs it, runs the real
 print-stack assertions, then removes the queues and installed package by default:

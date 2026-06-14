@@ -1218,7 +1218,53 @@ function Find-EnabledDescendant {
     }
     while ([DateTime]::UtcNow -lt $deadline)
 
-    throw "Timed out waiting for $Description."
+    $buttonSummary = Get-AutomationButtonSummary -Root $Root
+    throw "Timed out waiting for $Description. Buttons: $buttonSummary"
+}
+
+function Get-AutomationButtonSummary {
+    param(
+        [System.Windows.Automation.AutomationElement] $Root
+    )
+
+    $buttons = [System.Collections.Generic.List[string]]::new()
+    $elements = $Root.FindAll(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Button))
+    foreach ($element in $elements) {
+        try {
+            $buttons.Add("$($element.Current.Name):enabled=$($element.Current.IsEnabled):offscreen=$($element.Current.IsOffscreen)")
+            if ($buttons.Count -ge 40) {
+                break
+            }
+        }
+        catch {
+        }
+    }
+
+    if ($buttons.Count -eq 0) {
+        return '<none>'
+    }
+
+    return $buttons -join '; '
+}
+
+function Try-MaximizeAutomationWindow {
+    param(
+        [System.Windows.Automation.AutomationElement] $Window
+    )
+
+    try {
+        [object] $windowPattern = $null
+        if ($Window.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$windowPattern)) {
+            $windowPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Maximized)
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    catch {
+    }
 }
 
 function Find-EnabledDescendantByFilter {
@@ -3810,6 +3856,8 @@ function Invoke-PrintSinkManagementUi {
             throw "Timed out waiting for the PrintSink management window; launcher process $processState. Top-level windows: $windowSummary. Startup trace: $startupTrace"
         }
 
+        Try-MaximizeAutomationWindow -Window $window
+
         $expectedActions = @(
             'Install queues',
             'Remove queues',
@@ -3826,7 +3874,7 @@ function Invoke-PrintSinkManagementUi {
                     [System.Windows.Automation.PropertyCondition]::new(
                         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                         [System.Windows.Automation.ControlType]::Button))) `
-                -TimeoutSeconds 30 `
+                -TimeoutSeconds 90 `
                 -Description "the $actionName management action" | Out-Null
         }
 

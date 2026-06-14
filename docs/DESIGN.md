@@ -794,11 +794,13 @@ the generated `.appxrecipe` when tests must run inside a packaged WinUI app iden
 - Coverage gate via MTP code-coverage extension; **Core ≥ 90%** line coverage (it holds the logic that
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
 - CI runs unit + Xps + packaged-app tests on Windows runners (MSBuild, x64 and ARM64), then calls
-  `.\test-e2e.ps1 -BuildPackage -Configuration Release` on the Windows 11 hosted image to build a
+  `.\test-e2e.ps1 -BuildPackage -Configuration Release` on the Windows 11 ARM64 hosted image to build a
   signed Release MSIX and run the scripted real print-stack E2E suite against the installed package.
-  The x64 package runs on Windows on ARM emulation in hosted CI; x64 hardware/client E2E requires a
-  self-hosted Windows 11 x64 runner. The wrapper runs CLI lifecycle checks from the same product
-  configuration and records that configuration in the E2E result.
+  GitHub's x64 VS 2026 hosted image is Windows Server 2025 and does not implement the real
+  `VirtualPrinterManager` provisioning path; GitHub's Windows 11 ARM64 image cannot deploy X64 MSIX
+  packages locally. Full x64 hardware/client E2E therefore requires a self-hosted Windows 11 x64 runner.
+  The wrapper runs CLI lifecycle checks from the same product configuration and records that
+  configuration in the E2E result.
 
 ---
 

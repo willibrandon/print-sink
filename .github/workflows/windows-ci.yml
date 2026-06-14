@@ -26,9 +26,11 @@ jobs:
       matrix:
         include:
           - platform: x64
-            runner: windows-11-vs2026-arm
+            runner: windows-2025-vs2026
+            run_e2e: false
           - platform: ARM64
             runner: windows-11-vs2026-arm
+            run_e2e: true
 
     steps:
       - name: Checkout
@@ -49,30 +51,36 @@ jobs:
             throw 'global.json does not define sdk.version.'
           }
 
-          $arm64Root = Join-Path $env:ProgramFiles 'dotnet'
-          if (Test-Path -LiteralPath $arm64Root) {
-            "DOTNET_ROOT_ARM64=$arm64Root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          }
+          if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
+            $arm64Root = Join-Path $env:ProgramFiles 'dotnet'
+            if (Test-Path -LiteralPath $arm64Root) {
+              "DOTNET_ROOT_ARM64=$arm64Root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
 
-          $x64Root = Join-Path $env:ProgramFiles 'dotnet\x64'
-          $x64Dotnet = Join-Path $x64Root 'dotnet.exe'
-          $hasX64Sdk = $false
-          if (Test-Path -LiteralPath $x64Dotnet) {
-            $hasX64Sdk = @(& $x64Dotnet --list-sdks) -match "^$([regex]::Escape($sdkVersion))\s"
-          }
+            $x64Root = Join-Path $env:ProgramFiles 'dotnet\x64'
+            $x64Dotnet = Join-Path $x64Root 'dotnet.exe'
+            $hasX64Sdk = $false
+            if (Test-Path -LiteralPath $x64Dotnet) {
+              $hasX64Sdk = @(& $x64Dotnet --list-sdks) -match "^$([regex]::Escape($sdkVersion))\s"
+            }
 
-          if (-not $hasX64Sdk) {
-            $installScript = Join-Path $env:RUNNER_TEMP 'dotnet-install.ps1'
-            Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript
-            & $installScript -Version $sdkVersion -Architecture x64 -InstallDir $x64Root
-            if ($LASTEXITCODE -ne 0) {
-              throw "Installing x64 .NET SDK $sdkVersion failed with exit code $LASTEXITCODE."
+            if (-not $hasX64Sdk) {
+              $installScript = Join-Path $env:RUNNER_TEMP 'dotnet-install.ps1'
+              Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript
+              & $installScript -Version $sdkVersion -Architecture x64 -InstallDir $x64Root
+              if ($LASTEXITCODE -ne 0) {
+                throw "Installing x64 .NET SDK $sdkVersion failed with exit code $LASTEXITCODE."
+              }
+            }
+
+            if (Test-Path -LiteralPath $x64Dotnet) {
+              "DOTNET_ROOT_X64=$x64Root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              & $x64Dotnet --info
             }
           }
-
-          if (Test-Path -LiteralPath $x64Dotnet) {
+          else {
+            $x64Root = Join-Path $env:ProgramFiles 'dotnet'
             "DOTNET_ROOT_X64=$x64Root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            & $x64Dotnet --info
           }
 
       - name: Setup MSBuild
@@ -165,6 +173,7 @@ jobs:
         run: .\test-coverage.ps1 -Configuration Debug -Platform ${{ matrix.platform }}
 
       - name: Real print-stack E2E
+        if: ${{ matrix.run_e2e }}
         shell: pwsh
         run: .\test-e2e.ps1 -BuildPackage -Configuration Release -Platform ${{ matrix.platform }}
 
@@ -190,7 +199,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload E2E outputs
-        if: always()
+        if: ${{ always() && matrix.run_e2e }}
         uses: actions/upload-artifact@v7
         with:
           name: e2e-outputs-${{ matrix.platform }}
@@ -198,7 +207,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload MSIX package
-        if: always()
+        if: ${{ always() && matrix.run_e2e }}
         uses: actions/upload-artifact@v7
         with:
           name: msix-${{ matrix.platform }}
