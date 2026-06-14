@@ -226,7 +226,7 @@ print-sink/
 ├─ PrintSink.slnx                       # XML-based solution (modern format)
 ├─ Directory.Build.props                # shared: net10.0-windows10.0.26100.0, Nullable, analyzers-as-errors, LangVersion
 ├─ Directory.Packages.props             # Central Package Management (pinned versions)
-├─ .editorconfig                        # one-type-per-file & doc-comment rules enforced
+├─ .editorconfig                        # line endings, indentation, and diagnostic severities
 ├─ global.json                          # pin .NET 10 SDK
 ├─ docs/
 │  ├─ DESIGN.md                         # this document
@@ -822,7 +822,7 @@ the generated `.appxrecipe` when tests must run inside a packaged WinUI app iden
 ## 11. Coding standards (enforced)
 
 - **One type per file** — exactly one `class`/`struct`/`interface`/`enum`/`record`/`delegate` per `.cs`
-  file; filename = type name. Enforced via an analyzer rule + an `.editorconfig`/CI lint check.
+  file; filename = type name. Enforced by source-level architecture tests in CI.
 - **Triple-slash XML on all public members** — `<summary>`, `<param>`, `<returns>`, `<exception>` where
   applicable; `GenerateDocumentationFile=true` and **CS1591 as error** so any undocumented public member
   fails the build.

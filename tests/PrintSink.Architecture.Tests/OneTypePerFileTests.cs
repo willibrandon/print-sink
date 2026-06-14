@@ -48,6 +48,20 @@ internal sealed class OneTypePerFileTests
         Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
     }
 
+    /// <summary>
+    /// Verifies the design document names the actual one-type-per-file enforcement mechanism.
+    /// </summary>
+    [TestMethod]
+    public void DesignDocumentNamesArchitectureTestEnforcement()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
+        string design = File.ReadAllText(designPath);
+
+        Assert.Contains("Enforced by source-level architecture tests in CI.", design);
+        Assert.DoesNotContain("Enforced via an analyzer rule", design);
+    }
+
     private static string GetTypeName(SyntaxNode node)
     {
         return node switch
