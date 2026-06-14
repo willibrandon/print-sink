@@ -4364,6 +4364,7 @@ function Add-PrintSinkFeatureEvidence {
     $FeatureEvidence.Add([ordered]@{
         number = $Number
         feature = $Feature
+        passed = $true
         evidence = $Evidence
         artifact = $Artifact
     }) | Out-Null

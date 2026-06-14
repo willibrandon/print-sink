@@ -238,7 +238,9 @@ function Assert-FeatureEvidence {
 
     foreach ($evidence in $FeatureEvidence) {
         $number = [int](Get-ResultProperty -Object $evidence -Name 'number')
+        $passed = Get-ResultProperty -Object $evidence -Name 'passed'
         $artifact = Get-ResultProperty -Object $evidence -Name 'artifact'
+        Assert-Condition ([bool]$passed) "Feature evidence #$number was not marked as passed."
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."
     }
 

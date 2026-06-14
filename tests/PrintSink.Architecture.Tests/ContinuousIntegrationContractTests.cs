@@ -52,6 +52,23 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies supported E2E feature evidence must be marked as passed in the persisted result.
+    /// </summary>
+    [TestMethod]
+    public void E2eResultValidatorRequiresPassedFeatureEvidence()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+        string validatorScript = File.ReadAllText(validatorPath);
+
+        Assert.Contains("passed = $true", e2eScript);
+        Assert.Contains("Get-ResultProperty -Object $evidence -Name 'passed'", validatorScript);
+        Assert.Contains("Feature evidence #$number was not marked as passed.", validatorScript);
+    }
+
+    /// <summary>
     /// Verifies the live E2E suite must prove installed queue persistence after every major workflow.
     /// </summary>
     [TestMethod]
