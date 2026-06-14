@@ -17,6 +17,14 @@ $expectedQueues = @(
     'PrintSink - PWG Raster',
     'PrintSink - PCLm'
 )
+$expectedCliQueueRows = @(
+    [pscustomobject]@{ queue = 'PrintSink - PDF'; target = 'Pdf'; preferred = 'Oxps'; sink = '.pdf' },
+    [pscustomobject]@{ queue = 'PrintSink - XPS'; target = 'Oxps'; preferred = 'Oxps'; sink = '.xps,.oxps' },
+    [pscustomobject]@{ queue = 'PrintSink - PostScript'; target = 'PostScript'; preferred = 'PostScript'; sink = '.ps' },
+    [pscustomobject]@{ queue = 'PrintSink - Cloud'; target = 'Pdf'; preferred = 'Oxps'; sink = 'custom' },
+    [pscustomobject]@{ queue = 'PrintSink - PWG Raster'; target = 'PwgRaster'; preferred = 'Oxps'; sink = '.pwgr' },
+    [pscustomobject]@{ queue = 'PrintSink - PCLm'; target = 'Pclm'; preferred = 'Oxps'; sink = '.pclm' }
+)
 $expectedFileBackedOutputs = @(
     [pscustomobject]@{ queue = 'PrintSink - PDF'; format = 'pdf'; route = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'; contains = 'foo' },
     [pscustomobject]@{ queue = 'PrintSink - XPS'; format = 'oxps'; route = 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.'; contains = 'foo' },
@@ -314,15 +322,24 @@ function Assert-CliQueueOutput {
 
     $expectedStatus = if ($ExpectedInstalled) { 'yes' } else { 'no' }
     $lines = @($Output -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $header = @($lines |
+        Where-Object { $_ -match '^Queue\s{2,}Target\s{2,}Preferred\s{2,}Sink\s{2,}Installed$' } |
+        Select-Object -First 1)[0]
+    Assert-Condition ($null -ne $header) "$Description did not include the expected CLI table header."
 
-    foreach ($queue in $expectedQueues) {
+    foreach ($expectedRow in $expectedCliQueueRows) {
+        $queue = [string]$expectedRow.queue
         $row = @($lines |
             Where-Object { $_.StartsWith($queue, [System.StringComparison]::Ordinal) } |
             Select-Object -First 1)[0]
         Assert-Condition ($null -ne $row) "$Description did not include CLI row for $queue."
 
         $cells = @($row -split '\s{2,}' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        Assert-Condition ($cells.Count -ge 5) "$Description CLI row for $queue was not parseable: $row"
+        Assert-Condition ($cells.Count -eq 5) "$Description CLI row for $queue was not parseable: $row"
+        Assert-Condition ($cells[0] -eq $queue) "$Description CLI row for $queue reported Queue '$($cells[0])'."
+        Assert-Condition ($cells[1] -eq [string]$expectedRow.target) "$Description CLI row for $queue reported Target '$($cells[1])'; expected '$($expectedRow.target)'."
+        Assert-Condition ($cells[2] -eq [string]$expectedRow.preferred) "$Description CLI row for $queue reported Preferred '$($cells[2])'; expected '$($expectedRow.preferred)'."
+        Assert-Condition ($cells[3] -eq [string]$expectedRow.sink) "$Description CLI row for $queue reported Sink '$($cells[3])'; expected '$($expectedRow.sink)'."
         Assert-Condition ($cells[$cells.Count - 1] -eq $expectedStatus) "$Description CLI row for $queue reported Installed '$($cells[$cells.Count - 1])'; expected '$expectedStatus'."
     }
 }

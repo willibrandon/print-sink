@@ -458,6 +458,12 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("Config\\PrinterPdf.pdc.xml", validatorScript);
         Assert.Contains("Assert-PackageShapeEvidence -PackageShape $result.packageShape", validatorScript);
         Assert.Contains("function Assert-CliQueueLifecycle", validatorScript);
+        Assert.Contains("expectedCliQueueRows", validatorScript);
+        Assert.Contains(".xps,.oxps", validatorScript);
+        Assert.Contains(".pwgr", validatorScript);
+        Assert.Contains("Target '$($cells[1])'; expected '$($expectedRow.target)'.", validatorScript);
+        Assert.Contains("Preferred '$($cells[2])'; expected '$($expectedRow.preferred)'.", validatorScript);
+        Assert.Contains("Sink '$($cells[3])'; expected '$($expectedRow.sink)'.", validatorScript);
         Assert.Contains("install completed.", validatorScript);
         Assert.Contains("remove completed.", validatorScript);
         Assert.Contains("Assert-CliQueueLifecycle -CliQueueLifecycle $result.cliQueueLifecycle", validatorScript);
