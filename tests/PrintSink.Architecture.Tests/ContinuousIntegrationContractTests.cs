@@ -251,10 +251,20 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("'Remove queues'", e2eScript);
         Assert.Contains("'Refresh queues'", e2eScript);
         Assert.Contains("'Refresh capabilities'", e2eScript);
+        Assert.Contains("Invoke-Button -Root $window -Name 'Remove queues'", e2eScript);
+        Assert.Contains("Wait-ForPrintSinkQueuesRemoved", e2eScript);
+        Assert.Contains("Invoke-Button -Root $window -Name 'Install queues'", e2eScript);
+        Assert.Contains("Wait-ForPrintSinkQueuesInstalled", e2eScript);
+        Assert.Contains("invokedActions = @('Remove queues', 'Install queues')", e2eScript);
+        Assert.Contains("removedQueues = $removedQueues", e2eScript);
+        Assert.Contains("installedQueues = $installedQueues", e2eScript);
         Assert.Contains("managementUi = $managementUiResult", e2eScript);
         Assert.Contains("-ManagementUi $managementUiResult", e2eScript);
         Assert.Contains("function Assert-ManagementUi", validatorScript);
         Assert.Contains("Management UI visible actions", validatorScript);
+        Assert.Contains("Management UI invoked actions", validatorScript);
+        Assert.Contains("Management UI removed queue names", validatorScript);
+        Assert.Contains("Management UI installed queue names", validatorScript);
         Assert.Contains("Assert-ManagementUi -ManagementUi $result.managementUi", validatorScript);
         Assert.Contains("after management UI check", validatorScript);
     }

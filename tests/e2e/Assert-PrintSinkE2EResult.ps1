@@ -393,6 +393,29 @@ function Assert-ManagementUi {
         -Actual $visibleActions `
         -Expected @('Install queues', 'Remove queues', 'Refresh queues', 'Refresh capabilities') `
         -Description 'Management UI visible actions'
+    $invokedActions = @(Get-ResultProperty -Object $ManagementUi -Name 'invokedActions')
+    Assert-SetEqual `
+        -Actual $invokedActions `
+        -Expected @('Remove queues', 'Install queues') `
+        -Description 'Management UI invoked actions'
+
+    $removedQueues = @(Get-ResultProperty -Object $ManagementUi -Name 'removedQueues')
+    Assert-SetEqual `
+        -Actual @($removedQueues | ForEach-Object { Get-ResultProperty -Object $_ -Name 'name' }) `
+        -Expected $expectedQueues `
+        -Description 'Management UI removed queue names'
+    foreach ($queue in $removedQueues) {
+        Assert-Condition (-not [bool](Get-ResultProperty -Object $queue -Name 'installed')) "Management UI remove left queue installed: $($queue.name)"
+    }
+
+    $installedQueues = @(Get-ResultProperty -Object $ManagementUi -Name 'installedQueues')
+    Assert-SetEqual `
+        -Actual @($installedQueues | ForEach-Object { Get-ResultProperty -Object $_ -Name 'name' }) `
+        -Expected $expectedQueues `
+        -Description 'Management UI installed queue names'
+    foreach ($queue in $installedQueues) {
+        Assert-Condition ([bool](Get-ResultProperty -Object $queue -Name 'installed')) "Management UI install did not restore queue: $($queue.name)"
+    }
 }
 
 function Assert-CleanupEvidence {

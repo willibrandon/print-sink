@@ -989,6 +989,60 @@ function Assert-PrintSinkQueuesRemoved {
     return $snapshot
 }
 
+function Wait-ForPrintSinkQueuesInstalled {
+    param(
+        [string[]] $ExpectedQueues,
+        [string] $Context,
+        [int] $TimeoutSeconds = 90
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastError = $null
+    do {
+        try {
+            return Assert-PrintSinkQueuesInstalled -ExpectedQueues $ExpectedQueues -Context $Context
+        }
+        catch {
+            $lastError = $_
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    if ($null -ne $lastError) {
+        throw $lastError
+    }
+
+    throw "Timed out waiting for PrintSink queues to be installed ${Context}."
+}
+
+function Wait-ForPrintSinkQueuesRemoved {
+    param(
+        [string[]] $ExpectedQueues,
+        [string] $Context,
+        [int] $TimeoutSeconds = 90
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastError = $null
+    do {
+        try {
+            return Assert-PrintSinkQueuesRemoved -ExpectedQueues $ExpectedQueues -Context $Context
+        }
+        catch {
+            $lastError = $_
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    if ($null -ne $lastError) {
+        throw $lastError
+    }
+
+    throw "Timed out waiting for PrintSink queues to be removed ${Context}."
+}
+
 function Invoke-PrintSinkCliQueueLifecycle {
     param(
         [string[]] $ExpectedQueues
@@ -3426,6 +3480,10 @@ function Invoke-PrintSinkVirtualAttributeRead {
 }
 
 function Invoke-PrintSinkManagementUi {
+    param(
+        [string[]] $ExpectedQueues
+    )
+
     Add-Type -AssemblyName UIAutomationClient
 
     $process = Start-Process -FilePath 'printsink-app.exe' -PassThru
@@ -3475,10 +3533,23 @@ function Invoke-PrintSinkManagementUi {
                 -Description "the $actionName management action" | Out-Null
         }
 
+        Invoke-Button -Root $window -Name 'Remove queues' -TimeoutSeconds 30
+        $removedQueues = Wait-ForPrintSinkQueuesRemoved `
+            -ExpectedQueues $ExpectedQueues `
+            -Context 'after management UI remove'
+
+        Invoke-Button -Root $window -Name 'Install queues' -TimeoutSeconds 30
+        $installedQueues = Wait-ForPrintSinkQueuesInstalled `
+            -ExpectedQueues $ExpectedQueues `
+            -Context 'after management UI install'
+
         return [ordered]@{
             windowTitle = $window.Current.Name
             processId = $process.Id
             visibleActions = $expectedActions
+            invokedActions = @('Remove queues', 'Install queues')
+            removedQueues = $removedQueues
+            installedQueues = $installedQueues
         }
     }
     finally {
@@ -4710,6 +4781,10 @@ function New-PrintSinkFeatureEvidence {
     else {
         @()
     }
+    $managementVisibleActions = @($ManagementUi.visibleActions)
+    $managementInvokedActions = @($ManagementUi.invokedActions)
+    $managementRemovedQueues = @($ManagementUi.removedQueues)
+    $managementInstalledQueues = @($ManagementUi.installedQueues)
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
@@ -4719,9 +4794,13 @@ function New-PrintSinkFeatureEvidence {
             $virtualPrinters.Count -eq $ExpectedQueues.Count `
                 -and (Test-AllQueuesInstalled -QueueSnapshot $provisionedQueues -ExpectedQueues $ExpectedQueues) `
                 -and [string]$CliQueueLifecycle.install -like '*Installed*yes*' `
-                -and @($ManagementUi.visibleActions).Contains('Install queues') `
-                -and @($ManagementUi.visibleActions).Contains('Remove queues')) `
-        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, the CLI observes them as installed, and the management UI exposes queue lifecycle actions.' `
+                -and $managementVisibleActions.Contains('Install queues') `
+                -and $managementVisibleActions.Contains('Remove queues') `
+                -and $managementInvokedActions.Contains('Install queues') `
+                -and $managementInvokedActions.Contains('Remove queues') `
+                -and (@($managementRemovedQueues | Where-Object { $_.installed }).Count -eq 0) `
+                -and (Test-AllQueuesInstalled -QueueSnapshot $managementInstalledQueues -ExpectedQueues $ExpectedQueues)) `
+        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, the CLI observes them as installed, and the management UI removes and reinstalls them through the real printer list.' `
         -Artifact ([ordered]@{
             virtualPrinters = $virtualPrinters.Count
             provisionedQueues = $provisionedQueues
@@ -5452,7 +5531,7 @@ try {
     })
 
     Write-E2EProgress 'Verifying management UI queue actions'
-    $managementUiResult = Invoke-PrintSinkManagementUi
+    $managementUiResult = Invoke-PrintSinkManagementUi -ExpectedQueues $expectedQueues
     $queueSnapshots.Add([ordered]@{
         context = 'after management UI check'
         queues = Assert-PrintSinkQueuesInstalled `
