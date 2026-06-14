@@ -45,4 +45,18 @@ internal sealed class NamespaceStructureTests
 
         Assert.IsEmpty(failures, string.Join(Environment.NewLine, failures));
     }
+
+    /// <summary>
+    /// Verifies design documentation names the namespaces that exist in the repository.
+    /// </summary>
+    [TestMethod]
+    public void DesignDocumentUsesActualNamespaceShape()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
+        string design = File.ReadAllText(designPath);
+
+        Assert.Contains("`PrintSink.App`", design);
+        Assert.DoesNotContain("PrintSink.App.Screens", design);
+    }
 }

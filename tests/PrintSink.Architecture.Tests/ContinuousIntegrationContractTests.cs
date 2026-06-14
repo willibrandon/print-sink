@@ -17,10 +17,15 @@ internal sealed partial class ContinuousIntegrationContractTests
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "windows-ci.yml");
         string workflow = File.ReadAllText(workflowPath);
+        string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
+        string design = File.ReadAllText(designPath);
 
         Assert.Contains("platform: x64", workflow);
         Assert.Contains("platform: ARM64", workflow);
         Assert.Contains("Real print-stack E2E", workflow);
+        Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
+        Assert.Contains("Visual Studio Test Platform for packaged WinUI app tests", design);
+        Assert.DoesNotContain("MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E", design);
         Assert.Contains(".\\test-e2e.ps1", workflow);
         Assert.Contains("-BuildPackage", workflow);
         Assert.Contains("-Platform ${{ matrix.platform }}", workflow);

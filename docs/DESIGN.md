@@ -4,7 +4,7 @@
 **Solution / assembly / root namespace:** `PrintSink`
 **Author:** Brandon Williams
 **Status:** Implementation — active
-**Last updated:** 2026-06-13
+**Last updated:** 2026-06-14
 **Target platform:** Windows 11 24H2 (build 26100) and later; Windows Server 2025+
 
 ---
@@ -42,9 +42,9 @@ deferred compatibility hooks until a real trigger can prove them.
    **single-project MSIX** packaging.
 4. Strict engineering standards: **one type per file**, **triple-slash XML docs on every public member**,
    nullable reference types, analyzers as errors.
-5. Fully tested following Microsoft's current guidance, using the current test stack
-   (**MSTest on Microsoft.Testing.Platform**, .NET 10), plus deterministic automated
-   end-to-end print-stack validation on Windows runners or clean VMs.
+5. Fully tested following Microsoft's current guidance: MSTest on Microsoft.Testing.Platform for
+   plain .NET tests, Visual Studio Test Platform for packaged WinUI app tests, plus deterministic
+   automated end-to-end print-stack validation on Windows runners or clean VMs.
 6. Ship a companion `PrintSink.Cli` executable: command-line automation through
    `System.CommandLine`, with a Hex1b TUI for local diagnostics and operator workflows.
 
@@ -276,7 +276,7 @@ print-sink/
 ```
 
 **Naming:** root namespace `PrintSink`, with logical sub-namespaces (`PrintSink.Core.Pdl`,
-`PrintSink.Cli.Commands`, `PrintSink.Tasks`, `PrintSink.App.Screens`, `PrintSink.Xps`). The
+`PrintSink.Cli.Commands`, `PrintSink.Tasks`, `PrintSink.App`, `PrintSink.Xps`). The
 activatable-class IDs in the manifest therefore read `PrintSink.Tasks.VirtualPrinterBackgroundTask`,
 etc. Assembly name = project name; the root namespace token is always `PrintSink`.
 
@@ -854,8 +854,8 @@ the generated `.appxrecipe` when tests must run inside a packaged WinUI app iden
    `IppPrintDevice`. PrintSink pins the stable projections and adds scoped CsWinRT private projections
    only for newer contract-19 members that exist in Windows metadata but are missing from the managed ref
    assembly.
-8. **Testing:** MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E — the current
-   Microsoft-recommended stack.
+8. **Testing:** MSTest on Microsoft.Testing.Platform for plain .NET projects, Visual Studio Test
+   Platform for packaged WinUI app tests, plus scripted Windows E2E.
 9. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.
 
 ---
