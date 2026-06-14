@@ -79,6 +79,35 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies every supported feature row has an explicit E2E artifact validator branch.
+    /// </summary>
+    [TestMethod]
+    public void SupportedFeatureRowsHaveExplicitValidatorDispatch()
+    {
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        int[] supportedDesignNumbers =
+        [
+            .. ExtractDesignFeatureNumbers(design)
+                .Except(ExtractTrackedDesignFeatureNumbers(design))
+                .Order(),
+        ];
+        int[] validatorDispatchNumbers =
+        [
+            .. ValidatorDispatchRegex()
+                .Matches(validatorScript)
+                .Select(static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture))
+                .Order(),
+        ];
+
+        CollectionAssert.AreEqual(
+            supportedDesignNumbers,
+            validatorDispatchNumbers,
+            "Every supported feature row in DESIGN.md must have an explicit Assert-FeatureEvidence validator branch.");
+    }
+
+    /// <summary>
     /// Verifies install and PDL receive evidence have explicit artifact validators.
     /// </summary>
     [TestMethod]
@@ -690,5 +719,8 @@ internal sealed partial class FeatureEvidenceContractTests
 
     [GeneratedRegex(@"number\s*=\s*(?<number>\d+)[\s\S]*?feature\s*=\s*'(?<feature>[^']+)'", RegexOptions.CultureInvariant)]
     private static partial Regex DeferredEvidenceNameRegex();
+
+    [GeneratedRegex(@"if \(\$number -eq (?<number>\d+)\)", RegexOptions.CultureInvariant)]
+    private static partial Regex ValidatorDispatchRegex();
 
 }
