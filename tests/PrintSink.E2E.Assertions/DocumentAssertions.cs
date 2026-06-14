@@ -748,23 +748,152 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"PWG Raster color metadata is invalid: {path}");
         }
 
-        int bodyStart = syncWordLength + version2HeaderLength;
+        const int bodyStart = syncWordLength + version2HeaderLength;
+        if (isCompressed)
+        {
+            AssertCompressedPwgRasterBody(bytes, bodyStart, height, bytesPerLine, bitsPerColor, bitsPerPixel, colorOrder, path);
+            return;
+        }
+
         ulong declaredBodyBytes = (ulong)bytesPerLine * height;
-        ulong actualBodyBytes = (ulong)(bytes.Length - bodyStart);
-        if (!isCompressed && actualBodyBytes < declaredBodyBytes)
+        long actualBodyBytes = bytes.LongLength - bodyStart;
+        if ((ulong)actualBodyBytes < declaredBodyBytes)
         {
             throw new InvalidDataException($"PWG Raster page body is shorter than declared page data: {path}");
         }
 
-        int distinctBodyBytes = bytes
-            .Skip(bodyStart)
-            .Take(1024 * 1024)
-            .Distinct()
-            .Take(3)
-            .Count();
+        int distinctBodyBytes = CountDistinctRasterBytes(bytes, bodyStart, (int)Math.Min(actualBodyBytes, 1024 * 1024L));
         if (distinctBodyBytes < 2)
         {
             throw new InvalidDataException($"PWG Raster page body appears blank: {path}");
+        }
+    }
+
+    private static void AssertCompressedPwgRasterBody(
+        byte[] bytes,
+        int bodyStart,
+        uint height,
+        uint bytesPerLine,
+        uint bitsPerColor,
+        uint bitsPerPixel,
+        uint colorOrder,
+        string path)
+    {
+        if (bytesPerLine > int.MaxValue)
+        {
+            throw new InvalidDataException($"PWG Raster stride is too large to validate: {path}");
+        }
+
+        int colorValueSize = GetPwgRasterColorValueSize(bitsPerColor, bitsPerPixel, colorOrder);
+        int lineByteCount = (int)bytesPerLine;
+        if (lineByteCount % colorValueSize != 0)
+        {
+            throw new InvalidDataException($"PWG Raster stride is not aligned to color values: {path}");
+        }
+
+        int offset = bodyStart;
+        uint decodedLines = 0;
+        bool[] seenBytes = new bool[256];
+        int distinctBodyBytes = 0;
+        while (decodedLines < height)
+        {
+            if (offset >= bytes.Length)
+            {
+                throw new InvalidDataException($"PWG Raster compressed page body ended before all rows were decoded: {path}");
+            }
+
+            int lineRepeatCount = bytes[offset++] + 1;
+            if ((ulong)decodedLines + (uint)lineRepeatCount > height)
+            {
+                throw new InvalidDataException($"PWG Raster compressed page body expands beyond the declared page height: {path}");
+            }
+
+            int decodedLineBytes = 0;
+            while (decodedLineBytes < lineByteCount)
+            {
+                if (offset >= bytes.Length)
+                {
+                    throw new InvalidDataException($"PWG Raster compressed scan line is truncated: {path}");
+                }
+
+                int control = bytes[offset++];
+                if (control <= 127)
+                {
+                    int repeatCount = control + 1;
+                    int repeatedBytes = checked(repeatCount * colorValueSize);
+                    if (decodedLineBytes + repeatedBytes > lineByteCount)
+                    {
+                        throw new InvalidDataException($"PWG Raster compressed scan line expands past the declared stride: {path}");
+                    }
+
+                    EnsurePwgRasterBodyBytes(bytes, offset, colorValueSize, path);
+                    CountDistinctRasterBytes(bytes, offset, colorValueSize, seenBytes, ref distinctBodyBytes);
+                    offset += colorValueSize;
+                    decodedLineBytes += repeatedBytes;
+                    continue;
+                }
+
+                int literalCount = 257 - control;
+                int literalBytes = checked(literalCount * colorValueSize);
+                if (decodedLineBytes + literalBytes > lineByteCount)
+                {
+                    throw new InvalidDataException($"PWG Raster compressed scan line expands past the declared stride: {path}");
+                }
+
+                EnsurePwgRasterBodyBytes(bytes, offset, literalBytes, path);
+                CountDistinctRasterBytes(bytes, offset, literalBytes, seenBytes, ref distinctBodyBytes);
+                offset += literalBytes;
+                decodedLineBytes += literalBytes;
+            }
+
+            decodedLines += (uint)lineRepeatCount;
+        }
+
+        if (offset != bytes.Length)
+        {
+            throw new InvalidDataException($"PWG Raster compressed page body contains trailing data: {path}");
+        }
+
+        if (distinctBodyBytes < 2)
+        {
+            throw new InvalidDataException($"PWG Raster page body appears blank: {path}");
+        }
+    }
+
+    private static int GetPwgRasterColorValueSize(uint bitsPerColor, uint bitsPerPixel, uint colorOrder)
+    {
+        uint bitsPerValue = colorOrder == 0 ? bitsPerPixel : bitsPerColor;
+        return checked((int)((bitsPerValue + 7) / 8));
+    }
+
+    private static void EnsurePwgRasterBodyBytes(byte[] bytes, int offset, int count, string path)
+    {
+        if (offset > bytes.Length || count > bytes.Length - offset)
+        {
+            throw new InvalidDataException($"PWG Raster compressed scan line is truncated: {path}");
+        }
+    }
+
+    private static int CountDistinctRasterBytes(byte[] bytes, int offset, int count)
+    {
+        bool[] seenBytes = new bool[256];
+        int distinctBodyBytes = 0;
+        CountDistinctRasterBytes(bytes, offset, count, seenBytes, ref distinctBodyBytes);
+        return distinctBodyBytes;
+    }
+
+    private static void CountDistinctRasterBytes(byte[] bytes, int offset, int count, bool[] seenBytes, ref int distinctBodyBytes)
+    {
+        for (int index = 0; index < count && distinctBodyBytes < 2; index++)
+        {
+            byte value = bytes[offset + index];
+            if (seenBytes[value])
+            {
+                continue;
+            }
+
+            seenBytes[value] = true;
+            distinctBodyBytes++;
         }
     }
 

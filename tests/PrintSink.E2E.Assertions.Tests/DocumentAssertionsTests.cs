@@ -449,6 +449,29 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies a compressed PWG Raster stream with a truncated scan line is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsTruncatedCompressedPwgRaster()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "truncated-compressed.pwg");
+            WritePwgRaster(path, blankBody: false, truncateCompressedBody: true);
+
+            int exitCode = RunAssertion(["--format", "pwg", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("PWG Raster compressed scan line is truncated", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies a PDF/PCLm document with image content is accepted.
     /// </summary>
     [TestMethod]
@@ -827,11 +850,16 @@ internal sealed class DocumentAssertionsTests
         bool blankBody,
         string magic = "RaS2",
         uint height = 2,
-        int bodyLength = 16)
+        int bodyLength = 16,
+        bool truncateCompressedBody = false)
     {
         const int syncWordLength = 4;
         const int version2HeaderLength = 1796;
-        byte[] bytes = new byte[syncWordLength + version2HeaderLength + bodyLength];
+        bool isCompressed = magic is "RaS2" or "2SaR";
+        byte[] body = isCompressed
+            ? CreateCompressedPwgRasterBody(blankBody, height, truncateCompressedBody)
+            : new byte[bodyLength];
+        byte[] bytes = new byte[syncWordLength + version2HeaderLength + body.Length];
         Encoding.ASCII.GetBytes(magic).CopyTo(bytes, 0);
         WriteRasterUInt32(bytes, syncWordLength + 372, 2);
         WriteRasterUInt32(bytes, syncWordLength + 376, height);
@@ -842,7 +870,9 @@ internal sealed class DocumentAssertionsTests
         WriteRasterUInt32(bytes, syncWordLength + 400, 3);
         WriteRasterUInt32(bytes, syncWordLength + 420, 1);
 
-        if (!blankBody)
+        body.CopyTo(bytes, syncWordLength + version2HeaderLength);
+
+        if (!isCompressed && !blankBody)
         {
             if (bodyLength > 0)
             {
@@ -856,6 +886,37 @@ internal sealed class DocumentAssertionsTests
         }
 
         File.WriteAllBytes(path, bytes);
+    }
+
+    private static byte[] CreateCompressedPwgRasterBody(bool blankBody, uint height, bool truncate)
+    {
+        List<byte> body = [];
+        uint remainingRows = height;
+        while (remainingRows > 0)
+        {
+            int repeatCount = (int)Math.Min(remainingRows, 256);
+            body.Add((byte)(repeatCount - 1));
+            if (blankBody)
+            {
+                body.Add(1);
+                body.Add(0);
+            }
+            else
+            {
+                body.Add(255);
+                body.Add(0);
+                body.Add(255);
+            }
+
+            remainingRows -= (uint)repeatCount;
+        }
+
+        if (truncate)
+        {
+            body.RemoveAt(body.Count - 1);
+        }
+
+        return [.. body];
     }
 
     private static void WriteRasterUInt32(byte[] bytes, int offset, uint value)
