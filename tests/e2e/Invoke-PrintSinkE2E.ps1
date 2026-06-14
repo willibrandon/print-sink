@@ -8,6 +8,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'PrintSinkFeatureMatrix.ps1')
+
 $isWindowsPlatform = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
     [System.Runtime.InteropServices.OSPlatform]::Windows)
 
@@ -4523,12 +4525,8 @@ function Assert-PrintSinkFeatureEvidenceComplete {
         [object[]] $FeatureEvidence
     )
 
-    $supportedNumbers = @()
-    $supportedNumbers += 1..21
-    $supportedNumbers += 23
-    $supportedNumbers += 24
-    $supportedNumbers += 25
-    $supportedNumbers += 27
+    $supportedFeatures = Get-PrintSinkSupportedFeatureMap
+    $supportedNumbers = @($supportedFeatures.Keys | ForEach-Object { [int]$_ } | Sort-Object)
 
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ObjectPropertyValue -Object $_ -Name 'number') })
     $missingNumbers = @($supportedNumbers | Where-Object { $_ -notin $actualNumbers })
@@ -4550,6 +4548,15 @@ function Assert-PrintSinkFeatureEvidenceComplete {
 
     if ($duplicateNumbers.Count -gt 0) {
         throw "Feature evidence contains duplicate feature number(s): $($duplicateNumbers -join ', ')."
+    }
+
+    foreach ($evidence in $FeatureEvidence) {
+        $number = [int](Get-ObjectPropertyValue -Object $evidence -Name 'number')
+        $feature = [string](Get-ObjectPropertyValue -Object $evidence -Name 'feature')
+        $expectedFeature = $supportedFeatures[[string]$number]
+        if ($feature -ne $expectedFeature) {
+            throw "Feature evidence #$number had name '$feature'; expected '$expectedFeature' from docs\DESIGN.md."
+        }
     }
 }
 

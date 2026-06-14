@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'PrintSinkFeatureMatrix.ps1')
+
 $expectedQueues = @(
     'PrintSink - PDF',
     'PrintSink - XPS',
@@ -246,8 +248,8 @@ function Assert-FeatureEvidence {
         [object[]] $DeferredFeatureEvidence
     )
 
-    $expectedSupportedFeatures = Get-ExpectedSupportedFeatures
-    $expectedDeferredFeatures = Get-ExpectedDeferredFeatures
+    $expectedSupportedFeatures = Get-PrintSinkSupportedFeatureMap
+    $expectedDeferredFeatures = Get-PrintSinkDeferredFeatureMap
     $supportedNumbers = @($expectedSupportedFeatures.Keys | ForEach-Object { [int]$_ } | Sort-Object)
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
     Assert-SetEqual -Actual $actualNumbers -Expected $supportedNumbers -Description 'Supported feature evidence numbers'
@@ -323,44 +325,6 @@ function Assert-FeatureEvidence {
     else {
         Assert-Condition ($physicalWorkflowStatus -eq 'pdl-modification-not-delivered') 'Deferred row 28 omitted physical workflow non-delivery status.'
         Assert-Condition (-not [string]::IsNullOrWhiteSpace($physicalWorkflowDetail)) 'Deferred row 28 omitted physical workflow non-delivery detail.'
-    }
-}
-
-function Get-ExpectedSupportedFeatures {
-    return @{
-        '1' = 'Install N virtual print queues from one package'
-        '2' = 'Receive spooled PDL + content type'
-        '3' = 'Preferred input format negotiation'
-        '4' = 'Passthrough formats (no OS re-render)'
-        '5' = 'File-printer "Save As" target'
-        '6' = 'Non-file sinks (cloud / OneNote-style)'
-        '7' = 'OXPS → PDF / PWG-Raster / PCLm conversion'
-        '8' = 'XPS/OXPS passthrough (copy)'
-        '9' = 'Watermark (text + image) on XPS pages'
-        '10' = 'Per-job UI / preview launched from background'
-        '11' = 'Custom print-preferences UI'
-        '12' = 'Print-ticket validation / resolve'
-        '13' = 'PDC regeneration / custom features'
-        '14' = 'PDR localization of custom features'
-        '15' = 'Refresh PDC on settings change'
-        '16' = 'Get/set user default print ticket'
-        '17' = 'Physical IPP PSA association + workflow activation'
-        '18' = 'MXDC image quality per output quality'
-        '19' = 'Printer-selected adaptive card in MPD'
-        '20' = 'IPP attribute get behavior for installed virtual queues'
-        '21' = 'Multiple instances for concurrent jobs'
-        '23' = 'Graceful cancel / abort / fail'
-        '24' = 'Job password option model'
-        '25' = 'Localized printer queue display names'
-        '27' = 'IPP compression compatibility handling'
-    }
-}
-
-function Get-ExpectedDeferredFeatures {
-    return @{
-        '22' = 'Job notification compatibility hook'
-        '26' = 'IPP communication-error timeout recovery'
-        '28' = 'PDL passthrough with IPP job-attribute compatibility'
     }
 }
 
