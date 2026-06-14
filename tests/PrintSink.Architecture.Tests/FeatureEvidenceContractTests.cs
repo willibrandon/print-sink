@@ -406,6 +406,46 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies extension and default-ticket feature rows have explicit artifact validators.
+    /// </summary>
+    [TestMethod]
+    public void ExtensionAndDefaultTicketEvidenceRequiresExplicitArtifactValidation()
+    {
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+
+        string[] expectedValidators =
+        [
+            "Assert-PrintTicketValidationEvidence",
+            "Assert-PdcFeatureEvidence",
+            "Assert-PdrFeatureEvidence",
+            "Assert-CapabilityRefreshEvidence",
+            "Assert-UserDefaultPrintTicketEvidence",
+            "Assert-MxdcFeatureEvidence",
+        ];
+
+        foreach (string expectedValidator in expectedValidators)
+        {
+            Assert.Contains(expectedValidator, validatorScript);
+        }
+
+        Assert.Contains("Print-ticket validation feature queue names", validatorScript);
+        Assert.Contains("status=Resolved", validatorScript);
+        Assert.Contains("PDC feature evidence did not report the PDC option list.", validatorScript);
+        Assert.Contains("PDR feature evidence did not report the localized resource names.", validatorScript);
+        Assert.Contains("Capability-refresh feature extension diagnostic", validatorScript);
+        Assert.Contains("verifiedCopies=$ExpectedCopies", validatorScript);
+        Assert.Contains("MXDC feature evidence did not report the full output-quality mapping.", validatorScript);
+
+        Assert.Contains("endpoint-specific `status=Resolved`", design);
+        Assert.Contains("applied PDC feature and option sets", design);
+        Assert.Contains("exact localized resource names", design);
+        Assert.Contains("Management UI refresh paths", design);
+        Assert.Contains("requested and verified counts", design);
+        Assert.Contains("full Text/Draft/Normal/High/Photo/Auto/Fax image-quality mapping", design);
+    }
+
+    /// <summary>
     /// Verifies localized queue-name evidence records the expected resource keys and installed names.
     /// </summary>
     [TestMethod]

@@ -547,6 +547,152 @@ function Assert-JobUiPreviewEvidence {
     Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'detail') -notlike '*ci-password*') 'Job UI preview evidence leaked the job-password secret in diagnostics.'
 }
 
+function Assert-PrintTicketValidationEvidence {
+    param(
+        [object[]] $Artifact
+    )
+
+    Assert-SetEqual `
+        -Actual @($Artifact | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected $expectedQueues `
+        -Description 'Print-ticket validation feature queue names'
+
+    foreach ($queue in $expectedQueues) {
+        $result = Get-ResultByQueue -Results $Artifact -Queue $queue
+        Assert-Condition ($null -ne $result) "Print-ticket validation evidence omitted $queue."
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $result -Name 'documentName'))) "Print-ticket validation evidence omitted document name for $queue."
+        $ticketValidation = Get-ResultProperty -Object $result -Name 'ticketValidation'
+        Assert-Condition ($null -ne $ticketValidation) "Print-ticket validation evidence omitted the ticket validation diagnostic for $queue."
+        Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'source') -eq 'PrintSupportExtensionBackgroundTask') "Print-ticket validation evidence used the wrong source for $queue."
+        Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'message') -eq 'Print ticket validated') "Print-ticket validation evidence used the wrong message for $queue."
+        Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'endpoint') -eq $queue) "Print-ticket validation evidence used the wrong endpoint for $queue."
+        Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'detail') -eq 'status=Resolved') "Print-ticket validation evidence did not resolve $queue."
+        Get-ResultTimestamp -Result $ticketValidation -Description "Print-ticket validation evidence for $queue" | Out-Null
+    }
+}
+
+function Assert-PdcFeatureEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-ExtensionCapabilities -ExtensionCapabilities $Artifact
+    $detail = [string](Get-ResultProperty -Object $Artifact -Name 'detail')
+    Assert-Condition ($detail -like '*features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode*') 'PDC feature evidence did not report the applied feature list.'
+    Assert-Condition ($detail -like "*$expectedPdcFeatureDetail*") 'PDC feature evidence did not report the PDC feature list.'
+    Assert-Condition ($detail -like "*$expectedPdcOptionDetail*") 'PDC feature evidence did not report the PDC option list.'
+}
+
+function Assert-PdrFeatureEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-ExtensionCapabilities -ExtensionCapabilities $Artifact
+    $detail = [string](Get-ResultProperty -Object $Artifact -Name 'detail')
+    Assert-Condition ($detail -like '*pdr=updated*') 'PDR feature evidence did not report a PDR update.'
+    Assert-Condition ($detail -like '*pdrResources=13*') 'PDR feature evidence did not report the expected resource count.'
+    Assert-Condition ($detail -like "*$expectedPdrResourceDetail*") 'PDR feature evidence did not report the localized resource names.'
+}
+
+function Assert-CapabilityRefreshEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Capability-refresh evidence did not include an artifact.'
+
+    $command = Get-ResultProperty -Object $Artifact -Name 'command'
+    Assert-ExtensionCapabilities -ExtensionCapabilities $command
+
+    $managementUi = Get-ResultProperty -Object $Artifact -Name 'managementUi'
+    Assert-Condition ($null -ne $managementUi) 'Capability-refresh evidence omitted management UI evidence.'
+    $requestStartedUtc = [string](Get-ResultProperty -Object $managementUi -Name 'requestStartedUtc')
+    $requestTimestamp = [DateTimeOffset]::MinValue
+    Assert-Condition ([DateTimeOffset]::TryParse($requestStartedUtc, [ref]$requestTimestamp)) "Capability-refresh evidence had an invalid request timestamp: $requestStartedUtc"
+
+    $completion = Get-ResultProperty -Object $managementUi -Name 'completion'
+    Assert-Condition ([string](Get-ResultProperty -Object $completion -Name 'source') -eq 'ManagementScreen') 'Capability-refresh evidence completion came from the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $completion -Name 'message') -eq 'Management UI capabilities refreshed') 'Capability-refresh evidence did not record management completion.'
+    Assert-Condition ([string](Get-ResultProperty -Object $completion -Name 'endpoint') -eq 'PrintSink - PDF') 'Capability-refresh evidence completion targeted the wrong endpoint.'
+    Assert-Condition ([string](Get-ResultProperty -Object $completion -Name 'detail') -like '*Capabilities refreshed for PrintSink - PDF*') 'Capability-refresh evidence completion omitted the PDF queue.'
+
+    $extension = Get-ResultProperty -Object $managementUi -Name 'extension'
+    Assert-ExtensionCapabilities -ExtensionCapabilities $extension
+    Assert-ResultTimestampIsNotBefore `
+        -Later $extension `
+        -Earlier $managementUi `
+        -Description 'Capability-refresh feature extension diagnostic' `
+        -EarlierTimestampName 'requestStartedUtc'
+}
+
+function Assert-UserDefaultPrintTicketEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'User-default print-ticket evidence did not include an artifact.'
+
+    $command = Get-ResultProperty -Object $Artifact -Name 'command'
+    $managementUi = Get-ResultProperty -Object $Artifact -Name 'managementUi'
+    Assert-UserDefaultPrintTicketDiagnostic `
+        -Diagnostic (Get-ResultProperty -Object $command -Name 'set') `
+        -ExpectedSource 'VirtualPrinterCommandLine' `
+        -ExpectedCopies 2 `
+        -Description 'command set'
+    Assert-UserDefaultPrintTicketDiagnostic `
+        -Diagnostic (Get-ResultProperty -Object $command -Name 'restore') `
+        -ExpectedSource 'VirtualPrinterCommandLine' `
+        -ExpectedCopies 1 `
+        -Description 'command restore'
+    Assert-UserDefaultPrintTicketDiagnostic `
+        -Diagnostic (Get-ResultProperty -Object $managementUi -Name 'set') `
+        -ExpectedSource 'ManagementScreen' `
+        -ExpectedCopies 2 `
+        -Description 'management UI set'
+    Assert-UserDefaultPrintTicketDiagnostic `
+        -Diagnostic (Get-ResultProperty -Object $managementUi -Name 'restore') `
+        -ExpectedSource 'ManagementScreen' `
+        -ExpectedCopies 1 `
+        -Description 'management UI restore'
+}
+
+function Assert-UserDefaultPrintTicketDiagnostic {
+    param(
+        [object] $Diagnostic,
+        [string] $ExpectedSource,
+        [int] $ExpectedCopies,
+        [string] $Description
+    )
+
+    Assert-Condition ($null -ne $Diagnostic) "User-default print-ticket evidence omitted $Description."
+    Assert-Condition ([string](Get-ResultProperty -Object $Diagnostic -Name 'source') -eq $ExpectedSource) "User-default print-ticket $Description used the wrong source."
+    $expectedMessage = if ($ExpectedSource -eq 'ManagementScreen') {
+        'Management UI default copies updated'
+    }
+    else {
+        'User default print ticket updated'
+    }
+    Assert-Condition ([string](Get-ResultProperty -Object $Diagnostic -Name 'message') -eq $expectedMessage) "User-default print-ticket $Description used the wrong message."
+    Assert-Condition ([string](Get-ResultProperty -Object $Diagnostic -Name 'endpoint') -eq 'PrintSink - PDF') "User-default print-ticket $Description used the wrong endpoint."
+    $detail = [string](Get-ResultProperty -Object $Diagnostic -Name 'detail')
+    Assert-Condition ($detail -like "*User default print ticket updated for PrintSink - PDF*") "User-default print-ticket $Description omitted the PDF queue."
+    Assert-Condition ($detail -like "*copies=$ExpectedCopies*") "User-default print-ticket $Description did not request $ExpectedCopies copies."
+    Assert-Condition ($detail -like "*verifiedCopies=$ExpectedCopies*") "User-default print-ticket $Description did not verify $ExpectedCopies copies."
+    Get-ResultTimestamp -Result $Diagnostic -Description "User-default print-ticket $Description" | Out-Null
+}
+
+function Assert-MxdcFeatureEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-ExtensionCapabilities -ExtensionCapabilities $Artifact
+    $detail = [string](Get-ResultProperty -Object $Artifact -Name 'detail')
+    Assert-Condition ($detail -like '*mxdc=configured*') 'MXDC feature evidence did not report MXDC configuration.'
+    Assert-Condition ($detail -like "*$expectedMxdcQualityDetail*") 'MXDC feature evidence did not report the full output-quality mapping.'
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -787,6 +933,30 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 11) {
             Assert-SettingsUiOwner -SettingsUiOwner $artifact
+        }
+
+        if ($number -eq 12) {
+            Assert-PrintTicketValidationEvidence -Artifact @($artifact)
+        }
+
+        if ($number -eq 13) {
+            Assert-PdcFeatureEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 14) {
+            Assert-PdrFeatureEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 15) {
+            Assert-CapabilityRefreshEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 16) {
+            Assert-UserDefaultPrintTicketEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 18) {
+            Assert-MxdcFeatureEvidence -Artifact $artifact
         }
 
         if ($number -eq 19) {
