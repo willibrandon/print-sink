@@ -396,7 +396,7 @@ function Assert-ManagementUi {
     $invokedActions = @(Get-ResultProperty -Object $ManagementUi -Name 'invokedActions')
     Assert-SetEqual `
         -Actual $invokedActions `
-        -Expected @('Remove queues', 'Install queues') `
+        -Expected @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies') `
         -Description 'Management UI invoked actions'
 
     $removedQueues = @(Get-ResultProperty -Object $ManagementUi -Name 'removedQueues')
@@ -416,6 +416,23 @@ function Assert-ManagementUi {
     foreach ($queue in $installedQueues) {
         Assert-Condition ([bool](Get-ResultProperty -Object $queue -Name 'installed')) "Management UI install did not restore queue: $($queue.name)"
     }
+
+    $managementCapabilityRefresh = Get-ResultProperty -Object $ManagementUi -Name 'managementCapabilityRefresh'
+    Assert-Condition ([string](Get-ResultProperty -Object $managementCapabilityRefresh -Name 'message') -eq 'Management UI capabilities refreshed') 'Management UI did not record a capability-refresh diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $managementCapabilityRefresh -Name 'detail') -like '*Capabilities refreshed for PrintSink - PDF*') 'Management UI capability-refresh diagnostic did not include the refreshed PDF queue.'
+
+    $extensionCapabilityRefresh = Get-ResultProperty -Object $ManagementUi -Name 'extensionCapabilityRefresh'
+    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'message') -eq 'Capabilities updated') 'Management UI refresh did not trigger extension capability update.'
+    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*pdr=updated*') 'Management UI extension capability update did not report PDR refresh.'
+    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*mxdc=configured*') 'Management UI extension capability update did not report MXDC configuration.'
+
+    $defaultCopiesSet = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesSet'
+    Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesSet -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy set diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesSet -Name 'detail') -like '*copies=2*verifiedCopies=2*') 'Management UI default-copy set diagnostic did not verify two copies.'
+
+    $defaultCopiesRestore = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesRestore'
+    Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesRestore -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy restore diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesRestore -Name 'detail') -like '*copies=1*verifiedCopies=1*') 'Management UI default-copy restore diagnostic did not verify one copy.'
 }
 
 function Assert-CleanupEvidence {

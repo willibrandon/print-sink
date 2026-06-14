@@ -716,8 +716,9 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    as scripted Windows automation in CI and on clean Windows 11 26100+ VMs:
    - Build and install the signed MSIX, run `printsink-app.exe --install-virtual-printers`, and assert
      all six queues appear (`Get-Printer`).
-   - Launch the packaged management UI, inspect it through UI Automation, invoke the queue
-     remove/install actions, and assert the real Windows printer list removes and restores all queues.
+   - Launch the packaged management UI, inspect it through UI Automation, invoke queue lifecycle,
+     capability-refresh, and default-copy actions, and assert the real Windows printer list plus
+     package diagnostics reflect each action.
    - Assert the signed manifest keeps `uap10:SupportsMultipleInstances="true"` and submit overlapping
      real print jobs so concurrent activations are proven by output files and diagnostics.
    - Print from a real Win32 print harness to every endpoint, and print a real Notepad `/p` text

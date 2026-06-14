@@ -141,8 +141,9 @@ The required E2E suite proves the current installed-package behavior:
    then assert both outputs and overlapping route/completion diagnostics.
 5. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
    the real Windows printer list.
-6. Launch the packaged management UI, invoke the remove/install queue actions, and assert the real
-   Windows printer list removes and restores all queues.
+6. Launch the packaged management UI, invoke the remove/install queue actions, refresh capabilities,
+   set and restore default copies, and assert the real Windows printer list plus package diagnostics
+   reflect each action.
 7. Assert package-local route evidence for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior. The standalone
    `Route resolved` event is preferred; the `Job completed` event also carries the route so completion

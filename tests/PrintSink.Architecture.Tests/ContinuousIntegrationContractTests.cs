@@ -255,9 +255,19 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("Wait-ForPrintSinkQueuesRemoved", e2eScript);
         Assert.Contains("Invoke-Button -Root $window -Name 'Install queues'", e2eScript);
         Assert.Contains("Wait-ForPrintSinkQueuesInstalled", e2eScript);
-        Assert.Contains("invokedActions = @('Remove queues', 'Install queues')", e2eScript);
+        Assert.Contains("Invoke-Button -Root $window -Name 'Refresh capabilities'", e2eScript);
+        Assert.Contains("function Set-SpinnerRangeValue", e2eScript);
+        Assert.Contains("Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 2", e2eScript);
+        Assert.Contains("Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 1", e2eScript);
+        Assert.Contains("Management UI capabilities refreshed", e2eScript);
+        Assert.Contains("Management UI default copies updated", e2eScript);
+        Assert.Contains("invokedActions = @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies')", e2eScript);
         Assert.Contains("removedQueues = $removedQueues", e2eScript);
         Assert.Contains("installedQueues = $installedQueues", e2eScript);
+        Assert.Contains("managementCapabilityRefresh = $managementCapabilityRefresh", e2eScript);
+        Assert.Contains("extensionCapabilityRefresh = $extensionCapabilityRefresh", e2eScript);
+        Assert.Contains("defaultCopiesSet = $defaultCopiesSet", e2eScript);
+        Assert.Contains("defaultCopiesRestore = $defaultCopiesRestore", e2eScript);
         Assert.Contains("managementUi = $managementUiResult", e2eScript);
         Assert.Contains("-ManagementUi $managementUiResult", e2eScript);
         Assert.Contains("function Assert-ManagementUi", validatorScript);
@@ -265,6 +275,9 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("Management UI invoked actions", validatorScript);
         Assert.Contains("Management UI removed queue names", validatorScript);
         Assert.Contains("Management UI installed queue names", validatorScript);
+        Assert.Contains("Management UI did not record a capability-refresh diagnostic", validatorScript);
+        Assert.Contains("Management UI default-copy set diagnostic did not verify two copies", validatorScript);
+        Assert.Contains("Management UI default-copy restore diagnostic did not verify one copy", validatorScript);
         Assert.Contains("Assert-ManagementUi -ManagementUi $result.managementUi", validatorScript);
         Assert.Contains("after management UI check", validatorScript);
     }

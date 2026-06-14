@@ -69,7 +69,7 @@ internal sealed class ManagementScreen : Component
                     RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
                     () => _ = InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText),
                     () => _ = RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText),
-                    () => RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText),
+                    () => _ = RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText),
                     defaultCopies,
                     setDefaultCopies,
                     selectedSnapshot.CanModifyUserDefaultPrintTicket == true,
@@ -480,20 +480,32 @@ internal sealed class ManagementScreen : Component
         }
     }
 
-    private static void RefreshCapabilities(
+    private static async Task RefreshCapabilitiesAsync(
         EndpointKind selectedKind,
         Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
         Action<string> setStatusText)
     {
         try
         {
+            VirtualEndpoint endpoint = EndpointCatalog.GetByKind(selectedKind);
             string status = InstalledVirtualPrinterReader.RefreshCapabilities(selectedKind);
-            setInstalledPrinters(InstalledVirtualPrinterReader.ReadAll());
-            setStatusText(status);
+            await AppendDiagnosticAsync(
+                    "Management UI capabilities refreshed",
+                    endpoint.QueueName,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+
+            UiDispatch.Post(() =>
+            {
+                setInstalledPrinters(snapshots);
+                setStatusText(status);
+            });
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
-            setStatusText($"Capability refresh failed: {ex.Message}");
+            UiDispatch.Post(() => setStatusText($"Capability refresh failed: {ex.Message}"));
         }
     }
 
@@ -548,6 +560,12 @@ internal sealed class ManagementScreen : Component
             string status = await UserDefaultPrintTicketEditor
                 .SetCopiesAsync(selectedKind, copies, CancellationToken.None)
                 .ConfigureAwait(false);
+            await AppendDiagnosticAsync(
+                    "Management UI default copies updated",
+                    EndpointCatalog.GetByKind(selectedKind).QueueName,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
 
             UiDispatch.Post(() =>
@@ -571,6 +589,26 @@ internal sealed class ManagementScreen : Component
         }
 
         return (int)Math.Clamp(Math.Round(copies, MidpointRounding.AwayFromZero), 1, 999);
+    }
+
+    private static async Task AppendDiagnosticAsync(
+        string message,
+        string endpoint,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        using LocalDiagnosticEventStore diagnosticEventStore = AppSettingsStoreFactory.CreateDiagnosticEventStore();
+        await diagnosticEventStore
+            .AppendAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.Now,
+                    DiagnosticEventSeverity.Information,
+                    nameof(ManagementScreen),
+                    message,
+                    endpoint,
+                    detail),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task SaveJobUiOptionsAsync(

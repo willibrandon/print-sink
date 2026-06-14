@@ -3481,7 +3481,9 @@ function Invoke-PrintSinkVirtualAttributeRead {
 
 function Invoke-PrintSinkManagementUi {
     param(
-        [string[]] $ExpectedQueues
+        [string[]] $ExpectedQueues,
+        [string] $PackageFamilyName,
+        [DateTimeOffset] $StartedUtc
     )
 
     Add-Type -AssemblyName UIAutomationClient
@@ -3543,13 +3545,58 @@ function Invoke-PrintSinkManagementUi {
             -ExpectedQueues $ExpectedQueues `
             -Context 'after management UI install'
 
+        Invoke-Button -Root $window -Name 'Refresh capabilities' -TimeoutSeconds 30
+        $managementCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint 'PrintSink - PDF' `
+            -Message 'Management UI capabilities refreshed' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('Capabilities refreshed for PrintSink - PDF') `
+            -TimeoutSeconds 60
+        $extensionCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint 'PrintSink - PDF' `
+            -Message 'Capabilities updated' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @(
+                'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
+                'mxdc=configured',
+                'pdr=updated',
+                'pdlPassthroughWithJobAttributes=enabled',
+                'pdrResources=') `
+            -TimeoutSeconds 120
+
+        Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 2
+        Invoke-Button -Root $window -Name 'Set default copies' -TimeoutSeconds 30
+        $defaultCopiesSet = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint 'PrintSink - PDF' `
+            -Message 'Management UI default copies updated' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('copies=2', 'verifiedCopies=2') `
+            -TimeoutSeconds 60
+
+        Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 1
+        Invoke-Button -Root $window -Name 'Set default copies' -TimeoutSeconds 30
+        $defaultCopiesRestore = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint 'PrintSink - PDF' `
+            -Message 'Management UI default copies updated' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('copies=1', 'verifiedCopies=1') `
+            -TimeoutSeconds 60
+
         return [ordered]@{
             windowTitle = $window.Current.Name
             processId = $process.Id
             visibleActions = $expectedActions
-            invokedActions = @('Remove queues', 'Install queues')
+            invokedActions = @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies')
             removedQueues = $removedQueues
             installedQueues = $installedQueues
+            managementCapabilityRefresh = $managementCapabilityRefresh
+            extensionCapabilityRefresh = $extensionCapabilityRefresh
+            defaultCopiesSet = $defaultCopiesSet
+            defaultCopiesRestore = $defaultCopiesRestore
         }
     }
     finally {
@@ -4233,6 +4280,29 @@ function Set-TextBoxValue {
 
     $valuePattern = $textBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     $valuePattern.SetValue($Value)
+}
+
+function Set-SpinnerRangeValue {
+    param(
+        [System.Windows.Automation.AutomationElement] $Root,
+        [string] $Name,
+        [double] $Value
+    )
+
+    $spinner = Find-EnabledDescendant `
+        -Root $Root `
+        -Condition ([System.Windows.Automation.AndCondition]::new(
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                $Name),
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Spinner))) `
+        -TimeoutSeconds 30 `
+        -Description "the $Name spinner"
+
+    $rangeValuePattern = $spinner.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
+    $rangeValuePattern.SetValue($Value)
 }
 
 function Invoke-Button {
@@ -4979,9 +5049,18 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 15 `
         -Feature 'Refresh PDC on settings change' `
-        -Passed ([string]$ExtensionCapabilities.message -eq 'Capabilities updated') `
-        -Evidence 'The packaged app invoked RefreshPrintDeviceCapabilities and the extension recorded Capabilities updated.' `
-        -Artifact $ExtensionCapabilities
+        -Passed (
+            [string]$ExtensionCapabilities.message -eq 'Capabilities updated' `
+                -and [string]$ManagementUi.managementCapabilityRefresh.message -eq 'Management UI capabilities refreshed' `
+                -and [string]$ManagementUi.extensionCapabilityRefresh.message -eq 'Capabilities updated') `
+        -Evidence 'The packaged management UI and packaged app command both invoked RefreshPrintDeviceCapabilities, and the extension recorded Capabilities updated.' `
+        -Artifact ([ordered]@{
+            command = $ExtensionCapabilities
+            managementUi = [ordered]@{
+                request = $ManagementUi.managementCapabilityRefresh
+                extension = $ManagementUi.extensionCapabilityRefresh
+            }
+        })
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
@@ -4989,9 +5068,17 @@ function New-PrintSinkFeatureEvidence {
         -Feature 'Get/set user default print ticket' `
         -Passed (
             [string]$UserDefaultPrintTicket.set.detail -like '*copies=2*verifiedCopies=2*' `
-                -and [string]$UserDefaultPrintTicket.restore.detail -like '*copies=1*verifiedCopies=1*') `
-        -Evidence 'The packaged app changed the installed PDF queue default copies and restored it through IppPrintDevice.UserDefaultPrintTicket.' `
-        -Artifact $UserDefaultPrintTicket
+                -and [string]$UserDefaultPrintTicket.restore.detail -like '*copies=1*verifiedCopies=1*' `
+                -and [string]$ManagementUi.defaultCopiesSet.detail -like '*copies=2*verifiedCopies=2*' `
+                -and [string]$ManagementUi.defaultCopiesRestore.detail -like '*copies=1*verifiedCopies=1*') `
+        -Evidence 'The packaged management UI and packaged app command changed the installed PDF queue default copies and restored it through IppPrintDevice.UserDefaultPrintTicket.' `
+        -Artifact ([ordered]@{
+            command = $UserDefaultPrintTicket
+            managementUi = [ordered]@{
+                set = $ManagementUi.defaultCopiesSet
+                restore = $ManagementUi.defaultCopiesRestore
+            }
+        })
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
@@ -5531,7 +5618,10 @@ try {
     })
 
     Write-E2EProgress 'Verifying management UI queue actions'
-    $managementUiResult = Invoke-PrintSinkManagementUi -ExpectedQueues $expectedQueues
+    $managementUiResult = Invoke-PrintSinkManagementUi `
+        -ExpectedQueues $expectedQueues `
+        -PackageFamilyName $package.PackageFamilyName `
+        -StartedUtc $e2eStartedUtc
     $queueSnapshots.Add([ordered]@{
         context = 'after management UI check'
         queues = Assert-PrintSinkQueuesInstalled `
