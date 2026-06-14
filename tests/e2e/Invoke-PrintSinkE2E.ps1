@@ -3586,17 +3586,37 @@ function Invoke-PrintSinkManagementUi {
             -DetailContains @('copies=1', 'verifiedCopies=1') `
             -TimeoutSeconds 60
 
+        Invoke-Button -Root $window -Name 'Enable Job UI' -TimeoutSeconds 30
+        $jobUiEnabled = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Management UI Job UI mode updated' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('Job UI enabled.') `
+            -TimeoutSeconds 60
+
+        Invoke-Button -Root $window -Name 'Headless jobs' -TimeoutSeconds 30
+        $jobUiHeadless = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Management UI Job UI mode updated' `
+            -StartedUtc $StartedUtc `
+            -DetailContains @('Headless jobs enabled.') `
+            -TimeoutSeconds 60
+
         return [ordered]@{
             windowTitle = $window.Current.Name
             processId = $process.Id
             visibleActions = $expectedActions
-            invokedActions = @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies')
+            invokedActions = @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs')
             removedQueues = $removedQueues
             installedQueues = $installedQueues
             managementCapabilityRefresh = $managementCapabilityRefresh
             extensionCapabilityRefresh = $extensionCapabilityRefresh
             defaultCopiesSet = $defaultCopiesSet
             defaultCopiesRestore = $defaultCopiesRestore
+            jobUiEnabled = $jobUiEnabled
+            jobUiHeadless = $jobUiHeadless
         }
     }
     finally {

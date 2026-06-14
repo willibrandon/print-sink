@@ -396,7 +396,7 @@ function Assert-ManagementUi {
     $invokedActions = @(Get-ResultProperty -Object $ManagementUi -Name 'invokedActions')
     Assert-SetEqual `
         -Actual $invokedActions `
-        -Expected @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies') `
+        -Expected @('Remove queues', 'Install queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs') `
         -Description 'Management UI invoked actions'
 
     $removedQueues = @(Get-ResultProperty -Object $ManagementUi -Name 'removedQueues')
@@ -433,6 +433,14 @@ function Assert-ManagementUi {
     $defaultCopiesRestore = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesRestore'
     Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesRestore -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy restore diagnostic.'
     Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesRestore -Name 'detail') -like '*copies=1*verifiedCopies=1*') 'Management UI default-copy restore diagnostic did not verify one copy.'
+
+    $jobUiEnabled = Get-ResultProperty -Object $ManagementUi -Name 'jobUiEnabled'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiEnabled -Name 'message') -eq 'Management UI Job UI mode updated') 'Management UI did not record the Job UI enabled diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiEnabled -Name 'detail') -like '*Job UI enabled.*') 'Management UI Job UI enabled diagnostic did not report enabled mode.'
+
+    $jobUiHeadless = Get-ResultProperty -Object $ManagementUi -Name 'jobUiHeadless'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiHeadless -Name 'message') -eq 'Management UI Job UI mode updated') 'Management UI did not record the headless jobs diagnostic.'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiHeadless -Name 'detail') -like '*Headless jobs enabled.*') 'Management UI headless jobs diagnostic did not report headless mode.'
 }
 
 function Assert-CleanupEvidence {

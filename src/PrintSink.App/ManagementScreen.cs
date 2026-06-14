@@ -593,7 +593,7 @@ internal sealed class ManagementScreen : Component
 
     private static async Task AppendDiagnosticAsync(
         string message,
-        string endpoint,
+        string? endpoint,
         string detail,
         CancellationToken cancellationToken)
     {
@@ -623,11 +623,18 @@ internal sealed class ManagementScreen : Component
                 .Create()
                 .SaveJobUiOptionsAsync(options)
                 .ConfigureAwait(false);
+            string status = launchJobUi ? "Job UI enabled." : "Headless jobs enabled.";
+            await AppendDiagnosticAsync(
+                    "Management UI Job UI mode updated",
+                    null,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
 
             UiDispatch.Post(() =>
             {
                 setJobUiOptions(options);
-                setStatusText(launchJobUi ? "Job UI enabled." : "Headless jobs enabled.");
+                setStatusText(status);
             });
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
