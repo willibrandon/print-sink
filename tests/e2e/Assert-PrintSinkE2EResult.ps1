@@ -20,6 +20,7 @@ $expectedQueues = @(
 
 $requiredSnapshotContexts = @(
     'after provisioning',
+    'after management UI check',
     'after extension capability refresh',
     'after user default print ticket update',
     'after virtual-printer attribute-read assertion',
@@ -380,6 +381,20 @@ function Assert-QueuePersistence {
     Assert-Condition ([int](Get-ResultProperty -Object $persistence -Name 'snapshots') -eq $requiredSnapshotContexts.Count) 'Queue-persistence snapshot count did not match the required contexts.'
 }
 
+function Assert-ManagementUi {
+    param(
+        [object] $ManagementUi
+    )
+
+    Assert-Condition ($null -ne $ManagementUi) 'The E2E result did not include management UI evidence.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $ManagementUi -Name 'windowTitle'))) 'Management UI evidence omitted the window title.'
+    $visibleActions = @(Get-ResultProperty -Object $ManagementUi -Name 'visibleActions')
+    Assert-SetEqual `
+        -Actual $visibleActions `
+        -Expected @('Install queues', 'Remove queues', 'Refresh queues', 'Refresh capabilities') `
+        -Description 'Management UI visible actions'
+}
+
 function Assert-CleanupEvidence {
     param(
         [object] $Cleanup
@@ -545,6 +560,7 @@ Assert-FeatureEvidence `
     -FeatureEvidence @($result.featureEvidence) `
     -DeferredFeatureEvidence @($result.deferredFeatureEvidence)
 Assert-QueuePersistence -Result $result
+Assert-ManagementUi -ManagementUi $result.managementUi
 Assert-CleanupEvidence -Cleanup $result.cleanup
 Assert-RealPrintOutputs -RealPrints @($result.realPrints)
 Assert-AdditionalOutputs -Result $result

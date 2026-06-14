@@ -141,20 +141,21 @@ The required E2E suite proves the current installed-package behavior:
    then assert both outputs and overlapping route/completion diagnostics.
 5. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against
    the real Windows printer list.
-6. Assert package-local route evidence for every real job: source content type, target format,
+6. Launch the packaged management UI and assert the queue lifecycle actions are visible and enabled.
+7. Assert package-local route evidence for every real job: source content type, target format,
    action, conversion kind, and route reason must match the expected endpoint behavior. The standalone
    `Route resolved` event is preferred; the `Job completed` event also carries the route so completion
    evidence remains self-contained.
-7. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
+8. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, MXDC
    configuration, contract-19 PDL passthrough-with-job-attributes enablement, and printer selection
    records the adaptive-card/additional-field request.
-8. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
+9. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
-9. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
+10. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
    `document-format-default` or `document-format-supported` values, matching the PSA v4 platform
    behavior for virtual printers.
-10. Generate, sign, install, and remove a temporary PSA extension INF for local IPP class-driver
+11. Generate, sign, install, and remove a temporary PSA extension INF for local IPP class-driver
    queues. Assert Windows writes the PSA AUMID device property, the local IPP helper receives real
    `GetPrinterAttributes` traffic, a stopped/rejecting IPP probe reports `printer-state=stopped`,
    `printer-state-reasons=paused`, and `printer-is-accepting-jobs=false`, the real
@@ -162,35 +163,35 @@ The required E2E suite proves the current installed-package behavior:
    job records `PrintSupportWorkflowBackgroundTask` start/compression-state. Physical
    `PdlModificationRequested` pass-through is recorded when Windows delivers it, but document-output
    assertions are made through the PrintSink virtual queues.
-11. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
+12. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
     target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
     copy route and provider-v2 state. If the live runtime can encode IPP job and operation attributes
     and accepts provider-v2 submission, the run must prove that path. If the provider reports
     unsupported or the attribute conversion API is unusable, the run must record explicit v1 fallback
     with the runtime failure detail.
-12. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
+13. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-13. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
+14. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
    and assert the owner is restored when Settings closes.
-14. Set package-local default text and image watermarks, call
+15. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
-15. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
+16. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-16. Launch Job UI, assert it receives virtual-printer PDL metadata for the real job, change watermark
+17. Launch Job UI, assert it receives virtual-printer PDL metadata for the real job, change watermark
     options, fill the job-password field, complete the job, assert the output reflects the watermark
     choice, assert the output does not contain the password, and assert diagnostics record the password
     metadata as not applicable to virtual file output.
-17. Launch Job UI, assert it receives virtual-printer PDL metadata, cancel the job, and assert the target
+18. Launch Job UI, assert it receives virtual-printer PDL metadata, cancel the job, and assert the target
     remains empty while package-local diagnostics record `Job canceled`.
-18. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
+19. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
     app execution alias, WinRT host files, and activatable classes.
-19. Assert localized queue DisplayName resources are declared in the signed package and resolve to
+20. Assert localized queue DisplayName resources are declared in the signed package and resolve to
     the expected installed queue names.
-20. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
+21. Assert all six queues stay installed after provisioning, extension refresh, default-ticket edits,
     every real print path, Settings UI, failed jobs, Job UI complete, and Job UI cancel.
-21. Assert all six queues are removed when `-Cleanup` is used, and write the final cleanup snapshot to
+22. Assert all six queues are removed when `-Cleanup` is used, and write the final cleanup snapshot to
     `e2e-result.json`.
 
 Any implemented print-stack behavior that is not represented above must add a real E2E assertion in the
@@ -253,9 +254,10 @@ Real output assertions:
   that removes, loses, or unregisters a PrintSink queue fails CI.
 
 The CI job records the package version, Windows build, architecture, source application, target queue,
-queue snapshots, queue-persistence evidence, cleanup evidence, feature evidence, and output result for
-each run. The E2E script writes the full run record to `e2e-result.json` in the output directory, and
-the root wrapper runs `tests\e2e\Assert-PrintSinkE2EResult.ps1` against that file before CI uploads it
-with the generated documents. The validator rechecks the supported/deferred feature evidence, queue
-persistence snapshots, cleanup state, output file byte counts, document validity, PDF passthrough byte
-equality, cloud sink artifacts, failed-job empty outputs, and Job UI cancel evidence.
+queue snapshots, queue-persistence evidence, management UI actions, cleanup evidence, feature evidence,
+and output result for each run. The E2E script writes the full run record to `e2e-result.json` in the
+output directory, and the root wrapper runs `tests\e2e\Assert-PrintSinkE2EResult.ps1` against that file
+before CI uploads it with the generated documents. The validator rechecks the supported/deferred
+feature evidence, queue persistence snapshots, management UI evidence, cleanup state, output file byte
+counts, document validity, PDF passthrough byte equality, cloud sink artifacts, failed-job empty
+outputs, and Job UI cancel evidence.

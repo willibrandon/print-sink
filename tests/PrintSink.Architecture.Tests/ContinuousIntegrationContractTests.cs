@@ -223,6 +223,7 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("$result['cleanup'] = $cleanupResult", e2eScript);
         Assert.Contains("Assert-PrintSinkQueuesRemoved", e2eScript);
         Assert.Contains("Queue persistence failed", e2eScript);
+        Assert.Contains("after management UI check", e2eScript);
         AssertBefore(
             e2eScript,
             "$queuePersistenceResult = Assert-PrintSinkQueuePersistence",
@@ -231,6 +232,31 @@ internal sealed class ContinuousIntegrationContractTests
             e2eScript,
             "$result['cleanup'] = $cleanupResult",
             "Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath | Out-Null");
+    }
+
+    /// <summary>
+    /// Verifies the real E2E suite proves the management UI exposes queue lifecycle actions.
+    /// </summary>
+    [TestMethod]
+    public void E2eRequiresManagementUiQueueLifecycleActions()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+        string validatorScript = File.ReadAllText(validatorPath);
+
+        Assert.Contains("function Invoke-PrintSinkManagementUi", e2eScript);
+        Assert.Contains("'Install queues'", e2eScript);
+        Assert.Contains("'Remove queues'", e2eScript);
+        Assert.Contains("'Refresh queues'", e2eScript);
+        Assert.Contains("'Refresh capabilities'", e2eScript);
+        Assert.Contains("managementUi = $managementUiResult", e2eScript);
+        Assert.Contains("-ManagementUi $managementUiResult", e2eScript);
+        Assert.Contains("function Assert-ManagementUi", validatorScript);
+        Assert.Contains("Management UI visible actions", validatorScript);
+        Assert.Contains("Assert-ManagementUi -ManagementUi $result.managementUi", validatorScript);
+        Assert.Contains("after management UI check", validatorScript);
     }
 
     /// <summary>

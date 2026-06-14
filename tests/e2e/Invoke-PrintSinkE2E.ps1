@@ -3425,6 +3425,72 @@ function Invoke-PrintSinkVirtualAttributeRead {
             'document-format-supported=<unsupported>')
 }
 
+function Invoke-PrintSinkManagementUi {
+    Add-Type -AssemblyName UIAutomationClient
+
+    $process = Start-Process -FilePath 'printsink-app.exe' -PassThru
+    try {
+        $deadline = [DateTime]::UtcNow.AddSeconds(45)
+        $window = $null
+        do {
+            $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                [System.Windows.Automation.TreeScope]::Children,
+                [System.Windows.Automation.Condition]::TrueCondition)
+            foreach ($candidate in $windows) {
+                if (($candidate.Current.ProcessId -eq $process.Id) -or ($candidate.Current.Name -eq 'PrintSink')) {
+                    $window = $candidate
+                    break
+                }
+            }
+
+            if ($null -ne $window) {
+                break
+            }
+
+            Start-Sleep -Milliseconds 250
+        }
+        while ([DateTime]::UtcNow -lt $deadline)
+
+        if ($null -eq $window) {
+            throw 'Timed out waiting for the PrintSink management window.'
+        }
+
+        $expectedActions = @(
+            'Install queues',
+            'Remove queues',
+            'Refresh queues',
+            'Refresh capabilities'
+        )
+        foreach ($actionName in $expectedActions) {
+            Find-EnabledDescendant `
+                -Root $window `
+                -Condition ([System.Windows.Automation.AndCondition]::new(
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::NameProperty,
+                        $actionName),
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                        [System.Windows.Automation.ControlType]::Button))) `
+                -TimeoutSeconds 30 `
+                -Description "the $actionName management action" | Out-Null
+        }
+
+        return [ordered]@{
+            windowTitle = $window.Current.Name
+            processId = $process.Id
+            visibleActions = $expectedActions
+        }
+    }
+    finally {
+        if ($process -and -not $process.HasExited) {
+            $process.CloseMainWindow() | Out-Null
+            if (-not $process.WaitForExit(5000)) {
+                Stop-PrintSinkProcess -Process $process
+            }
+        }
+    }
+}
+
 function Invoke-PrintSinkSettingsWatermarkPrint {
     param(
         [string] $OutputDirectory,
@@ -4610,6 +4676,7 @@ function New-PrintSinkFeatureEvidence {
         [object] $PackageShape,
         [object[]] $QueueSnapshots,
         [object] $CliQueueLifecycle,
+        [object] $ManagementUi,
         [object] $ExtensionCapabilities,
         [object] $UserDefaultPrintTicket,
         [object] $VirtualAttributeRead,
@@ -4651,12 +4718,15 @@ function New-PrintSinkFeatureEvidence {
         -Passed (
             $virtualPrinters.Count -eq $ExpectedQueues.Count `
                 -and (Test-AllQueuesInstalled -QueueSnapshot $provisionedQueues -ExpectedQueues $ExpectedQueues) `
-                -and [string]$CliQueueLifecycle.install -like '*Installed*yes*') `
-        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, and the CLI observes them as installed.' `
+                -and [string]$CliQueueLifecycle.install -like '*Installed*yes*' `
+                -and @($ManagementUi.visibleActions).Contains('Install queues') `
+                -and @($ManagementUi.visibleActions).Contains('Remove queues')) `
+        -Evidence 'The signed package manifest declares all queues, headless provisioning installs them, the CLI observes them as installed, and the management UI exposes queue lifecycle actions.' `
         -Artifact ([ordered]@{
             virtualPrinters = $virtualPrinters.Count
             provisionedQueues = $provisionedQueues
             cliInstall = $CliQueueLifecycle.install
+            managementUi = $ManagementUi
             queuePersistence = $QueuePersistence
         })
 
@@ -5381,6 +5451,15 @@ try {
             -Context 'after provisioning'
     })
 
+    Write-E2EProgress 'Verifying management UI queue actions'
+    $managementUiResult = Invoke-PrintSinkManagementUi
+    $queueSnapshots.Add([ordered]@{
+        context = 'after management UI check'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after management UI check'
+    })
+
     Write-E2EProgress 'Verifying print support extension capabilities'
     $extensionCapabilitiesResult = Invoke-PrintSinkExtensionCapabilities `
         -PackageFamilyName $package.PackageFamilyName `
@@ -5561,6 +5640,7 @@ try {
         -PackageShape $packageShape `
         -QueueSnapshots @($queueSnapshots) `
         -CliQueueLifecycle $cliQueueLifecycle `
+        -ManagementUi $managementUiResult `
         -ExtensionCapabilities $extensionCapabilitiesResult `
         -UserDefaultPrintTicket $userDefaultPrintTicketResult `
         -VirtualAttributeRead $virtualAttributeReadResult `
@@ -5598,6 +5678,7 @@ try {
         queuePersistence = $queuePersistenceResult
         resultPath = $resultPath
         cliQueueLifecycle = $cliQueueLifecycle
+        managementUi = $managementUiResult
         outputDirectory = $OutputDirectory
         extensionCapabilities = $extensionCapabilitiesResult
         userDefaultPrintTicket = $userDefaultPrintTicketResult
