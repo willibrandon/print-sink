@@ -117,6 +117,7 @@ The script validates the installed package before provisioning:
 - multiple-instance application support for concurrent print activations.
 - all six virtual-printer manifest entries and their localized DisplayName resource references.
 - the preferred input format for every virtual-printer manifest entry.
+- supported passthrough format declarations for every virtual-printer manifest entry.
 - packaged PDC/PDR files for each queue.
 - `WinRT.Host.dll`, `PrintSink.Tasks.winmd`, `PrintSink.Xps.dll`, and the registered activatable classes.
 
@@ -151,6 +152,8 @@ The required E2E suite proves the current installed-package behavior:
    evidence remains self-contained.
    Preferred-input evidence must include the signed manifest preference and the observed source content type
    for each real queue.
+   Passthrough evidence must include signed-package `SupportedFormat` declarations, byte-for-byte PDF
+   passthrough, and observed copy routes for PDF, XPS/OXPS, and PostScript.
 8. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, MXDC
    configuration, contract-19 PDL passthrough-with-job-attributes enablement, and printer selection

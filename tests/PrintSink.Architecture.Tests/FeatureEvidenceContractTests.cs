@@ -106,6 +106,37 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies passthrough evidence records manifest supported formats and observed copy routes.
+    /// </summary>
+    [TestMethod]
+    public void PassthroughFormatEvidenceRequiresManifestFormatsAndCopyRoutes()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-PassthroughFormatEvidence", e2eScript);
+        Assert.Contains("New-VirtualPrinterSupportedFormatSummary", e2eScript);
+        Assert.Contains("manifestSupportedFormats", e2eScript);
+        Assert.Contains("observedCopyRoutes", e2eScript);
+        Assert.Contains("PDF passthrough is byte-for-byte identical", e2eScript);
+
+        Assert.Contains("Assert-PassthroughFormatEvidence", validatorScript);
+        Assert.Contains("expectedVirtualPrinterSupportedFormats", validatorScript);
+        Assert.Contains("Assert-SupportedFormatEvidence", validatorScript);
+        Assert.Contains("Assert-FilesEqual -ExpectedPath $pdf.sourcePath", validatorScript);
+        Assert.Contains("application/pdf -> Pdf; Copy; Endpoint supports passthrough.", validatorScript);
+        Assert.Contains("application/oxps -> Oxps; Copy; Endpoint supports passthrough.", validatorScript);
+        Assert.Contains("application/postscript -> PostScript; Copy; Endpoint supports passthrough.", validatorScript);
+
+        Assert.Contains("`SupportedFormat` declarations", design);
+        Assert.Contains("byte-for-byte PDF passthrough", design);
+        Assert.Contains("supported passthrough format declarations", testing);
+        Assert.Contains("observed copy routes", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]

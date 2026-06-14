@@ -1520,6 +1520,21 @@ function Assert-FileBytesEqual {
     }
 }
 
+function Test-FileBytesEqual {
+    param(
+        [string] $ExpectedPath,
+        [string] $ActualPath
+    )
+
+    try {
+        Assert-FileBytesEqual -ExpectedPath $ExpectedPath -ActualPath $ActualPath
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 function Start-PrintSinkWin32PrintProcess {
     param(
         [string] $PrinterName,
@@ -4665,6 +4680,62 @@ function Test-LocalizedQueueDisplayNameEvidence {
     return Test-AllQueuesInstalled -QueueSnapshot $InstalledQueues -ExpectedQueues $ExpectedQueues
 }
 
+function Test-SupportedFormatEvidence {
+    param(
+        [object[]] $VirtualPrinters
+    )
+
+    foreach ($expectedPrinter in $expectedVirtualPrinters) {
+        $actualPrinter = @($VirtualPrinters |
+            Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        if ($null -eq $actualPrinter) {
+            return $false
+        }
+
+        $actualFormats = @(Get-ObjectPropertyValue -Object $actualPrinter -Name 'supportedFormats')
+        $expectedFormats = @($expectedPrinter.supportedFormats)
+        if ($actualFormats.Count -ne $expectedFormats.Count) {
+            return $false
+        }
+
+        foreach ($expectedFormat in $expectedFormats) {
+            $expectedType = [string](Get-ObjectPropertyValue -Object $expectedFormat -Name 'type')
+            $expectedMaxVersion = [string](Get-ObjectPropertyValue -Object $expectedFormat -Name 'maxVersion')
+            $actualFormat = @($actualFormats |
+                Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'type') -eq $expectedType } |
+                Select-Object -First 1)[0]
+            if ($null -eq $actualFormat) {
+                return $false
+            }
+
+            $actualMaxVersion = [string](Get-ObjectPropertyValue -Object $actualFormat -Name 'maxVersion')
+            if ($actualMaxVersion -ne $expectedMaxVersion) {
+                return $false
+            }
+        }
+    }
+
+    return $true
+}
+
+function Test-PassthroughFormatEvidence {
+    param(
+        [object[]] $VirtualPrinters,
+        [object[]] $RealPrints,
+        [object] $PdfPassthrough
+    )
+
+    $xpsPrint = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - XPS'
+    $postScriptPrint = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PostScript'
+
+    return (Test-SupportedFormatEvidence -VirtualPrinters $VirtualPrinters) `
+        -and (Test-RouteEquals -Result $PdfPassthrough -ExpectedRoute 'application/pdf -> Pdf; Copy; Endpoint supports passthrough.') `
+        -and (Test-RouteEquals -Result $xpsPrint -ExpectedRoute 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.') `
+        -and (Test-RouteEquals -Result $postScriptPrint -ExpectedRoute 'application/postscript -> PostScript; Copy; Endpoint supports passthrough.') `
+        -and (Test-FileBytesEqual -ExpectedPath $PdfPassthrough.sourcePath -ActualPath $PdfPassthrough.outputPath)
+}
+
 function Test-PreferredInputFormatEvidence {
     param(
         [object[]] $VirtualPrinters,
@@ -4777,6 +4848,21 @@ function Test-RouteContains {
     return [string]$route -like "*$ExpectedText*"
 }
 
+function Test-RouteEquals {
+    param(
+        [object] $Result,
+        [string] $ExpectedRoute
+    )
+
+    if ($null -eq $Result -or $null -eq $Result.diagnostic) {
+        return $false
+    }
+
+    $diagnostic = Get-ObjectPropertyValue -Object $Result -Name 'diagnostic'
+    $route = Get-ObjectPropertyValue -Object $diagnostic -Name 'route'
+    return [string]$route -eq $ExpectedRoute
+}
+
 function New-PrintResultSummary {
     param(
         [object[]] $Results,
@@ -4809,6 +4895,20 @@ function New-PrintResultSummary {
         }
 
         $summary
+    })
+}
+
+function New-VirtualPrinterSupportedFormatSummary {
+    param(
+        [object[]] $VirtualPrinters
+    )
+
+    return @($VirtualPrinters | ForEach-Object {
+        [ordered]@{
+            printerUri = Get-ObjectPropertyValue -Object $_ -Name 'printerUri'
+            displayName = Get-ObjectPropertyValue -Object $_ -Name 'displayName'
+            supportedFormats = @(Get-ObjectPropertyValue -Object $_ -Name 'supportedFormats')
+        }
     })
 }
 
@@ -5045,15 +5145,15 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 4 `
         -Feature 'Passthrough formats (no OS re-render)' `
-        -Passed (
-            (Test-RouteContains -Result $PdfPassthrough -ExpectedText 'application/pdf -> Pdf; Copy') `
-                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS') -ExpectedText 'Copy') `
-                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript') -ExpectedText 'Copy')) `
-        -Evidence 'PDF passthrough is byte-asserted; XPS and PostScript queues completed copy routes from real print jobs.' `
+        -Passed (Test-PassthroughFormatEvidence -VirtualPrinters $virtualPrinters -RealPrints $realPrints -PdfPassthrough $PdfPassthrough) `
+        -Evidence 'The signed manifest declares the expected SupportedFormat entries, PDF passthrough is byte-for-byte identical, and XPS plus PostScript real jobs completed copy routes.' `
         -Artifact ([ordered]@{
-            pdf = $PdfPassthrough.diagnostic
-            xps = (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS').diagnostic
-            postScript = (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript').diagnostic
+            manifestSupportedFormats = New-VirtualPrinterSupportedFormatSummary -VirtualPrinters $virtualPrinters
+            observedCopyRoutes = [ordered]@{
+                pdf = $PdfPassthrough
+                xps = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - XPS'
+                postScript = Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript'
+            }
         })
 
     $fileBackedPrints = @($realPrints | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'queue') -ne 'PrintSink - Cloud' })

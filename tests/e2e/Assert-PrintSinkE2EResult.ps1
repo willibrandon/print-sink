@@ -67,6 +67,14 @@ $expectedVirtualPrinterDisplayNames = @(
     [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; displayName = 'ms-resource:PwgRasterPrintDisplayName'; queue = 'PrintSink - PWG Raster'; preferredInputFormat = 'application/oxps' },
     [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; displayName = 'ms-resource:PclmPrintDisplayName'; queue = 'PrintSink - PCLm'; preferredInputFormat = 'application/oxps' }
 )
+$expectedVirtualPrinterSupportedFormats = @(
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pdf'; formats = @([pscustomobject]@{ type = 'application/pdf'; maxVersion = '1.7' }) },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-xps'; formats = @([pscustomobject]@{ type = 'application/oxps'; maxVersion = '1.0' }, [pscustomobject]@{ type = 'application/vnd.ms-xpsdocument'; maxVersion = '1.0' }) },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-ps'; formats = @([pscustomobject]@{ type = 'application/postscript'; maxVersion = '3.0' }) },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-cloud'; formats = @([pscustomobject]@{ type = 'application/pdf'; maxVersion = '1.7' }) },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; formats = @() },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; formats = @() }
+)
 
 function Assert-Condition {
     param(
@@ -230,6 +238,70 @@ function Assert-PreferredInputFormatEvidence {
             $route.StartsWith("$($expectedPrinter.preferredInputFormat) ->", [System.StringComparison]::Ordinal)) `
             "Observed route for $($expectedPrinter.queue) did not start with $($expectedPrinter.preferredInputFormat): $route"
     }
+}
+
+function Get-SupportedFormatKeys {
+    param(
+        [object[]] $Formats
+    )
+
+    return @($Formats | ForEach-Object {
+        "$([string](Get-ResultProperty -Object $_ -Name 'type')):$([string](Get-ResultProperty -Object $_ -Name 'maxVersion'))"
+    })
+}
+
+function Assert-SupportedFormatEvidence {
+    param(
+        [object[]] $ManifestSupportedFormats
+    )
+
+    Assert-SetEqual `
+        -Actual @($ManifestSupportedFormats | ForEach-Object { Get-ResultProperty -Object $_ -Name 'printerUri' }) `
+        -Expected @($expectedVirtualPrinterSupportedFormats | ForEach-Object { $_.printerUri }) `
+        -Description 'SupportedFormat manifest printer URIs'
+
+    foreach ($expectedPrinter in $expectedVirtualPrinterSupportedFormats) {
+        $manifestEntry = @($ManifestSupportedFormats |
+            Where-Object { [string](Get-ResultProperty -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $manifestEntry) "SupportedFormat evidence omitted manifest printer URI $($expectedPrinter.printerUri)."
+
+        Assert-SetEqual `
+            -Actual (Get-SupportedFormatKeys -Formats @(Get-ResultProperty -Object $manifestEntry -Name 'supportedFormats')) `
+            -Expected (Get-SupportedFormatKeys -Formats @($expectedPrinter.formats)) `
+            -Description "SupportedFormat declarations for $($expectedPrinter.printerUri)"
+    }
+}
+
+function Assert-PassthroughFormatEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Passthrough format evidence did not include an artifact.'
+
+    $manifestSupportedFormats = @(Get-ResultProperty -Object $Artifact -Name 'manifestSupportedFormats')
+    Assert-SupportedFormatEvidence -ManifestSupportedFormats $manifestSupportedFormats
+
+    $observedCopyRoutes = Get-ResultProperty -Object $Artifact -Name 'observedCopyRoutes'
+    Assert-Condition ($null -ne $observedCopyRoutes) 'Passthrough format evidence omitted observed copy routes.'
+
+    $pdf = Get-ResultProperty -Object $observedCopyRoutes -Name 'pdf'
+    Assert-CompletedJob -Result $pdf -Queue 'PDF passthrough feature evidence'
+    Assert-SourceApplication -Result $pdf -ExpectedSourceApplication 'printsink-app.exe' -Description 'PDF passthrough feature evidence'
+    Assert-Route -Result $pdf -ExpectedRoute 'application/pdf -> Pdf; Copy; Endpoint supports passthrough.' -Description 'PDF passthrough feature evidence'
+    Assert-Document -Format 'pdf' -Path $pdf.outputPath -ExpectedBytes $pdf.bytes -Contains 'foo'
+    Assert-FilesEqual -ExpectedPath $pdf.sourcePath -ActualPath $pdf.outputPath -Description 'PDF passthrough feature evidence output'
+
+    $xps = Get-ResultProperty -Object $observedCopyRoutes -Name 'xps'
+    Assert-CompletedJob -Result $xps -Queue 'XPS passthrough feature evidence'
+    Assert-Route -Result $xps -ExpectedRoute 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.' -Description 'XPS passthrough feature evidence'
+    Assert-Document -Format 'oxps' -Path $xps.outputPath -ExpectedBytes $xps.bytes -Contains 'foo'
+
+    $postScript = Get-ResultProperty -Object $observedCopyRoutes -Name 'postScript'
+    Assert-CompletedJob -Result $postScript -Queue 'PostScript passthrough feature evidence'
+    Assert-Route -Result $postScript -ExpectedRoute 'application/postscript -> PostScript; Copy; Endpoint supports passthrough.' -Description 'PostScript passthrough feature evidence'
+    Assert-Document -Format 'postscript' -Path $postScript.outputPath -ExpectedBytes $postScript.bytes
 }
 
 function Get-ResultTimestamp {
@@ -440,6 +512,10 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 3) {
             Assert-PreferredInputFormatEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 4) {
+            Assert-PassthroughFormatEvidence -Artifact $artifact
         }
 
         if ($number -eq 19) {
