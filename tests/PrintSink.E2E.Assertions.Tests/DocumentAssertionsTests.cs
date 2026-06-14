@@ -174,6 +174,29 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies an OXPS package with expected text only in a comment is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsOxpsWithExpectedTextOnlyInComment()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "comment-text.oxps");
+            WriteXpsPackage(path, "bar", commentText: "foo");
+
+            int exitCode = RunAssertion(["--format", "oxps", "--path", path, "--contains", "foo"], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("XPS fixed pages did not contain 'foo'", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies a valid PostScript document is accepted.
     /// </summary>
     [TestMethod]
@@ -501,8 +524,11 @@ internal sealed class DocumentAssertionsTests
         builder.Append(text);
     }
 
-    private static void WriteXpsPackage(string path, string fixedPageText)
+    private static void WriteXpsPackage(string path, string fixedPageText, string? commentText = null)
     {
+        string comment = string.IsNullOrWhiteSpace(commentText)
+            ? string.Empty
+            : $"  <!-- {commentText} -->";
         using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
         WriteZipEntry(
             archive,
@@ -521,6 +547,7 @@ internal sealed class DocumentAssertionsTests
             $"""
             <?xml version="1.0" encoding="utf-8"?>
             <FixedPage xmlns="http://schemas.microsoft.com/xps/2005/06" Width="816" Height="1056">
+            {comment}
               <Glyphs UnicodeString="{fixedPageText}" />
             </FixedPage>
             """);

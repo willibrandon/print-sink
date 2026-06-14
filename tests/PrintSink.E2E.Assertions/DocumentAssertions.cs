@@ -238,7 +238,7 @@ internal static partial class DocumentAssertions
             }
 
             if (!string.IsNullOrWhiteSpace(expectedText)
-                && fixedPageXml.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
+                && FixedPageContainsText(fixedPage, expectedText))
             {
                 foundExpectedText = true;
             }
@@ -250,6 +250,23 @@ internal static partial class DocumentAssertions
         }
 
         throw new InvalidDataException($"XPS fixed pages did not contain '{expectedText}': {path}");
+    }
+
+    private static bool FixedPageContainsText(XDocument fixedPage, string expectedText)
+    {
+        StringBuilder glyphText = new();
+        foreach (XElement glyphs in fixedPage
+            .Descendants()
+            .Where(static element => element.Name.LocalName == "Glyphs"))
+        {
+            string? unicodeString = (string?)glyphs.Attribute("UnicodeString");
+            if (!string.IsNullOrWhiteSpace(unicodeString))
+            {
+                glyphText.Append(unicodeString);
+            }
+        }
+
+        return glyphText.ToString().Contains(expectedText, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertXpsContentType(XDocument contentTypes, string requiredToken, string path)
