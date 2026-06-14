@@ -8,6 +8,7 @@
     <UseWinUI>true</UseWinUI>
     <CsWinRTComponent>true</CsWinRTComponent>
     <CsWinRTWindowsMetadata>10.0.26100.0</CsWinRTWindowsMetadata>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!--
       CsWinRT generates public ABI marshalling code for activatable classes during compilation. Authored
       XML comments remain enforced by architecture tests; csc XML output is disabled here so generated

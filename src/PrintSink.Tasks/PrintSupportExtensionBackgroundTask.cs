@@ -118,6 +118,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 bool pdrUpdated = false;
                 bool ippTimeoutsConfigured = false;
                 int resourceCount = 0;
+                string pdlPassthroughWithAttributesDetail =
+                    UniversalApiContract19PrintSupport.GetPdlPassthroughWithJobAttributesDetail(args);
 
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
                 XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
@@ -158,6 +160,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                         $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
                         $"pdr={(pdrUpdated ? "updated" : "skipped")}",
                         $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
+                        pdlPassthroughWithAttributesDetail,
                         $"pdrResources={resourceCount}"));
             });
         }

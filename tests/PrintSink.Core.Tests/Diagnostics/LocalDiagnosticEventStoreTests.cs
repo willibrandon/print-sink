@@ -178,6 +178,54 @@ internal sealed class LocalDiagnosticEventStoreTests
     }
 
     /// <summary>
+    /// Verifies appends wait for another process holding the shared diagnostics store lock.
+    /// </summary>
+    [TestMethod]
+    public async Task AppendAsyncWaitsForTransientStoreLock()
+    {
+        string directory = CreateTestDirectory();
+        using LocalDiagnosticEventStore store = new(directory);
+
+        try
+        {
+            string lockPath = Path.Combine(directory, "diagnostic-events.lock");
+            FileStream? externalLock = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            Task appendTask;
+            try
+            {
+                appendTask = store.AppendAsync(
+                    CreateRecord("After external store lock", DateTimeOffset.UtcNow),
+                    TestContext.CancellationToken);
+
+                await Task.Delay(250, TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsFalse(appendTask.IsCompleted);
+
+                await externalLock.DisposeAsync().ConfigureAwait(false);
+                externalLock = null;
+                await appendTask.ConfigureAwait(false);
+            }
+            finally
+            {
+                if (externalLock is not null)
+                {
+                    await externalLock.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+
+            IReadOnlyList<DiagnosticEventRecord> records = await store
+                .ReadRecentAsync(4, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            string[] messages = [.. records.Select(static record => record.Message)];
+
+            Assert.Contains("After external store lock", messages);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>
     /// Verifies appends survive a transient external reader holding the diagnostics file.
     /// </summary>
     [TestMethod]

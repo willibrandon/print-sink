@@ -9,6 +9,7 @@ namespace PrintSink.Xps.Tests;
 /// Tests the native XPS watermarker through its C# projection.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 internal sealed class NativeXpsPageWatermarkerTests
 {
     private const string WatermarkText = "PrintSink Test";

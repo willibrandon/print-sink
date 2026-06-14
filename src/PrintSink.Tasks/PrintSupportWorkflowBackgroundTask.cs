@@ -55,7 +55,10 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                 }
             });
             string compressionDetail = compressionDisabled ? "ippCompression=disabled" : "ippCompression=unchanged";
-            AppendDiagnostic("Workflow job starting", string.Empty, $"skipSystemRendering=default; {compressionDetail}");
+            AppendDiagnostic(
+                "Workflow job starting",
+                string.Empty,
+                $"skipSystemRendering=default; {compressionDetail}");
         }
         finally
         {
@@ -84,10 +87,15 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                     .GetAwaiter()
                     .GetResult();
                 PrintWorkflowPdlSourceContent sourceContent = args.SourceContent;
+                string passthroughWithAttributesDetail =
+                    UniversalApiContract19PrintSupport.GetWorkflowPassthroughWithAttributesDetail(args.PrinterJob);
                 AppendDiagnostic(
                     "Workflow job passed through",
                     GetPrinterName(args),
-                    FormatPassthroughDetail(sourceContent.ContentType, jobProcessingOptions));
+                    FormatPassthroughDetail(
+                        sourceContent.ContentType,
+                        jobProcessingOptions,
+                        passthroughWithAttributesDetail));
             }, exception => handlerException = exception);
 
             if (!succeeded)
@@ -173,12 +181,13 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 
     private static string FormatPassthroughDetail(
         string sourceContentType,
-        JobProcessingOptions? jobProcessingOptions)
+        JobProcessingOptions? jobProcessingOptions,
+        string passthroughWithAttributesDetail)
     {
         string passwordStatus = jobProcessingOptions?.JobPasswordOptions is null
             ? "job-password=absent"
             : "job-password=not-applied";
-        return $"source={sourceContentType}; target=system; {passwordStatus}";
+        return $"source={sourceContentType}; target=system; {passwordStatus}; {passthroughWithAttributesDetail}";
     }
 
     private static string GetPrinterName(PrintWorkflowPdlModificationRequestedEventArgs args)

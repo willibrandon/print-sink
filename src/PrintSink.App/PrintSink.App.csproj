@@ -15,6 +15,7 @@
         <PrintSinkXpsPlatform>$(Platform)</PrintSinkXpsPlatform>
         <UseWinUI>true</UseWinUI>
         <WindowsPackageType>MSIX</WindowsPackageType>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <!--
             WindowsAppSDKSelfContained bundles the Windows App SDK runtime alongside the
             published exe so the app:

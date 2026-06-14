@@ -144,7 +144,8 @@ The required E2E suite proves the current installed-package behavior:
    evidence remains self-contained.
 7. Assert the real `PrintSupportExtensionBackgroundTask` path: every queue records
    `Print ticket validated`, capability refresh records custom features, PDR update, and MXDC
-   configuration, and printer selection records the adaptive-card/additional-field request.
+   configuration, capability refresh records contract-19 PDL passthrough-with-job-attributes availability
+   when Windows exposes it, and printer selection records the adaptive-card/additional-field request.
 8. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
 9. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable
@@ -155,11 +156,14 @@ The required E2E suite proves the current installed-package behavior:
    `GetPrinterAttributes` traffic, a stopped/rejecting IPP probe reports `printer-state=stopped`,
    `printer-state-reasons=paused`, and `printer-is-accepting-jobs=false`, the real
    `PrintSupportExtensionBackgroundTask` validates print tickets for that IPP queue, and a real print
-   job records `PrintSupportWorkflowBackgroundTask` start/compression-state and pass-through
-   diagnostics. Document-output assertions are made through the PrintSink virtual queues.
+   job records `PrintSupportWorkflowBackgroundTask` start/compression-state, pass-through, and
+   passthrough-with-attributes state diagnostics. Document-output assertions are made through the
+   PrintSink virtual queues.
 11. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
    target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
-   copy route.
+   copy route, provider-v1 submission, and provider-v2 job-attribute availability. Provider-v2
+   job-attribute submission remains deferred until encoded IPP buffers are implemented and proven
+   without hanging workflow completion.
 12. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
 13. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
@@ -191,7 +195,8 @@ from the live assertions above and fails the run if a supported print-stack feat
 Tracked compatibility hooks that are not claimed as supported behavior are written separately as
 `deferredFeatureEvidence` and must not be used to satisfy supported feature coverage. The current
 deferred hooks are job notification/job-issue activation and IPP communication-error timeout recovery
-because Windows does not expose deterministic triggers for those events in the supported E2E path.
+because Windows does not expose deterministic triggers for those events in the supported E2E path,
+plus provider-v2 PDL passthrough with job attributes until the attribute-buffer submission path is real.
 
 Real output assertions:
 
@@ -220,7 +225,8 @@ Real output assertions:
   workflow start and pass-through, record IPP compression state while leaving system rendering enabled,
   and produce local IPP request evidence.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
-  Windows' PDL passthrough provider.
+  Windows' PDL passthrough provider, and diagnostics must record provider-v2 availability without
+  treating an unencoded attribute-buffer submission as success.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
 - Settings UI activation must show the Reactor settings surface, disable the real Windows print dialog

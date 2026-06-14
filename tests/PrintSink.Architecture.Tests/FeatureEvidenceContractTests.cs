@@ -51,7 +51,7 @@ internal sealed partial class FeatureEvidenceContractTests
         string design = File.ReadAllText(designPath);
 
         Assert.Contains("Rows 1-21, 23-25, and 27 are supported", design);
-        Assert.Contains("Rows 22 and 26 are tracked separately as deferred compatibility hooks", design);
+        Assert.Contains("Rows 22, 26, and 28 are tracked separately as deferred compatibility hooks", design);
         Assert.Contains("every supported feature in §4 implemented", design);
         Assert.DoesNotContain("no feature is descoped", design);
     }
@@ -65,6 +65,11 @@ internal sealed partial class FeatureEvidenceContractTests
         string jobPreviewScreen = ReadRepositoryFile("src", "PrintSink.App", "JobPreviewScreen.cs");
         string workflowTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportWorkflowBackgroundTask.cs");
         string extensionTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportExtensionBackgroundTask.cs");
+        string printSupportContract19 = ReadRepositoryFile(
+            "src",
+            "PrintSink.Tasks",
+            "UniversalApiContract19PrintSupport.cs");
+        string printerContract19 = ReadRepositoryFile("src", "PrintSink.App", "UniversalApiContract19PrinterApis.cs");
 
         Assert.Contains("session.JobNotification += OnJobNotification", jobPreviewScreen);
         Assert.Contains("AppendJobNotificationDiagnostic", jobPreviewScreen);
@@ -82,6 +87,11 @@ internal sealed partial class FeatureEvidenceContractTests
         Assert.Contains("IppCommunicationErrorKind.Timeout", extensionTask);
         Assert.Contains("ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration)", extensionTask);
         Assert.Contains("IPP communication error", extensionTask);
+
+        Assert.Contains("SetPdlPassthroughWithJobAttributesSupported", printSupportContract19);
+        Assert.Contains("pdlPassthroughWithJobAttributes=available-not-enabled", printSupportContract19);
+        Assert.Contains("IsPassthroughWithJobAttributesSupported", printerContract19);
+        Assert.Contains("provider2Submit=projection-unavailable", printerContract19);
     }
 
     private static int[] ExtractDesignFeatureNumbers(string design)

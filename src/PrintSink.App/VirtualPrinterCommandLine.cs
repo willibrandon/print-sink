@@ -134,13 +134,32 @@ internal static class VirtualPrinterCommandLine
 
             if (printPdfPassthrough)
             {
-                int printJobId = await PdlPassthroughPrintCommand
+                string endpointName = EndpointCatalog.GetByKind(endpointKind).QueueName;
+                (int printJobId, string providerDetail) = await PdlPassthroughPrintCommand
                     .PrintPdfAsync(
                         endpointKind,
                         GetRequiredOptionValue(commandArgs, "--source"),
+                        async (createdPrintJobId, createdProviderDetail, createdCancellationToken) =>
+                        {
+                            string createdDetail = $"printJobId={createdPrintJobId}; {createdProviderDetail}";
+                            WriteDiagnostic($"PDF passthrough print target created: {createdDetail}");
+                            await AppendDiagnosticAsync(
+                                    "PDF passthrough print target created",
+                                    endpointName,
+                                    createdDetail,
+                                    createdCancellationToken)
+                                .ConfigureAwait(false);
+                        },
                         cancellationToken)
                     .ConfigureAwait(false);
-                WriteDiagnostic($"PDF passthrough print job submitted: {printJobId}");
+                string detail = $"printJobId={printJobId}; {providerDetail}";
+                WriteDiagnostic($"PDF passthrough print job submitted: {detail}");
+                await AppendDiagnosticAsync(
+                        "PDF passthrough print job submitted",
+                        endpointName,
+                        detail,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (setDefaultCopies)

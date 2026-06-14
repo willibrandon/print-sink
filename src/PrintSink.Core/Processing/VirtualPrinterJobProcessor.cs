@@ -182,6 +182,16 @@ public sealed class VirtualPrinterJobProcessor
         try
         {
             await ProcessAcceptedJobAsync(job, plan, cancellationToken).ConfigureAwait(false);
+            await RecordDiagnosticEventAsync(
+                new DiagnosticEventRecord(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticEventSeverity.Information,
+                    nameof(VirtualPrinterJobProcessor),
+                    "Job completion requested",
+                    job.Endpoint.QueueName,
+                    routeDetail),
+                CancellationToken.None)
+                .ConfigureAwait(false);
             await job.CompleteAsync(VirtualPrinterJobStatus.Succeeded, cancellationToken).ConfigureAwait(false);
             PrintSinkDiagnostics.Log.JobCompleted(
                 job.Endpoint.QueueName,
@@ -251,8 +261,49 @@ public sealed class VirtualPrinterJobProcessor
         PdlPlan plan,
         CancellationToken cancellationToken)
     {
+        await RecordDiagnosticEventAsync(
+            new DiagnosticEventRecord(
+                DateTimeOffset.UtcNow,
+                DiagnosticEventSeverity.Information,
+                nameof(VirtualPrinterJobProcessor),
+                "Job source opening",
+                job.Endpoint.QueueName,
+                job.ContentType),
+            cancellationToken)
+            .ConfigureAwait(false);
         Stream source = await job.OpenSourceAsync(cancellationToken).ConfigureAwait(false);
+        await RecordDiagnosticEventAsync(
+            new DiagnosticEventRecord(
+                DateTimeOffset.UtcNow,
+                DiagnosticEventSeverity.Information,
+                nameof(VirtualPrinterJobProcessor),
+                "Job source opened",
+                job.Endpoint.QueueName,
+                job.ContentType),
+            cancellationToken)
+            .ConfigureAwait(false);
+
+        await RecordDiagnosticEventAsync(
+            new DiagnosticEventRecord(
+                DateTimeOffset.UtcNow,
+                DiagnosticEventSeverity.Information,
+                nameof(VirtualPrinterJobProcessor),
+                "Job target opening",
+                job.Endpoint.QueueName,
+                job.Endpoint.RequiresTargetFile ? "target=file" : "target=sink"),
+            cancellationToken)
+            .ConfigureAwait(false);
         Stream? target = await job.OpenTargetAsync(cancellationToken).ConfigureAwait(false);
+        await RecordDiagnosticEventAsync(
+            new DiagnosticEventRecord(
+                DateTimeOffset.UtcNow,
+                DiagnosticEventSeverity.Information,
+                nameof(VirtualPrinterJobProcessor),
+                "Job target opened",
+                job.Endpoint.QueueName,
+                target is null ? "target=sink" : "target=file"),
+            cancellationToken)
+            .ConfigureAwait(false);
 
         await using (source.ConfigureAwait(false))
         {
@@ -298,6 +349,17 @@ public sealed class VirtualPrinterJobProcessor
                 {
                     await target.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
+
+                await RecordDiagnosticEventAsync(
+                    new DiagnosticEventRecord(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticEventSeverity.Information,
+                        nameof(VirtualPrinterJobProcessor),
+                        "Job sink write completed",
+                        job.Endpoint.QueueName,
+                        $"targetFormat={plan.TargetFormat}"),
+                    cancellationToken)
+                    .ConfigureAwait(false);
             }
             finally
             {

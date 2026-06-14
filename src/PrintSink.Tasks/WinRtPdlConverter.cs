@@ -11,17 +11,17 @@ namespace PrintSink.Tasks;
 internal sealed class WinRtPdlConverter : IPdlConverter
 {
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;
-    private readonly WorkflowPrintTicket printTicket;
+    private readonly Func<WorkflowPrintTicket> getPrintTicket;
 
     internal WinRtPdlConverter(
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
-        WorkflowPrintTicket printTicket)
+        Func<WorkflowPrintTicket> getPrintTicket)
     {
         ArgumentNullException.ThrowIfNull(args);
-        ArgumentNullException.ThrowIfNull(printTicket);
+        ArgumentNullException.ThrowIfNull(getPrintTicket);
 
         this.args = args;
-        this.printTicket = printTicket;
+        this.getPrintTicket = getPrintTicket;
     }
 
     /// <inheritdoc />
@@ -46,7 +46,7 @@ internal sealed class WinRtPdlConverter : IPdlConverter
         {
             PrintWorkflowPdlConverter converter = args.GetPdlConverter(ToWinRtConversionType(conversionKind));
             await converter.ConvertPdlAsync(
-                printTicket,
+                getPrintTicket(),
                 converterInput,
                 converterOutput).AsTask(cancellationToken).ConfigureAwait(false);
             await converterOutput.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);

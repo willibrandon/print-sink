@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace PrintSink.Core.Diagnostics;
@@ -10,6 +8,7 @@ namespace PrintSink.Core.Diagnostics;
 public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposable
 {
     private const string EventsFileName = "diagnostic-events.json";
+    private const string LockFileName = "diagnostic-events.lock";
     private const int DefaultMaximumStoredEvents = 4096;
     private const int FileBufferSize = 4096;
     private const int TransientFileRetryCount = 40;
@@ -23,7 +22,7 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string rootDirectory;
     private readonly int maximumStoredEvents;
-    private readonly string semaphoreName;
+    private readonly string lockFilePath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LocalDiagnosticEventStore"/> class.
@@ -46,7 +45,7 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
 
         this.rootDirectory = rootDirectory;
         this.maximumStoredEvents = maximumStoredEvents;
-        semaphoreName = CreateSemaphoreName(rootDirectory);
+        lockFilePath = GetLockPath(rootDirectory);
     }
 
     /// <inheritdoc />
@@ -57,36 +56,28 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
         ArgumentNullException.ThrowIfNull(record);
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        using Semaphore semaphore = new(1, 1, semaphoreName);
-        bool semaphoreAcquired = false;
         try
         {
-            semaphoreAcquired = WaitForSemaphore(semaphore);
-            if (!semaphoreAcquired)
-            {
-                throw new TimeoutException("Timed out waiting for the diagnostics event store lock.");
-            }
-
             Directory.CreateDirectory(rootDirectory);
-            string path = GetEventsPath(rootDirectory);
-            List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
+            FileStream lockFile = await AcquireLockFileAsync(lockFilePath, cancellationToken)
                 .ConfigureAwait(false);
-
-            records.Add(record);
-            if (records.Count > maximumStoredEvents)
+            await using (lockFile.ConfigureAwait(false))
             {
-                records.RemoveRange(0, records.Count - maximumStoredEvents);
-            }
+                string path = GetEventsPath(rootDirectory);
+                List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
 
-            await WriteAllUnsafeAsync(path, records, cancellationToken).ConfigureAwait(false);
+                records.Add(record);
+                if (records.Count > maximumStoredEvents)
+                {
+                    records.RemoveRange(0, records.Count - maximumStoredEvents);
+                }
+
+                await WriteAllUnsafeAsync(path, records, cancellationToken).ConfigureAwait(false);
+            }
         }
         finally
         {
-            if (semaphoreAcquired)
-            {
-                semaphore.Release();
-            }
-
             gate.Release();
         }
     }
@@ -99,37 +90,50 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        using Semaphore semaphore = new(1, 1, semaphoreName);
-        bool semaphoreAcquired = false;
         try
         {
-            semaphoreAcquired = WaitForSemaphore(semaphore);
-            if (!semaphoreAcquired)
-            {
-                throw new TimeoutException("Timed out waiting for the diagnostics event store lock.");
-            }
-
-            string path = GetEventsPath(rootDirectory);
-            List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
+            Directory.CreateDirectory(rootDirectory);
+            FileStream lockFile = await AcquireLockFileAsync(lockFilePath, cancellationToken)
                 .ConfigureAwait(false);
+            await using (lockFile.ConfigureAwait(false))
+            {
+                string path = GetEventsPath(rootDirectory);
+                List<DiagnosticEventRecord> records = await ReadAllUnsafeAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
 
-            records.Reverse();
-            return [.. records.Take(maxCount)];
+                records.Reverse();
+                return [.. records.Take(maxCount)];
+            }
         }
         finally
         {
-            if (semaphoreAcquired)
-            {
-                semaphore.Release();
-            }
-
             gate.Release();
         }
     }
 
-    private static bool WaitForSemaphore(Semaphore semaphore)
+    private static async Task<FileStream> AcquireLockFileAsync(string path, CancellationToken cancellationToken)
     {
-        return semaphore.WaitOne(TimeSpan.FromSeconds(10));
+        for (int attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(
+                    path,
+                    new FileStreamOptions
+                    {
+                        Mode = FileMode.OpenOrCreate,
+                        Access = FileAccess.ReadWrite,
+                        Share = FileShare.None,
+                        BufferSize = 1,
+                        Options = FileOptions.Asynchronous,
+                    });
+            }
+            catch (Exception ex) when (IsTransientFileAccessFailure(ex) && attempt < TransientFileRetryCount)
+            {
+                await Task.Delay(TransientFileRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     private static async Task<List<DiagnosticEventRecord>> ReadAllUnsafeAsync(
@@ -304,10 +308,8 @@ public sealed class LocalDiagnosticEventStore : IDiagnosticEventStore, IDisposab
         return Path.Combine(rootDirectory, EventsFileName);
     }
 
-    private static string CreateSemaphoreName(string rootDirectory)
+    private static string GetLockPath(string rootDirectory)
     {
-        string normalizedPath = Path.GetFullPath(rootDirectory).ToUpperInvariant();
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath));
-        return $@"Local\PrintSink.Diagnostics.{Convert.ToHexString(hash)}";
+        return Path.Combine(rootDirectory, LockFileName);
     }
 }

@@ -2279,7 +2279,9 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
             -Endpoint $PrinterName `
             -Message 'Workflow job passed through' `
             -StartedUtc $startedUtc `
-            -DetailContains @('target=system') `
+            -DetailContains @(
+                'target=system',
+                'passthroughWithAttributes=') `
             -TimeoutSeconds 60
         return [ordered]@{
             printer = $PrinterName
@@ -2927,6 +2929,13 @@ function Invoke-PrintSinkPdfPassthroughPrint {
             -Endpoint $printCase.queue `
             -StartedUtc $startedUtc `
             -ExpectedRouteDetail $printCase.expectedRoute
+        $provider = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $printCase.queue `
+            -Message 'PDF passthrough print target created' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('pdlPassthroughProvider=', 'provider2=') `
+            -TimeoutSeconds 60
 
         Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
         Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
@@ -2941,6 +2950,7 @@ function Invoke-PrintSinkPdfPassthroughPrint {
             bytes = $file.Length
             mode = 'pdl-passthrough'
             diagnostic = $diagnostic
+            provider = $provider
         }
     }
     finally {
@@ -3242,6 +3252,7 @@ function Invoke-PrintSinkExtensionCapabilities {
             'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
             'mxdc=configured',
             'pdr=updated',
+            'pdlPassthroughWithJobAttributes=',
             'pdrResources=') `
         -TimeoutSeconds 120
 }
@@ -4406,6 +4417,12 @@ function New-PrintSinkDeferredFeatureEvidence {
             feature = 'IPP communication-error timeout recovery'
             status = 'deferred'
             evidence = 'Windows did not deliver a deterministic PrintSupportExtensionSession.CommunicationErrorDetected activation in the supported E2E flow. The extension handler configures IPP timeouts when the OS reports timeout errors, but PrintSink does not claim this as supported behavior until a real-device E2E can trigger it.'
+        },
+        [ordered]@{
+            number = 28
+            feature = 'PDL passthrough with IPP job-attribute compatibility'
+            status = 'deferred'
+            evidence = 'Windows exposes contract-19 passthrough-with-job-attributes APIs before the .NET projection exposes IppAttributeConverter. PrintSink records availability, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job and operation attribute buffers are implemented and proven by real E2E.'
         }
     )
 }

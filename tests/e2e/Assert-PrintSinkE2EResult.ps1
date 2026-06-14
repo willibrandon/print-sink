@@ -243,7 +243,7 @@ function Assert-FeatureEvidence {
     }
 
     $deferredNumbers = @($DeferredFeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
-    Assert-SetEqual -Actual $deferredNumbers -Expected @(22, 26) -Description 'Deferred feature evidence numbers'
+    Assert-SetEqual -Actual $deferredNumbers -Expected @(22, 26, 28) -Description 'Deferred feature evidence numbers'
 }
 
 function Assert-QueuePersistence {
@@ -352,6 +352,10 @@ function Assert-AdditionalOutputs {
     Assert-CompletedJob -Result $pdfPassthrough -Queue 'PDF passthrough'
     Assert-Document -Format 'pdf' -Path $pdfPassthrough.outputPath -ExpectedBytes $pdfPassthrough.bytes -Contains 'foo'
     Assert-FilesEqual -ExpectedPath $pdfPassthrough.sourcePath -ActualPath $pdfPassthrough.outputPath -Description 'PDF passthrough output'
+    $pdfPassthroughProvider = Get-ResultProperty -Object $pdfPassthrough -Name 'provider'
+    Assert-Condition ($null -ne $pdfPassthroughProvider) 'PDF passthrough did not report provider evidence.'
+    Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*pdlPassthroughProvider=*') 'PDF passthrough provider evidence omitted provider detail.'
+    Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*provider2=*') 'PDF passthrough provider evidence omitted provider2 availability detail.'
 
     $winRtSource = Get-ResultProperty -Object $Result -Name 'winRtSource'
     Assert-CompletedJob -Result $winRtSource -Queue 'WinRT source print'

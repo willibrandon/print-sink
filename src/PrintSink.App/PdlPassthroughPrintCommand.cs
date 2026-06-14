@@ -13,9 +13,10 @@ internal static class PdlPassthroughPrintCommand
 {
     private const int BufferSize = 81920;
 
-    internal static async Task<int> PrintPdfAsync(
+    internal static async Task<(int PrintJobId, string ProviderDetail)> PrintPdfAsync(
         EndpointKind endpointKind,
         string sourcePath,
+        Func<int, string, CancellationToken, Task>? printTargetCreated,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
@@ -41,30 +42,56 @@ internal static class PdlPassthroughPrintCommand
                 $"Printer '{endpoint.QueueName}' does not report PDF passthrough support.");
         }
 
+        string jobName = Path.GetFileNameWithoutExtension(fullSourcePath);
         PdlPassthroughProvider provider = printDevice.GetPdlPassthroughProvider();
-        using InMemoryRandomAccessStream printTicketStream = await CreatePrintTicketStreamAsync(
+        string providerDetail = UniversalApiContract19PrinterApis.GetPdlPassthroughWithJobAttributesDetail(provider);
+        PdlPassthroughTarget? target = null;
+        InMemoryRandomAccessStream? printTicketStream = null;
+        IInputStream? printTicketInput = null;
+        try
+        {
+            printTicketStream = await CreatePrintTicketStreamAsync(
                 printDevice.UserDefaultPrintTicket,
                 cancellationToken)
-            .ConfigureAwait(false);
-        using IInputStream printTicketInput = printTicketStream.GetInputStreamAt(0);
-        PageConfigurationSettings pageConfiguration = new()
+                .ConfigureAwait(false);
+            printTicketInput = printTicketStream.GetInputStreamAt(0);
+            PageConfigurationSettings pageConfiguration = new()
+            {
+                OrientationSource = PageConfigurationSource.PdlContent,
+                SizeSource = PageConfigurationSource.PdlContent,
+            };
+
+            target = provider.StartPrintJobWithPrintTicket(
+                jobName,
+                PdlFormatInfo.PdfContentType,
+                printTicketInput,
+                pageConfiguration);
+
+            PdlPassthroughTarget activeTarget = target
+                ?? throw new InvalidOperationException("The PDF passthrough provider did not create a print target.");
+            int printJobId = activeTarget.PrintJobId;
+            if (printTargetCreated is not null)
+            {
+                await printTargetCreated(printJobId, providerDetail, cancellationToken).ConfigureAwait(false);
+            }
+
+            using IOutputStream output = activeTarget.GetOutputStream();
+            await WriteFileToOutputAsync(fullSourcePath, output, cancellationToken).ConfigureAwait(false);
+
+            activeTarget.Submit();
+            return (printJobId, providerDetail);
+        }
+        finally
         {
-            OrientationSource = PageConfigurationSource.PdlContent,
-            SizeSource = PageConfigurationSource.PdlContent,
-        };
+            DisposeTarget(target);
+            printTicketInput?.Dispose();
+            printTicketStream?.Dispose();
+        }
+    }
 
-        string jobName = Path.GetFileNameWithoutExtension(fullSourcePath);
-        using PdlPassthroughTarget target = provider.StartPrintJobWithPrintTicket(
-            jobName,
-            PdlFormatInfo.PdfContentType,
-            printTicketInput,
-            pageConfiguration);
-        int printJobId = target.PrintJobId;
-        using IOutputStream output = target.GetOutputStream();
-        await WriteFileToOutputAsync(fullSourcePath, output, cancellationToken).ConfigureAwait(false);
-
-        target.Submit();
-        return printJobId;
+    private static void DisposeTarget(PdlPassthroughTarget? target)
+    {
+        target?.Dispose();
     }
 
     private static async Task<InMemoryRandomAccessStream> CreatePrintTicketStreamAsync(

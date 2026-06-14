@@ -15,7 +15,7 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
     private static readonly TimeSpan CompleteJobTimeout = TimeSpan.FromSeconds(10);
 
     private readonly PrintWorkflowVirtualPrinterDataAvailableEventArgs args;
-    private readonly WorkflowPrintTicket printTicket;
+    private readonly Func<WorkflowPrintTicket> getPrintTicket;
     private StorageFile? targetFile;
     private MemoryStream? targetBuffer;
     private bool completed;
@@ -23,14 +23,14 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
     internal WinRtVirtualPrinterJob(
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
         VirtualEndpoint endpoint,
-        WorkflowPrintTicket printTicket)
+        Func<WorkflowPrintTicket> getPrintTicket)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentNullException.ThrowIfNull(printTicket);
+        ArgumentNullException.ThrowIfNull(getPrintTicket);
 
         this.args = args;
-        this.printTicket = printTicket;
+        this.getPrintTicket = getPrintTicket;
         Endpoint = endpoint;
         ContentType = args.SourceContent.ContentType;
     }
@@ -66,7 +66,7 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
     /// <inheritdoc />
     public ValueTask<IPrintTicket> GetPrintTicketAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IPrintTicket>(new WinRtPrintTicket(printTicket));
+        return ValueTask.FromResult<IPrintTicket>(new WinRtPrintTicket(getPrintTicket()));
     }
 
     /// <inheritdoc />
@@ -84,10 +84,13 @@ internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
             if (status == VirtualPrinterJobStatus.Succeeded && targetFile is not null && targetBuffer is not null)
             {
                 targetBuffer.Position = 0;
-                await FileIO
-                    .WriteBytesAsync(targetFile, targetBuffer.ToArray())
-                    .AsTask(cancellationToken)
-                    .ConfigureAwait(false);
+                Stream output = await targetFile.OpenStreamForWriteAsync().ConfigureAwait(false);
+                await using (output.ConfigureAwait(false))
+                {
+                    output.SetLength(0);
+                    await targetBuffer.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             await CompleteSubmittedJobAsync(status, cancellationToken).ConfigureAwait(false);

@@ -179,8 +179,9 @@ operator workflows; it references the same core library but is not an OS print a
 
 Rows 1-21, 23-25, and 27 are supported PrintSink capabilities. Each supported row is implemented and covered
 by CI. The E2E run writes `featureEvidence` for the print-stack rows it proves. Pure model behavior is
-covered by unit tests. Rows 22 and 26 are tracked separately as deferred compatibility hooks until
-Windows can deliver them through deterministic E2E paths. The physical IPP path is limited to PSA
+covered by unit tests. Rows 22, 26, and 28 are tracked separately as deferred compatibility hooks until
+Windows can deliver them through deterministic E2E paths or PrintSink can submit the matching provider
+payloads end to end. The physical IPP path is limited to PSA
 association and activation evidence; document output is a virtual-printer feature.
 
 | # | Feature | Contract / API | Component | Notes |
@@ -212,6 +213,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 | 26 | IPP communication-error timeout recovery | `PrintSupportExtensionSession.CommunicationErrorDetected`, `PrintSupportIppCommunicationConfiguration` | `PrintSupportExtensionBackgroundTask` | Tracked only. Defensive handler configures IPP timeouts when Windows reports a timeout; not a supported feature claim until a deterministic real-device E2E can trigger the event. |
 | 27 | IPP compression compatibility handling | `PrintWorkflowJobStartingEventArgs.IsIppCompressionEnabled`, `DisableIppCompressionForJob()` | `PrintSupportWorkflowBackgroundTask` + E2E | Real IPP workflow activation records the platform compression state and keeps system rendering enabled. |
+| 28 | PDL passthrough with IPP job-attribute compatibility | `SetPdlPassthroughWithJobAttributesSupported`, `IPdlPassthroughProvider2`, `PrintWorkflowPrinterJob3` | `PrintSupportExtensionBackgroundTask` + `PrintSupportWorkflowBackgroundTask` + `PrintSink.App` | Tracked only. Contract-19 APIs are present in the Windows SDK headers before the .NET projection exposes `IppAttributeConverter`. PrintSink records availability, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job/operation attribute buffers are implemented and proven by real E2E. |
 
 ---
 
@@ -854,7 +856,7 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 | M6 | Packaged-app tests + E2E automation; CI on Windows runners (x64/ARM64). |
 | M7 | Full E2E validation pass on hosted Windows runner and clean VM; docs (`BUILD.md`, `TESTING.md`) finalized. |
 
-**Definition of done:** every supported feature in §4 implemented; rows 22 and 26 keep defensive
+**Definition of done:** every supported feature in §4 implemented; rows 22, 26, and 28 keep defensive
 handlers plus deferred evidence until Windows exposes deterministic triggers; all
 unit/component/packaged tests green; the E2E automation passes for all six queues including PDF
 passthrough, WinRT source printing, watermark, settings modality, PDC/PDR/MXDC extension refresh,

@@ -115,14 +115,15 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         JobProcessingOptions? jobProcessingOptions = uiCompletion.UsedForegroundUi
             ? await settingsStore.ConsumeJobProcessingOptionsAsync().ConfigureAwait(false)
             : null;
-        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket = args.GetJobPrintTicket();
+        Lazy<Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket> printTicket =
+            new(args.GetJobPrintTicket, LazyThreadSafetyMode.ExecutionAndPublication);
         VirtualPrinterJobProcessor processor = CreateProcessor(
             args,
             printTicket,
             settingsStore,
             jobProcessingOptions,
             diagnosticEventStore);
-        using WinRtVirtualPrinterJob job = new(args, endpoint, printTicket);
+        using WinRtVirtualPrinterJob job = new(args, endpoint, () => printTicket.Value);
         await processor.ProcessAsync(job).ConfigureAwait(false);
     }
 
@@ -186,7 +187,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
 
     private static VirtualPrinterJobProcessor CreateProcessor(
         PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
-        Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket printTicket,
+        Lazy<Windows.Graphics.Printing.PrintTicket.WorkflowPrintTicket> printTicket,
         LocalSettingsStore settingsStore,
         JobProcessingOptions? jobProcessingOptions,
         LocalDiagnosticEventStore diagnosticEventStore)
@@ -203,7 +204,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
 
         return new VirtualPrinterJobProcessor(
             new PdlRouter(),
-            new WinRtPdlConverter(args, printTicket),
+            new WinRtPdlConverter(args, () => printTicket.Value),
             sinkResolver,
             settingsStore,
             jobProcessingOptions,
