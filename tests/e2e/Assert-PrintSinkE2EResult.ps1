@@ -1372,6 +1372,10 @@ function Assert-InstalledQueueSnapshot {
 
     $context = [string](Get-ResultProperty -Object $Snapshot -Name 'context')
     $queues = @(Get-ResultProperty -Object $Snapshot -Name 'queues')
+    Assert-SetEqual `
+        -Actual @($queues | ForEach-Object { Get-ResultProperty -Object $_ -Name 'name' }) `
+        -Expected $expectedQueues `
+        -Description "Queue snapshot '$context' queue names"
     foreach ($queue in $expectedQueues) {
         $entry = Get-ResultByQueue -Results $queues -Queue $queue
         Assert-Condition ($null -ne $entry) "Queue snapshot '$context' omitted $queue."

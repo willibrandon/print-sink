@@ -498,10 +498,14 @@ internal sealed partial class ContinuousIntegrationContractTests
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
         string e2eScript = File.ReadAllText(e2ePath);
+        string validatorScript = File.ReadAllText(validatorPath);
 
         Assert.Contains("function Assert-PrintSinkQueuePersistence", e2eScript);
         Assert.Contains("function Assert-PrintSinkQueuesRemoved", e2eScript);
+        Assert.Contains("function Assert-InstalledQueueSnapshot", validatorScript);
+        Assert.Contains("Queue snapshot '$context' queue names", validatorScript);
         Assert.Contains("$queuePersistenceResult = Assert-PrintSinkQueuePersistence", e2eScript);
         Assert.Contains("-QueuePersistence $queuePersistenceResult", e2eScript);
         Assert.Contains("queuePersistence = $queuePersistenceResult", e2eScript);
