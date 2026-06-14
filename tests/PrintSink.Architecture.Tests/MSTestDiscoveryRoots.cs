@@ -12,6 +12,7 @@ internal static class MSTestDiscoveryRoots
         _ = new FeatureEvidenceContractTests();
         _ = new LineEndingPolicyTests();
         _ = new NamespaceStructureTests();
+        _ = new NativeXpsContractTests();
         _ = new OneTypePerFileTests();
         _ = new PackageManagementContractTests();
         _ = new PackagingContractTests();
