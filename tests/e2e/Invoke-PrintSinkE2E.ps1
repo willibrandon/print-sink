@@ -24,6 +24,9 @@ if ($actualWindowsVersion -lt $minimumWindowsVersion) {
 }
 
 $expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Normal=JpegMediumCompression,High=JpegLowCompression,Photo=Png,Auto=JpegMediumCompression,Fax=JpegHighCompression'
+$expectedPdcFeatureDetail = 'pdcFeatures=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode'
+$expectedPdcOptionDetail = 'pdcOptions=Receipt80Millimeter,ArchivePaper,ThermalReceiptMedia,AutomationInputBin,AutomationOutputBin,OddPagesThenEvenPages,StapleUpperLeft,Dpi600,Dpi1200,WatermarkOff,WatermarkText,WatermarkImage'
+$expectedPdrResourceDetail = 'pdrResourceNames=ArchivePaper,AutomationInputBin,AutomationOutputBin,Dpi1200,Dpi600,JobWatermarkMode,OddPagesThenEvenPages,Receipt80Millimeter,StapleUpperLeft,ThermalReceiptMedia,WatermarkImage,WatermarkOff,WatermarkText'
 
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 
@@ -3421,9 +3424,12 @@ function Invoke-PrintSinkExtensionCapabilities {
         -StartedUtc $StartedUtc `
         -DetailContains @(
             'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
+            $expectedPdcFeatureDetail,
+            $expectedPdcOptionDetail,
             'mxdc=configured',
             $expectedMxdcQualityDetail,
             'pdr=updated',
+            $expectedPdrResourceDetail,
             'pdlPassthroughWithJobAttributes=enabled',
             'pdrResources=') `
         -TimeoutSeconds 120
@@ -3572,9 +3578,12 @@ function Invoke-PrintSinkManagementUi {
             -StartedUtc $StartedUtc `
             -DetailContains @(
                 'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
+                $expectedPdcFeatureDetail,
+                $expectedPdcOptionDetail,
                 'mxdc=configured',
                 $expectedMxdcQualityDetail,
                 'pdr=updated',
+                $expectedPdrResourceDetail,
                 'pdlPassthroughWithJobAttributes=enabled',
                 'pdrResources=') `
             -TimeoutSeconds 120
@@ -5070,16 +5079,21 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 13 `
         -Feature 'PDC regeneration / custom features' `
-        -Passed ([string]$ExtensionCapabilities.detail -like '*features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode*') `
-        -Evidence 'A real capability refresh updated the installed queue PDC with the built-in PrintSink feature set.' `
+        -Passed (
+            [string]$ExtensionCapabilities.detail -like "*$expectedPdcFeatureDetail*" `
+                -and [string]$ExtensionCapabilities.detail -like "*$expectedPdcOptionDetail*") `
+        -Evidence 'A real capability refresh updated the installed queue PDC with the built-in PrintSink feature and option set.' `
         -Artifact $ExtensionCapabilities
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `
         -Number 14 `
         -Feature 'PDR localization of custom features' `
-        -Passed ([string]$ExtensionCapabilities.detail -like '*pdr=updated*' -and [string]$ExtensionCapabilities.detail -like '*pdrResources=*') `
-        -Evidence 'The extension updated device resources and reported localized PDR resource count during a real refresh.' `
+        -Passed (
+            [string]$ExtensionCapabilities.detail -like '*pdr=updated*' `
+                -and [string]$ExtensionCapabilities.detail -like '*pdrResources=13*' `
+                -and [string]$ExtensionCapabilities.detail -like "*$expectedPdrResourceDetail*") `
+        -Evidence 'The extension updated device resources and reported the localized PDR resource names during a real refresh.' `
         -Artifact $ExtensionCapabilities
 
     Add-PrintSinkFeatureEvidence `

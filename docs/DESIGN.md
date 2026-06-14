@@ -528,9 +528,10 @@ Subscribes (before `Start`): `PrintTicketValidationRequested`, `PrintDeviceCapab
   adds a custom namespace and injects custom features (media size/type, resolution, input/output bins,
   staple, page order, etc.) into the live `XmlDocument`, then `UpdatePrintDeviceCapabilities`. The editor
   is a pure function `(XmlDocument, IReadOnlyList<CustomFeature>) → XmlDocument`, fully unit tested.
+  Real capability-refresh diagnostics record the applied custom feature and option names.
 - **PDR localization** — when `GetCurrentPrintDeviceResources` is present, walks `.resw` subtrees under
   the `ResourceLanguage` context and inserts any missing localized strings, then
-  `UpdatePrintDeviceResources`.
+  `UpdatePrintDeviceResources`. Real capability-refresh diagnostics record the localized resource names.
 - **MXDC image quality** — sets `args.MxdcImageQualityConfiguration` text/draft/normal/high/photo/auto/fax
   to chosen `XpsImageQuality` values and records the full mapping during real capability refresh.
 - **Printer-selected adaptive card** — builds an Adaptive Card and requests additional features/parameters

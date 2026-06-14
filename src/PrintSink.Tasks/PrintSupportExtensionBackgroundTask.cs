@@ -119,11 +119,13 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 bool ippTimeoutsConfigured = false;
                 int resourceCount = 0;
                 string mxdcQualityDetail = "mxdcQuality=<unavailable>";
+                string pdrResourceNamesDetail = "pdrResourceNames=<none>";
                 string pdlPassthroughWithAttributesDetail =
                     UniversalApiContract19PrintSupport.EnablePdlPassthroughWithJobAttributes(args);
 
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
-                XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);
+                (XmlDocument updatedCapabilities, string pdcFeatureDetail, string pdcOptionDetail) =
+                    ApplyPrintSinkCapabilities(capabilities);
                 args.UpdatePrintDeviceCapabilities(updatedCapabilities);
 
                 if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
@@ -137,6 +139,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     XmlDocument resources = args.GetCurrentPrintDeviceResources();
                     Dictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
                     resourceCount = localizedResources.Count;
+                    pdrResourceNamesDetail = FormatLocalizedResourceNames(localizedResources);
                     if (localizedResources.Count > 0)
                     {
                         XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
@@ -158,9 +161,12 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                     string.Join(
                         "; ",
                         $"features={FormatBuiltInFeatureNames()}",
+                        pdcFeatureDetail,
+                        pdcOptionDetail,
                         $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
                         mxdcQualityDetail,
                         $"pdr={(pdrUpdated ? "updated" : "skipped")}",
+                        pdrResourceNamesDetail,
                         $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
                         pdlPassthroughWithAttributesDetail,
                         $"pdrResources={resourceCount}"));
@@ -172,7 +178,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         }
     }
 
-    private static XmlDocument ApplyPrintSinkCapabilities(XmlDocument capabilities)
+    private static (XmlDocument Document, string FeatureDetail, string OptionDetail) ApplyPrintSinkCapabilities(
+        XmlDocument capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -180,7 +187,41 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         XDocument updatedDocument = CapabilitiesEditor.Apply(sourceDocument, PrintSinkCapabilityFeatures.BuiltIn);
         XmlDocument result = new();
         result.LoadXml(updatedDocument.ToString(SaveOptions.DisableFormatting));
-        return result;
+        return (result, FormatAppliedPdcFeatures(updatedDocument), FormatAppliedPdcOptions(updatedDocument));
+    }
+
+    private static string FormatAppliedPdcFeatures(XDocument document)
+    {
+        XElement root = document.Root ?? throw new ArgumentException("PDC document is empty.", nameof(document));
+        string[] featureNames = [.. PrintSinkCapabilityFeatures.BuiltIn
+            .Where(feature => root.Element(ToXName(feature.Name)) is not null)
+            .Select(static feature => feature.Name.LocalName)];
+        return "pdcFeatures=" + string.Join(",", featureNames);
+    }
+
+    private static string FormatAppliedPdcOptions(XDocument document)
+    {
+        XElement root = document.Root ?? throw new ArgumentException("PDC document is empty.", nameof(document));
+        List<string> optionNames = [];
+        foreach (CustomFeature feature in PrintSinkCapabilityFeatures.BuiltIn)
+        {
+            XElement? featureElement = root.Element(ToXName(feature.Name));
+            if (featureElement is null)
+            {
+                continue;
+            }
+
+            optionNames.AddRange(feature.Options
+                .Where(option => featureElement.Element(ToXName(option.Name)) is not null)
+                .Select(static option => option.Name.LocalName));
+        }
+
+        return "pdcOptions=" + string.Join(",", optionNames);
+    }
+
+    private static XName ToXName(PrintSchemaQualifiedName name)
+    {
+        return XNamespace.Get(name.NamespaceUri.AbsoluteUri) + name.LocalName;
     }
 
     private static string ConfigureMxdcImageQuality(PrintSupportMxdcImageQualityConfiguration configuration)
@@ -276,6 +317,20 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         }
 
         return resources;
+    }
+
+    private static string FormatLocalizedResourceNames(Dictionary<string, string> localizedResources)
+    {
+        ArgumentNullException.ThrowIfNull(localizedResources);
+
+        string[] resourceNames = [.. localizedResources.Keys
+            .Select(static name =>
+            {
+                int separatorIndex = name.LastIndexOf('/');
+                return separatorIndex < 0 ? name : name[(separatorIndex + 1)..];
+            })
+            .Order(StringComparer.Ordinal)];
+        return "pdrResourceNames=" + string.Join(",", resourceNames);
     }
 
     private static IReadOnlyList<PrintSchemaQualifiedName> BuildCustomResourceNames()

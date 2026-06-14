@@ -46,6 +46,9 @@ $requiredSnapshotContexts = @(
 $minimumWindowsVersion = [Version]'10.0.26100.0'
 
 $expectedMxdcQualityDetail = 'mxdcQuality=Text=Png,Draft=JpegHighCompression,Normal=JpegMediumCompression,High=JpegLowCompression,Photo=Png,Auto=JpegMediumCompression,Fax=JpegHighCompression'
+$expectedPdcFeatureDetail = 'pdcFeatures=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode'
+$expectedPdcOptionDetail = 'pdcOptions=Receipt80Millimeter,ArchivePaper,ThermalReceiptMedia,AutomationInputBin,AutomationOutputBin,OddPagesThenEvenPages,StapleUpperLeft,Dpi600,Dpi1200,WatermarkOff,WatermarkText,WatermarkImage'
+$expectedPdrResourceDetail = 'pdrResourceNames=ArchivePaper,AutomationInputBin,AutomationOutputBin,Dpi1200,Dpi600,JobWatermarkMode,OddPagesThenEvenPages,Receipt80Millimeter,StapleUpperLeft,ThermalReceiptMedia,WatermarkImage,WatermarkOff,WatermarkText'
 
 function Assert-Condition {
     param(
@@ -388,6 +391,23 @@ function Assert-QueuePersistence {
     Assert-Condition ([int](Get-ResultProperty -Object $persistence -Name 'snapshots') -eq $requiredSnapshotContexts.Count) 'Queue-persistence snapshot count did not match the required contexts.'
 }
 
+function Assert-ExtensionCapabilities {
+    param(
+        [object] $ExtensionCapabilities
+    )
+
+    Assert-Condition ($null -ne $ExtensionCapabilities) 'The E2E result did not include extension capability evidence.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ExtensionCapabilities -Name 'message') -eq 'Capabilities updated') 'Extension capability evidence did not report Capabilities updated.'
+    $detail = [string](Get-ResultProperty -Object $ExtensionCapabilities -Name 'detail')
+    Assert-Condition ($detail -like "*$expectedPdcFeatureDetail*") 'Extension capability evidence did not report the applied PDC feature set.'
+    Assert-Condition ($detail -like "*$expectedPdcOptionDetail*") 'Extension capability evidence did not report the applied PDC option set.'
+    Assert-Condition ($detail -like '*pdr=updated*') 'Extension capability evidence did not report PDR refresh.'
+    Assert-Condition ($detail -like '*pdrResources=13*') 'Extension capability evidence did not report the expected PDR resource count.'
+    Assert-Condition ($detail -like "*$expectedPdrResourceDetail*") 'Extension capability evidence did not report the localized PDR resource names.'
+    Assert-Condition ($detail -like '*mxdc=configured*') 'Extension capability evidence did not report MXDC configuration.'
+    Assert-Condition ($detail -like "*$expectedMxdcQualityDetail*") 'Extension capability evidence did not report the full MXDC quality mapping.'
+}
+
 function Assert-ManagementUi {
     param(
         [object] $ManagementUi
@@ -433,10 +453,7 @@ function Assert-ManagementUi {
     Assert-Condition ([string](Get-ResultProperty -Object $managementCapabilityRefresh -Name 'detail') -like '*Capabilities refreshed for PrintSink - PDF*') 'Management UI capability-refresh diagnostic did not include the refreshed PDF queue.'
 
     $extensionCapabilityRefresh = Get-ResultProperty -Object $ManagementUi -Name 'extensionCapabilityRefresh'
-    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'message') -eq 'Capabilities updated') 'Management UI refresh did not trigger extension capability update.'
-    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*pdr=updated*') 'Management UI extension capability update did not report PDR refresh.'
-    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like '*mxdc=configured*') 'Management UI extension capability update did not report MXDC configuration.'
-    Assert-Condition ([string](Get-ResultProperty -Object $extensionCapabilityRefresh -Name 'detail') -like "*$expectedMxdcQualityDetail*") 'Management UI extension capability update did not report the full MXDC quality mapping.'
+    Assert-ExtensionCapabilities -ExtensionCapabilities $extensionCapabilityRefresh
 
     $defaultCopiesSet = Get-ResultProperty -Object $ManagementUi -Name 'defaultCopiesSet'
     Assert-Condition ([string](Get-ResultProperty -Object $defaultCopiesSet -Name 'message') -eq 'Management UI default copies updated') 'Management UI did not record the default-copy set diagnostic.'
@@ -625,6 +642,7 @@ Assert-FeatureEvidence `
     -FeatureEvidence @($result.featureEvidence) `
     -DeferredFeatureEvidence @($result.deferredFeatureEvidence)
 Assert-QueuePersistence -Result $result
+Assert-ExtensionCapabilities -ExtensionCapabilities $result.extensionCapabilities
 Assert-ManagementUi -ManagementUi $result.managementUi
 Assert-CleanupEvidence -Cleanup $result.cleanup
 Assert-RealPrintOutputs -RealPrints @($result.realPrints)

@@ -104,6 +104,34 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies PDC and PDR feature evidence records the applied custom names.
+    /// </summary>
+    [TestMethod]
+    public void PdcAndPdrFeatureEvidenceRequiresAppliedCustomNames()
+    {
+        string extensionTask = ReadRepositoryFile("src", "PrintSink.Tasks", "PrintSupportExtensionBackgroundTask.cs");
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        const string expectedPdcFeatureDetail =
+            "pdcFeatures=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode";
+        const string expectedPdcOptionDetail =
+            "pdcOptions=Receipt80Millimeter,ArchivePaper,ThermalReceiptMedia,AutomationInputBin,AutomationOutputBin,OddPagesThenEvenPages,StapleUpperLeft,Dpi600,Dpi1200,WatermarkOff,WatermarkText,WatermarkImage";
+        const string expectedPdrResourceDetail =
+            "pdrResourceNames=ArchivePaper,AutomationInputBin,AutomationOutputBin,Dpi1200,Dpi600,JobWatermarkMode,OddPagesThenEvenPages,Receipt80Millimeter,StapleUpperLeft,ThermalReceiptMedia,WatermarkImage,WatermarkOff,WatermarkText";
+
+        Assert.Contains("FormatAppliedPdcFeatures", extensionTask);
+        Assert.Contains("FormatAppliedPdcOptions", extensionTask);
+        Assert.Contains("FormatLocalizedResourceNames", extensionTask);
+        Assert.Contains(expectedPdcFeatureDetail, e2eScript);
+        Assert.Contains(expectedPdcFeatureDetail, validatorScript);
+        Assert.Contains(expectedPdcOptionDetail, e2eScript);
+        Assert.Contains(expectedPdcOptionDetail, validatorScript);
+        Assert.Contains(expectedPdrResourceDetail, e2eScript);
+        Assert.Contains(expectedPdrResourceDetail, validatorScript);
+    }
+
+    /// <summary>
     /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
     /// </summary>
     [TestMethod]
