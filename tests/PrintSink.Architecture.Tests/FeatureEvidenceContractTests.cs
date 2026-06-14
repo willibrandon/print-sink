@@ -79,6 +79,33 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies preferred input format evidence records both manifest data and observed job routes.
+    /// </summary>
+    [TestMethod]
+    public void PreferredInputFormatEvidenceRequiresManifestAndObservedRoutes()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-PreferredInputFormatEvidence", e2eScript);
+        Assert.Contains("manifestPreferredFormats", e2eScript);
+        Assert.Contains("observedRoutes", e2eScript);
+        Assert.Contains("matching source content types", e2eScript);
+
+        Assert.Contains("Assert-PreferredInputFormatEvidence", validatorScript);
+        Assert.Contains("preferredInputFormat = 'application/postscript'", validatorScript);
+        Assert.Contains("preferredInputFormat = 'application/oxps'", validatorScript);
+        Assert.Contains("$route.StartsWith(\"$($expectedPrinter.preferredInputFormat) ->\"", validatorScript);
+
+        Assert.Contains("Manifest + E2E", design);
+        Assert.Contains("real-job source content type", design);
+        Assert.Contains("preferred input format for every virtual-printer manifest entry", testing);
+        Assert.Contains("observed source content type", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]

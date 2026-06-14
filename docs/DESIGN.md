@@ -188,7 +188,7 @@ association and activation evidence; document output is a virtual-printer featur
 | --- | --- | --- | --- | --- |
 | 1 | Install N virtual print queues from one package | `windows.printSupportVirtualPrinterWorkflow` manifest entries + `VirtualPrinterManager` | Manifest + headless provisioning | PDF, XPS, PostScript, Cloud, PWG-Raster, PCLm endpoints |
 | 2 | Receive spooled PDL + content type | `PrintWorkflowVirtualPrinterSession.VirtualPrinterDataAvailable`, `args.SourceContent` | `VirtualPrinterBackgroundTask` | |
-| 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest | Per-queue |
+| 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest + E2E | Per-queue; E2E requires the signed manifest preference and real-job source content type |
 | 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router | e.g. Edge → PDF passthrough |
 | 5 | File-printer "Save As" target | `OutputFileTypes`, `args.GetTargetFileAsync()` → `StorageFile` | `VirtualPrinterBackgroundTask` | Omit attribute for cloud/app sinks |
 | 6 | Non-file sinks (cloud / OneNote-style) | (no `OutputFileTypes`); custom write in handler | `VirtualPrinterBackgroundTask` + `PrintSink.Core` sinks | E2E validates package-local sink artifact, not Save-As output |

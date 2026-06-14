@@ -4665,6 +4665,36 @@ function Test-LocalizedQueueDisplayNameEvidence {
     return Test-AllQueuesInstalled -QueueSnapshot $InstalledQueues -ExpectedQueues $ExpectedQueues
 }
 
+function Test-PreferredInputFormatEvidence {
+    param(
+        [object[]] $VirtualPrinters,
+        [object[]] $RealPrints
+    )
+
+    foreach ($expectedPrinter in $expectedVirtualPrinters) {
+        $actualPrinter = @($VirtualPrinters |
+            Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        if ($null -eq $actualPrinter) {
+            return $false
+        }
+
+        $actualPreferredInputFormat = [string](Get-ObjectPropertyValue -Object $actualPrinter -Name 'preferredInputFormat')
+        if ($actualPreferredInputFormat -ne $expectedPrinter.preferredInputFormat) {
+            return $false
+        }
+    }
+
+    foreach ($printCase in $realPrintCases) {
+        $actualPrint = Get-ResultByQueue -Results $RealPrints -Queue $printCase.queue
+        if (-not (Test-RouteContains -Result $actualPrint -ExpectedText $printCase.expectedRoute)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Assert-PrintSinkQueuePersistence {
     param(
         [object[]] $QueueSnapshots,
@@ -5004,12 +5034,12 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 3 `
         -Feature 'Preferred input format negotiation' `
-        -Passed (
-            (@($virtualPrinters | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'preferredInputFormat') -eq 'application/oxps' }).Count -ge 5) `
-                -and (@($virtualPrinters | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name 'preferredInputFormat') -eq 'application/postscript' }).Count -eq 1) `
-                -and (Test-RouteContains -Result (Get-ResultByQueue -Results $realPrints -Queue 'PrintSink - PostScript') -ExpectedText 'application/postscript')) `
-        -Evidence 'Manifest preferred formats include OXPS and PostScript, and the PostScript queue received PostScript in a real print job.' `
-        -Artifact (New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters)
+        -Passed (Test-PreferredInputFormatEvidence -VirtualPrinters $virtualPrinters -RealPrints $realPrints) `
+        -Evidence 'The signed manifest uses the expected preferred input format for each virtual printer, and real print jobs recorded matching source content types.' `
+        -Artifact ([ordered]@{
+            manifestPreferredFormats = New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters
+            observedRoutes = New-PrintResultSummary -Results $realPrints -IncludeRoute
+        })
 
     Add-PrintSinkFeatureEvidence `
         -FeatureEvidence $featureEvidence `

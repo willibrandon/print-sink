@@ -60,12 +60,12 @@ $expectedPrinterSelectedDetailParts = @(
     'parameters=JobCopiesAllDocuments'
 )
 $expectedVirtualPrinterDisplayNames = @(
-    [pscustomobject]@{ printerUri = 'printsink:print-to-pdf'; displayName = 'ms-resource:PdfPrintDisplayName'; queue = 'PrintSink - PDF' },
-    [pscustomobject]@{ printerUri = 'printsink:print-to-xps'; displayName = 'ms-resource:XpsPrintDisplayName'; queue = 'PrintSink - XPS' },
-    [pscustomobject]@{ printerUri = 'printsink:print-to-ps'; displayName = 'ms-resource:PostScriptPrintDisplayName'; queue = 'PrintSink - PostScript' },
-    [pscustomobject]@{ printerUri = 'printsink:print-to-cloud'; displayName = 'ms-resource:CloudPrintDisplayName'; queue = 'PrintSink - Cloud' },
-    [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; displayName = 'ms-resource:PwgRasterPrintDisplayName'; queue = 'PrintSink - PWG Raster' },
-    [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; displayName = 'ms-resource:PclmPrintDisplayName'; queue = 'PrintSink - PCLm' }
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pdf'; displayName = 'ms-resource:PdfPrintDisplayName'; queue = 'PrintSink - PDF'; preferredInputFormat = 'application/oxps' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-xps'; displayName = 'ms-resource:XpsPrintDisplayName'; queue = 'PrintSink - XPS'; preferredInputFormat = 'application/oxps' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-ps'; displayName = 'ms-resource:PostScriptPrintDisplayName'; queue = 'PrintSink - PostScript'; preferredInputFormat = 'application/postscript' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-cloud'; displayName = 'ms-resource:CloudPrintDisplayName'; queue = 'PrintSink - Cloud'; preferredInputFormat = 'application/oxps' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; displayName = 'ms-resource:PwgRasterPrintDisplayName'; queue = 'PrintSink - PWG Raster'; preferredInputFormat = 'application/oxps' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; displayName = 'ms-resource:PclmPrintDisplayName'; queue = 'PrintSink - PCLm'; preferredInputFormat = 'application/oxps' }
 )
 
 function Assert-Condition {
@@ -193,6 +193,42 @@ function Assert-LocalizedQueueNameEvidence {
             Select-Object -First 1)[0]
         Assert-Condition ($null -ne $installedQueue) "Localized queue-name evidence omitted installed queue $($expectedPrinter.queue)."
         Assert-Condition ([bool](Get-ResultProperty -Object $installedQueue -Name 'installed')) "Localized queue-name evidence reported $($expectedPrinter.queue) as not installed."
+    }
+}
+
+function Assert-PreferredInputFormatEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Preferred input format evidence did not include an artifact.'
+
+    $manifestPreferredFormats = @(Get-ResultProperty -Object $Artifact -Name 'manifestPreferredFormats')
+    $observedRoutes = @(Get-ResultProperty -Object $Artifact -Name 'observedRoutes')
+    Assert-SetEqual `
+        -Actual @($manifestPreferredFormats | ForEach-Object { Get-ResultProperty -Object $_ -Name 'printerUri' }) `
+        -Expected @($expectedVirtualPrinterDisplayNames | ForEach-Object { $_.printerUri }) `
+        -Description 'Preferred input format manifest printer URIs'
+    Assert-SetEqual `
+        -Actual @($observedRoutes | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected $expectedQueues `
+        -Description 'Preferred input format observed queue routes'
+
+    foreach ($expectedPrinter in $expectedVirtualPrinterDisplayNames) {
+        $manifestEntry = @($manifestPreferredFormats |
+            Where-Object { [string](Get-ResultProperty -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $manifestEntry) "Preferred input format evidence omitted manifest printer URI $($expectedPrinter.printerUri)."
+        Assert-Condition (
+            [string](Get-ResultProperty -Object $manifestEntry -Name 'preferredInputFormat') -eq $expectedPrinter.preferredInputFormat) `
+            "Manifest printer URI $($expectedPrinter.printerUri) did not use $($expectedPrinter.preferredInputFormat)."
+
+        $observedRoute = Get-ResultByQueue -Results $observedRoutes -Queue $expectedPrinter.queue
+        Assert-Condition ($null -ne $observedRoute) "Preferred input format evidence omitted observed route for $($expectedPrinter.queue)."
+        $route = [string](Get-ResultProperty -Object $observedRoute -Name 'route')
+        Assert-Condition (
+            $route.StartsWith("$($expectedPrinter.preferredInputFormat) ->", [System.StringComparison]::Ordinal)) `
+            "Observed route for $($expectedPrinter.queue) did not start with $($expectedPrinter.preferredInputFormat): $route"
     }
 }
 
@@ -400,6 +436,10 @@ function Assert-FeatureEvidence {
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."
         if ($artifact -is [System.Array]) {
             Assert-Condition ($artifact.Length -gt 0) "Feature evidence #$number had an empty artifact."
+        }
+
+        if ($number -eq 3) {
+            Assert-PreferredInputFormatEvidence -Artifact $artifact
         }
 
         if ($number -eq 19) {
