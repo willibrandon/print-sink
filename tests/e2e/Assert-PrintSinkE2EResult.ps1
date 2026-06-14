@@ -327,6 +327,35 @@ function Assert-CliQueueOutput {
     }
 }
 
+function Assert-CliQueueLifecycle {
+    param(
+        [object] $CliQueueLifecycle
+    )
+
+    Assert-Condition ($null -ne $CliQueueLifecycle) 'The E2E result did not include CLI queue lifecycle evidence.'
+
+    $install = [string](Get-ResultProperty -Object $CliQueueLifecycle -Name 'install')
+    Assert-Condition ($install.StartsWith('install completed.', [System.StringComparison]::Ordinal)) 'CLI queue lifecycle install output did not report completion.'
+    Assert-CliQueueOutput `
+        -Output $install `
+        -ExpectedInstalled $true `
+        -Description 'CLI queue lifecycle install output'
+
+    $listInstalled = [string](Get-ResultProperty -Object $CliQueueLifecycle -Name 'listInstalled')
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($listInstalled)) 'CLI queue lifecycle did not include installed queue list output.'
+    Assert-CliQueueOutput `
+        -Output $listInstalled `
+        -ExpectedInstalled $true `
+        -Description 'CLI queue lifecycle installed list output'
+
+    $remove = [string](Get-ResultProperty -Object $CliQueueLifecycle -Name 'remove')
+    Assert-Condition ($remove.StartsWith('remove completed.', [System.StringComparison]::Ordinal)) 'CLI queue lifecycle remove output did not report completion.'
+    Assert-CliQueueOutput `
+        -Output $remove `
+        -ExpectedInstalled $false `
+        -Description 'CLI queue lifecycle remove output'
+}
+
 function Assert-VirtualPrinterInstallEvidence {
     param(
         [object] $Artifact
@@ -1826,6 +1855,7 @@ if (-not [string]::IsNullOrWhiteSpace([string]$result.package.buildConfiguration
 Assert-PackageEvidence -Package $result.package
 Assert-PackageShapeEvidence -PackageShape $result.packageShape
 Assert-SetEqual -Actual @($result.queues) -Expected $expectedQueues -Description 'E2E queue list'
+Assert-CliQueueLifecycle -CliQueueLifecycle $result.cliQueueLifecycle
 
 Assert-FeatureEvidence `
     -FeatureEvidence @($result.featureEvidence) `

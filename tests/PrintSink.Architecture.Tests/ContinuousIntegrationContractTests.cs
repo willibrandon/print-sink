@@ -457,6 +457,10 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("supportsMultipleInstances", validatorScript);
         Assert.Contains("Config\\PrinterPdf.pdc.xml", validatorScript);
         Assert.Contains("Assert-PackageShapeEvidence -PackageShape $result.packageShape", validatorScript);
+        Assert.Contains("function Assert-CliQueueLifecycle", validatorScript);
+        Assert.Contains("install completed.", validatorScript);
+        Assert.Contains("remove completed.", validatorScript);
+        Assert.Contains("Assert-CliQueueLifecycle -CliQueueLifecycle $result.cliQueueLifecycle", validatorScript);
         Assert.Contains("function Assert-Route", validatorScript);
         Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);
         Assert.Contains("application/oxps -> Pdf; Convert; Convert XPS to PDF.", validatorScript);
