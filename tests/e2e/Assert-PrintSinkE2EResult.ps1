@@ -59,6 +59,14 @@ $expectedPrinterSelectedDetailParts = @(
     'features=PageMediaType,PageOutputQuality',
     'parameters=JobCopiesAllDocuments'
 )
+$expectedVirtualPrinterDisplayNames = @(
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pdf'; displayName = 'ms-resource:PdfPrintDisplayName'; queue = 'PrintSink - PDF' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-xps'; displayName = 'ms-resource:XpsPrintDisplayName'; queue = 'PrintSink - XPS' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-ps'; displayName = 'ms-resource:PostScriptPrintDisplayName'; queue = 'PrintSink - PostScript' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-cloud'; displayName = 'ms-resource:CloudPrintDisplayName'; queue = 'PrintSink - Cloud' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; displayName = 'ms-resource:PwgRasterPrintDisplayName'; queue = 'PrintSink - PWG Raster' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; displayName = 'ms-resource:PclmPrintDisplayName'; queue = 'PrintSink - PCLm' }
+)
 
 function Assert-Condition {
     param(
@@ -160,6 +168,32 @@ function Assert-PrinterSelectedDiagnostic {
         -Detail ([string](Get-ResultProperty -Object $PrinterSelected -Name 'detail')) `
         -ExpectedParts $expectedPrinterSelectedDetailParts `
         -Description $Description
+}
+
+function Assert-LocalizedQueueNameEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Localized queue-name evidence did not include an artifact.'
+
+    $manifestNames = @(Get-ResultProperty -Object $Artifact -Name 'manifestNames')
+    $installedQueues = @(Get-ResultProperty -Object $Artifact -Name 'installedQueues')
+    foreach ($expectedPrinter in $expectedVirtualPrinterDisplayNames) {
+        $manifestName = @($manifestNames |
+            Where-Object { [string](Get-ResultProperty -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $manifestName) "Localized queue-name evidence omitted manifest printer URI $($expectedPrinter.printerUri)."
+        Assert-Condition (
+            [string](Get-ResultProperty -Object $manifestName -Name 'displayName') -eq $expectedPrinter.displayName) `
+            "Manifest printer URI $($expectedPrinter.printerUri) did not use $($expectedPrinter.displayName)."
+
+        $installedQueue = @($installedQueues |
+            Where-Object { [string](Get-ResultProperty -Object $_ -Name 'name') -eq $expectedPrinter.queue } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $installedQueue) "Localized queue-name evidence omitted installed queue $($expectedPrinter.queue)."
+        Assert-Condition ([bool](Get-ResultProperty -Object $installedQueue -Name 'installed')) "Localized queue-name evidence reported $($expectedPrinter.queue) as not installed."
+    }
 }
 
 function Get-ResultTimestamp {
@@ -370,6 +404,10 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 19) {
             Assert-PrinterSelectedDiagnostic -PrinterSelected $artifact -Description 'Feature evidence #19 artifact'
+        }
+
+        if ($number -eq 25) {
+            Assert-LocalizedQueueNameEvidence -Artifact $artifact
         }
     }
 

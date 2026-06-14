@@ -155,6 +155,8 @@ The required E2E suite proves the current installed-package behavior:
    `JobCopiesAllDocuments`.
    Management UI capability-refresh evidence must be request-ordered: the extension's
    `Capabilities updated` diagnostic must be at or after the management request.
+   Localized queue-name evidence must match each expected `ms-resource:` key and each resolved
+   installed queue name.
 9. Set the PDF queue's user default print ticket through `IppPrintDevice.UserDefaultPrintTicket`,
    verify the persisted copy count, and restore it before output tests continue.
 10. Assert `IppPrintDevice.GetPrinterAttributes` against a real virtual queue exposes no usable

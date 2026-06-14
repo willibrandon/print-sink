@@ -192,6 +192,34 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies localized queue-name evidence records the expected resource keys and installed names.
+    /// </summary>
+    [TestMethod]
+    public void LocalizedQueueNameEvidenceRequiresExpectedResourceKeys()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+
+        string[] expectedResourceKeys =
+        [
+            "ms-resource:PdfPrintDisplayName",
+            "ms-resource:XpsPrintDisplayName",
+            "ms-resource:PostScriptPrintDisplayName",
+            "ms-resource:CloudPrintDisplayName",
+            "ms-resource:PwgRasterPrintDisplayName",
+            "ms-resource:PclmPrintDisplayName",
+        ];
+
+        Assert.Contains("Test-LocalizedQueueDisplayNameEvidence", e2eScript);
+        Assert.Contains("Assert-LocalizedQueueNameEvidence", validatorScript);
+        foreach (string expectedResourceKey in expectedResourceKeys)
+        {
+            Assert.Contains(expectedResourceKey, e2eScript);
+            Assert.Contains(expectedResourceKey, validatorScript);
+        }
+    }
+
+    /// <summary>
     /// Verifies deferred compatibility hooks remain implemented even though CI cannot trigger them deterministically.
     /// </summary>
     [TestMethod]

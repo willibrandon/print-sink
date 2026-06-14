@@ -4641,6 +4641,30 @@ function Test-AllQueuesInstalled {
     return $true
 }
 
+function Test-LocalizedQueueDisplayNameEvidence {
+    param(
+        [object[]] $VirtualPrinters,
+        [object[]] $InstalledQueues,
+        [string[]] $ExpectedQueues
+    )
+
+    foreach ($expectedPrinter in $expectedVirtualPrinters) {
+        $actualPrinter = @($VirtualPrinters |
+            Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        if ($null -eq $actualPrinter) {
+            return $false
+        }
+
+        $actualDisplayName = [string](Get-ObjectPropertyValue -Object $actualPrinter -Name 'displayName')
+        if ($actualDisplayName -ne $expectedPrinter.displayNameResource) {
+            return $false
+        }
+    }
+
+    return Test-AllQueuesInstalled -QueueSnapshot $InstalledQueues -ExpectedQueues $ExpectedQueues
+}
+
 function Assert-PrintSinkQueuePersistence {
     param(
         [object[]] $QueueSnapshots,
@@ -5262,10 +5286,11 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 25 `
         -Feature 'Localized printer queue display names' `
-        -Passed (
-            (@($virtualPrinters | Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name 'displayName') -like 'ms-resource:*' }).Count -eq $ExpectedQueues.Count) `
-                -and (Test-AllQueuesInstalled -QueueSnapshot $provisionedQueues -ExpectedQueues $ExpectedQueues)) `
-        -Evidence 'The signed manifest uses ms-resource display names and Windows reports the installed localized queue names.' `
+        -Passed (Test-LocalizedQueueDisplayNameEvidence `
+            -VirtualPrinters $virtualPrinters `
+            -InstalledQueues $provisionedQueues `
+            -ExpectedQueues $ExpectedQueues) `
+        -Evidence 'The signed manifest uses the expected ms-resource display-name keys and Windows reports the resolved queue names.' `
         -Artifact ([ordered]@{
             manifestNames = New-VirtualPrinterSummary -VirtualPrinters $virtualPrinters
             installedQueues = $provisionedQueues
