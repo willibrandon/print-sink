@@ -567,8 +567,9 @@ owns the WinUI window, shell state, and screen selection. Activation is still re
 `AppInstance.GetCurrent().GetActivatedEventArgs().Kind`, but the result is routed to Reactor screens
 instead of XAML pages:
 
-- `Launch` → **ManagementScreen** (diagnostics: list installed PrintSink queues, get/set
-  `UserDefaultPrintTicket`, trigger `RefreshPrintDeviceCapabilities`, IPP URL info).
+- `Launch` → **ManagementScreen** (diagnostics: list installed PrintSink queues, install/remove
+  virtual queues, get/set `UserDefaultPrintTicket`, trigger `RefreshPrintDeviceCapabilities`, IPP URL
+  info).
 - `PrintSupportSettingsUI` → **SettingsScreen**, created **modal to `OwnerWindowId`** via
   `Win32Interop.GetWindowFromWindowId` (the v4 WinAppSDK requirement).
 - `PrintSupportJobUI` → **JobPreviewScreen**; subscribes
@@ -715,6 +716,8 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    as scripted Windows automation in CI and on clean Windows 11 26100+ VMs:
    - Build and install the signed MSIX, run `printsink-app.exe --install-virtual-printers`, and assert
      all six queues appear (`Get-Printer`).
+   - Launch the packaged management UI, inspect it through UI Automation, and assert the queue
+     lifecycle actions are visible and enabled.
    - Assert the signed manifest keeps `uap10:SupportsMultipleInstances="true"` and submit overlapping
      real print jobs so concurrent activations are proven by output files and diagnostics.
    - Print from a real Win32 print harness to every endpoint, and print a real Notepad `/p` text
@@ -759,12 +762,12 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
    - Job UI: assert virtual-printer PDL metadata for the real job title, source application, and OXPS
      content type is received; assert watermark changes are applied; and assert cancel aborts the real
      print flow while leaving the selected target empty and recording `Job canceled`.
-   - Queue persistence: after provisioning, extension refresh, default-ticket edits, every real print
-     path, Settings UI, Job UI complete, and Job UI cancel, assert all six queues still appear in
-     `Get-Printer`.
-   - Required additions for any feature-bearing change: if Settings UI, PDC refresh, passthrough,
-     source printing, or a new sink behavior changes, add the corresponding real E2E assertion in the
-     same commit.
+   - Queue persistence: after provisioning, management UI inspection, extension refresh, default-ticket
+     edits, every real print path, Settings UI, Job UI complete, and Job UI cancel, assert all six
+     queues still appear in `Get-Printer`.
+   - Required additions for any feature-bearing change: if ManagementScreen, Settings UI, PDC refresh,
+     passthrough, source printing, or a new sink behavior changes, add the corresponding real E2E
+     assertion in the same commit.
 
 ### 9.2 Test tooling
 
