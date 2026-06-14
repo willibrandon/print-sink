@@ -450,6 +450,13 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("productConfiguration", validatorScript);
         Assert.Contains("productConfiguration -eq [string]$result.package.buildConfiguration", validatorScript);
         Assert.Contains("Assert-PackageEvidence -Package $result.package", validatorScript);
+        Assert.Contains("function Assert-PackageShapeEvidence", validatorScript);
+        Assert.Contains("expectedActivationClasses", validatorScript);
+        Assert.Contains("PrintSink.Tasks.VirtualPrinterBackgroundTask", validatorScript);
+        Assert.Contains("PrintSink.Xps.XpsSequentialDocument", validatorScript);
+        Assert.Contains("supportsMultipleInstances", validatorScript);
+        Assert.Contains("Config\\PrinterPdf.pdc.xml", validatorScript);
+        Assert.Contains("Assert-PackageShapeEvidence -PackageShape $result.packageShape", validatorScript);
         Assert.Contains("function Assert-Route", validatorScript);
         Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);
         Assert.Contains("application/oxps -> Pdf; Convert; Convert XPS to PDF.", validatorScript);

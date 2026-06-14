@@ -93,6 +93,21 @@ $expectedVirtualPrinterSupportedFormats = @(
     [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; formats = @() },
     [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; formats = @() }
 )
+$expectedVirtualPrinterShape = @(
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pdf'; displayName = 'ms-resource:PdfPrintDisplayName'; preferredInputFormat = 'application/oxps'; outputFileTypes = 'pdf'; pdcFile = 'Config\PrinterPdf.pdc.xml'; pdrFile = 'Config\PrinterPdf.pdr.xml' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-xps'; displayName = 'ms-resource:XpsPrintDisplayName'; preferredInputFormat = 'application/oxps'; outputFileTypes = 'xps;oxps'; pdcFile = 'Config\PrinterXps.pdc.xml'; pdrFile = 'Config\PrinterXps.pdr.xml' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-ps'; displayName = 'ms-resource:PostScriptPrintDisplayName'; preferredInputFormat = 'application/postscript'; outputFileTypes = 'ps'; pdcFile = 'Config\PrinterPostScript.pdc.xml'; pdrFile = 'Config\PrinterPostScript.pdr.xml' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-cloud'; displayName = 'ms-resource:CloudPrintDisplayName'; preferredInputFormat = 'application/oxps'; outputFileTypes = ''; pdcFile = 'Config\PrinterCloud.pdc.xml'; pdrFile = 'Config\PrinterCloud.pdr.xml' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pwgr'; displayName = 'ms-resource:PwgRasterPrintDisplayName'; preferredInputFormat = 'application/oxps'; outputFileTypes = 'pwgr'; pdcFile = 'Config\PrinterPwgRaster.pdc.xml'; pdrFile = 'Config\PrinterPwgRaster.pdr.xml' },
+    [pscustomobject]@{ printerUri = 'printsink:print-to-pclm'; displayName = 'ms-resource:PclmPrintDisplayName'; preferredInputFormat = 'application/oxps'; outputFileTypes = 'pclm'; pdcFile = 'Config\PrinterPclm.pdc.xml'; pdrFile = 'Config\PrinterPclm.pdr.xml' }
+)
+$expectedActivationClasses = @(
+    'PrintSink.Tasks.PrintSupportWorkflowBackgroundTask',
+    'PrintSink.Tasks.PrintSupportExtensionBackgroundTask',
+    'PrintSink.Tasks.VirtualPrinterBackgroundTask',
+    'PrintSink.Xps.XpsPageWatermarker',
+    'PrintSink.Xps.XpsSequentialDocument'
+)
 
 function Assert-Condition {
     param(
@@ -195,6 +210,46 @@ function Get-ResultByQueue {
                 -or (Get-ResultProperty -Object $_ -Name 'name') -eq $Queue
         } |
         Select-Object -First 1)[0]
+}
+
+function Assert-PackageShapeEvidence {
+    param(
+        [object] $PackageShape
+    )
+
+    Assert-Condition ($null -ne $PackageShape) 'The E2E result did not include package-shape evidence.'
+
+    $manifestPath = [string](Get-ResultProperty -Object $PackageShape -Name 'manifestPath')
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($manifestPath)) 'Package-shape evidence omitted the installed AppxManifest path.'
+    Assert-Condition (
+        $manifestPath.EndsWith('AppxManifest.xml', [System.StringComparison]::OrdinalIgnoreCase)) `
+        "Package-shape evidence did not point at AppxManifest.xml: $manifestPath"
+
+    Assert-Condition ([bool](Get-ResultProperty -Object $PackageShape -Name 'supportsMultipleInstances')) 'Package-shape evidence did not prove SupportsMultipleInstances.'
+    Assert-SetEqual `
+        -Actual @(Get-ResultProperty -Object $PackageShape -Name 'activationClasses') `
+        -Expected $expectedActivationClasses `
+        -Description 'Package activation classes'
+
+    $virtualPrinters = @(Get-ResultProperty -Object $PackageShape -Name 'virtualPrinters')
+    Assert-SetEqual `
+        -Actual @($virtualPrinters | ForEach-Object { Get-ResultProperty -Object $_ -Name 'printerUri' }) `
+        -Expected @($expectedVirtualPrinterShape | ForEach-Object { $_.printerUri }) `
+        -Description 'Package virtual-printer URIs'
+
+    foreach ($expectedPrinter in $expectedVirtualPrinterShape) {
+        $virtualPrinter = @($virtualPrinters |
+            Where-Object { [string](Get-ResultProperty -Object $_ -Name 'printerUri') -eq $expectedPrinter.printerUri } |
+            Select-Object -First 1)[0]
+        Assert-Condition ($null -ne $virtualPrinter) "Package-shape evidence omitted virtual printer $($expectedPrinter.printerUri)."
+        Assert-Condition ([string](Get-ResultProperty -Object $virtualPrinter -Name 'displayName') -eq $expectedPrinter.displayName) "Package virtual printer $($expectedPrinter.printerUri) had the wrong display name."
+        Assert-Condition ([string](Get-ResultProperty -Object $virtualPrinter -Name 'preferredInputFormat') -eq $expectedPrinter.preferredInputFormat) "Package virtual printer $($expectedPrinter.printerUri) had the wrong preferred input format."
+        Assert-Condition ([string](Get-ResultProperty -Object $virtualPrinter -Name 'outputFileTypes') -eq $expectedPrinter.outputFileTypes) "Package virtual printer $($expectedPrinter.printerUri) had the wrong output file types."
+        Assert-Condition ([string](Get-ResultProperty -Object $virtualPrinter -Name 'pdcFile') -eq $expectedPrinter.pdcFile) "Package virtual printer $($expectedPrinter.printerUri) had the wrong PDC file."
+        Assert-Condition ([string](Get-ResultProperty -Object $virtualPrinter -Name 'pdrFile') -eq $expectedPrinter.pdrFile) "Package virtual printer $($expectedPrinter.printerUri) had the wrong PDR file."
+    }
+
+    Assert-SupportedFormatEvidence -ManifestSupportedFormats $virtualPrinters
 }
 
 function Assert-DetailContainsParts {
@@ -1769,6 +1824,7 @@ if (-not [string]::IsNullOrWhiteSpace([string]$result.package.buildConfiguration
     Assert-Condition ([string]$result.productConfiguration -eq [string]$result.package.buildConfiguration) 'The E2E productConfiguration did not match the package buildConfiguration.'
 }
 Assert-PackageEvidence -Package $result.package
+Assert-PackageShapeEvidence -PackageShape $result.packageShape
 Assert-SetEqual -Actual @($result.queues) -Expected $expectedQueues -Description 'E2E queue list'
 
 Assert-FeatureEvidence `
