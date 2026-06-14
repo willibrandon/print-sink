@@ -208,7 +208,9 @@ internal sealed partial class ContinuousIntegrationContractTests
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string e2eWrapperPath = Path.Combine(repositoryRoot, "test-e2e.ps1");
+        string e2eScriptPath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
         string e2eWrapper = File.ReadAllText(e2eWrapperPath);
+        string e2eScript = File.ReadAllText(e2eScriptPath);
 
         Assert.Contains("Assert-Administrator", e2eWrapper);
         Assert.Contains("New-SelfSignedCertificate", e2eWrapper);
@@ -234,6 +236,11 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("$e2eParameters.PackageBuildPlatform = $Platform", e2eWrapper);
         Assert.Contains("ProductConfiguration = $Configuration", e2eWrapper);
         Assert.Contains("Remove-PrintSinkPackage -ResultPath $resultPath", e2eWrapper);
+        Assert.Contains("dotnet run --project $projectPath --configuration $ProductConfiguration", e2eScript);
+        Assert.Contains("dotnet build $projectPath --configuration $ProductConfiguration", e2eScript);
+        Assert.Contains(@"PrintSink.E2E.IppPrinter\bin\$ProductConfiguration\net10.0", e2eScript);
+        Assert.Contains("'--configuration',", e2eScript);
+        Assert.Contains("$ProductConfiguration,", e2eScript);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
         AssertBefore(e2eWrapper, "& $resultAssertionScript @resultAssertionParameters", "if ($shouldRemovePackageAfterRun) {");
     }

@@ -1737,9 +1737,9 @@ function Start-PrintSinkIppPrinterServer {
     )
 
     $projectPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\PrintSink.E2E.IppPrinter.csproj'
-    $assemblyPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\bin\Debug\net10.0\PrintSink.E2E.IppPrinter.dll'
+    $assemblyPath = Join-Path $PSScriptRoot "..\PrintSink.E2E.IppPrinter\bin\$ProductConfiguration\net10.0\PrintSink.E2E.IppPrinter.dll"
     if (-not (Test-Path -LiteralPath $assemblyPath)) {
-        $buildOutput = & dotnet build $projectPath --configuration Debug 2>&1
+        $buildOutput = & dotnet build $projectPath --configuration $ProductConfiguration 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Building the E2E IPP printer failed. $($buildOutput -join [Environment]::NewLine)"
         }
@@ -4529,7 +4529,7 @@ function Assert-DocumentOutput {
         '--project',
         (Join-Path $PSScriptRoot '..\PrintSink.E2E.Assertions\PrintSink.E2E.Assertions.csproj'),
         '--configuration',
-        'Debug',
+        $ProductConfiguration,
         '--',
         '--format',
         $PrintCase.format,
