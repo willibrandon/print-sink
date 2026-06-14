@@ -67,6 +67,8 @@ internal sealed class ManagementScreen : Component
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
                     RefreshInstalledPrinters(setInstalledPrinters, setStatusText),
+                    () => _ = InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText),
+                    () => _ = RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText),
                     () => RefreshCapabilities(selectedKind, setInstalledPrinters, setStatusText),
                     defaultCopies,
                     setDefaultCopies,
@@ -169,6 +171,8 @@ internal sealed class ManagementScreen : Component
     private static BorderElement ValidationPanel(
         string statusText,
         Action refreshQueues,
+        Action installQueues,
+        Action removeQueues,
         Action refreshCapabilities,
         double defaultCopies,
         Action<double> setDefaultCopies,
@@ -187,8 +191,11 @@ internal sealed class ManagementScreen : Component
                     .Foreground(Theme.SecondaryText)
                     .Set(text => text.TextWrapping = TextWrapping.Wrap),
                 HStack(12,
+                    Button("Install queues", installQueues),
+                    Button("Remove queues", removeQueues),
                     Button("Refresh queues", refreshQueues),
-                    Button("Refresh capabilities", refreshCapabilities),
+                    Button("Refresh capabilities", refreshCapabilities)),
+                HStack(12,
                     NumberBox(defaultCopies, setDefaultCopies, "Default copies")
                         .Range(1, 999)
                         .SpinButtons()
@@ -423,6 +430,54 @@ internal sealed class ManagementScreen : Component
         IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
         setInstalledPrinters(snapshots);
         setStatusText($"Installed queues refreshed: {CountInstalled(snapshots)} found.");
+    }
+
+    private static async Task InstallVirtualPrintersAsync(
+        Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
+        Action<string> setStatusText)
+    {
+        try
+        {
+            setStatusText("Installing virtual printer queues...");
+            await VirtualPrinterInstaller
+                .InstallAllAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+            IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+
+            UiDispatch.Post(() =>
+            {
+                setInstalledPrinters(snapshots);
+                setStatusText($"Virtual printer queues installed: {CountInstalled(snapshots)} found.");
+            });
+        }
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
+        {
+            UiDispatch.Post(() => setStatusText($"Queue installation failed: {ex.Message}"));
+        }
+    }
+
+    private static async Task RemoveVirtualPrintersAsync(
+        Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
+        Action<string> setStatusText)
+    {
+        try
+        {
+            setStatusText("Removing virtual printer queues...");
+            await VirtualPrinterInstaller
+                .RemoveAllAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+            IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+
+            UiDispatch.Post(() =>
+            {
+                setInstalledPrinters(snapshots);
+                setStatusText($"Virtual printer queues removed: {CountInstalled(snapshots)} found.");
+            });
+        }
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
+        {
+            UiDispatch.Post(() => setStatusText($"Queue removal failed: {ex.Message}"));
+        }
     }
 
     private static void RefreshCapabilities(
