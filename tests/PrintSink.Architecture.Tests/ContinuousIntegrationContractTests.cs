@@ -89,6 +89,44 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the live E2E result validator parses real output documents instead of checking only file presence.
+    /// </summary>
+    [TestMethod]
+    public void E2eResultValidatorRequiresRealDocumentAssertions()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string documentAssertionsPath = Path.Combine(
+            repositoryRoot,
+            "tests",
+            "PrintSink.E2E.Assertions",
+            "DocumentAssertions.cs");
+        string packagesPath = Path.Combine(repositoryRoot, "Directory.Packages.props");
+        string validatorScript = File.ReadAllText(validatorPath);
+        string documentAssertions = File.ReadAllText(documentAssertionsPath);
+        string packages = File.ReadAllText(packagesPath);
+
+        Assert.Contains("PdfPig", packages);
+        Assert.Contains("PdfDocument.Open(path)", documentAssertions);
+        Assert.Contains("ContentOrderTextExtractor.GetText(page)", documentAssertions);
+        Assert.Contains("private static void AssertXps", documentAssertions);
+        Assert.Contains("private static void AssertPostScript", documentAssertions);
+        Assert.Contains("private static void AssertPwgRaster", documentAssertions);
+        Assert.Contains("private static void AssertPclm", documentAssertions);
+
+        Assert.Contains("Assert-Document -Format 'pdf' -Path $pdf.outputPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'oxps' -Path $xps.outputPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'postscript' -Path $postScript.outputPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'pwg' -Path $pwg.outputPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'pclm' -Path $pclm.outputPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'pdf' -Path $cloudArtifact.artifactCopyPath", validatorScript);
+        Assert.Contains("Assert-Document -Format 'pdf' -Path $notepad.outputPath", validatorScript);
+        Assert.Contains("Assert-FilesEqual -ExpectedPath $pdfPassthrough.sourcePath", validatorScript);
+        Assert.Contains("Assert-EmptyOrMissingFile -Path $failedImageWatermark.outputPath", validatorScript);
+        Assert.Contains("Assert-EmptyOrMissingFile -Path $jobUiCancel.outputPath", validatorScript);
+    }
+
+    /// <summary>
     /// Verifies the live E2E suite must prove installed queue persistence after every major workflow.
     /// </summary>
     [TestMethod]
