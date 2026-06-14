@@ -131,3 +131,9 @@ and removes the queues and installed package unless `-KeepPackage` or `-KeepQueu
 ```powershell
 .\test-e2e.ps1 -BuildPackage -Platform x64
 ```
+
+To verify a local run left no PrintSink package, queue, or process state behind:
+
+```powershell
+.\test-clean-state.ps1
+```

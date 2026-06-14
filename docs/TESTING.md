@@ -29,6 +29,10 @@ also contains the native `PrintSink.Xps` project.
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`
 
+After E2E, CI runs `.\test-clean-state.ps1 -Cleanup` and fails if any `PrintSink*` package, queue, or
+process was left behind. Uploaded test results, coverage, E2E outputs, and MSIX artifacts are required;
+missing evidence fails the run.
+
 ## CLI Validation
 
 Run the shipped validators against the package assets:

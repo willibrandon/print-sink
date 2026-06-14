@@ -128,13 +128,18 @@ jobs:
         shell: pwsh
         run: .\test-e2e.ps1 -BuildPackage -Platform ${{ matrix.platform }}
 
+      - name: Assert clean PrintSink state
+        if: always()
+        shell: pwsh
+        run: .\test-clean-state.ps1 -Cleanup
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.platform }}
           path: artifacts/test-results/${{ matrix.platform }}/*.trx
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload coverage
         if: always()
@@ -142,7 +147,7 @@ jobs:
         with:
           name: coverage-${{ matrix.platform }}
           path: artifacts/coverage/core.${{ matrix.platform }}.cobertura.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload E2E outputs
         if: always()

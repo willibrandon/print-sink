@@ -35,6 +35,8 @@ internal sealed partial class ContinuousIntegrationContractTests
         AssertBefore(workflow, "Test", "Packaged app tests");
         AssertBefore(workflow, "Packaged app tests", "Core coverage");
         AssertBefore(workflow, "Core coverage", "Real print-stack E2E");
+        AssertBefore(workflow, "Real print-stack E2E", "Assert clean PrintSink state");
+        AssertBefore(workflow, "Assert clean PrintSink state", "Upload test results");
     }
 
     /// <summary>
@@ -49,7 +51,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         string e2eStep = ExtractScriptBlock(
             workflow,
             "- name: Real print-stack E2E",
-            "- name: Upload test results");
+            "- name: Assert clean PrintSink state");
 
         Assert.DoesNotContain("continue-on-error", e2eStep);
         Assert.DoesNotContain("if: always()", e2eStep);
@@ -69,7 +71,19 @@ internal sealed partial class ContinuousIntegrationContractTests
         string e2eStep = ExtractScriptBlock(
             workflow,
             "- name: Real print-stack E2E",
+            "- name: Assert clean PrintSink state");
+        string cleanStateStep = ExtractScriptBlock(
+            workflow,
+            "- name: Assert clean PrintSink state",
             "- name: Upload test results");
+        string testResultsUploadStep = ExtractScriptBlock(
+            workflow,
+            "- name: Upload test results",
+            "- name: Upload coverage");
+        string coverageUploadStep = ExtractScriptBlock(
+            workflow,
+            "- name: Upload coverage",
+            "- name: Upload E2E outputs");
         string e2eUploadStep = ExtractScriptBlock(
             workflow,
             "- name: Upload E2E outputs",
@@ -81,6 +95,23 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Platform ${{ matrix.platform }}", e2eStep);
         Assert.DoesNotContain("-SkipPackageInstall", e2eStep);
         Assert.DoesNotContain("-KeepQueues", e2eStep);
+
+        Assert.Contains("if: always()", cleanStateStep);
+        Assert.Contains(".\\test-clean-state.ps1 -Cleanup", cleanStateStep);
+
+        Assert.Contains("if: always()", testResultsUploadStep);
+        Assert.Contains("uses: actions/upload-artifact@v7", testResultsUploadStep);
+        Assert.Contains("name: test-results-${{ matrix.platform }}", testResultsUploadStep);
+        Assert.Contains("path: artifacts/test-results/${{ matrix.platform }}/*.trx", testResultsUploadStep);
+        Assert.Contains("if-no-files-found: error", testResultsUploadStep);
+        Assert.DoesNotContain("if-no-files-found: ignore", testResultsUploadStep);
+
+        Assert.Contains("if: always()", coverageUploadStep);
+        Assert.Contains("uses: actions/upload-artifact@v7", coverageUploadStep);
+        Assert.Contains("name: coverage-${{ matrix.platform }}", coverageUploadStep);
+        Assert.Contains("path: artifacts/coverage/core.${{ matrix.platform }}.cobertura.xml", coverageUploadStep);
+        Assert.Contains("if-no-files-found: error", coverageUploadStep);
+        Assert.DoesNotContain("if-no-files-found: ignore", coverageUploadStep);
 
         Assert.Contains("if: always()", e2eUploadStep);
         Assert.Contains("uses: actions/upload-artifact@v7", e2eUploadStep);
@@ -95,6 +126,26 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("path: artifacts/appxpackages/${{ matrix.platform }}", msixUploadStep);
         Assert.Contains("if-no-files-found: error", msixUploadStep);
         Assert.DoesNotContain("if-no-files-found: ignore", msixUploadStep);
+    }
+
+    /// <summary>
+    /// Verifies the root clean-state script detects and can clean leaked PrintSink state.
+    /// </summary>
+    [TestMethod]
+    public void CleanStateScriptChecksPackagesQueuesAndProcesses()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string cleanStatePath = Path.Combine(repositoryRoot, "test-clean-state.ps1");
+        string cleanStateScript = File.ReadAllText(cleanStatePath);
+
+        Assert.Contains("[switch] $Cleanup", cleanStateScript);
+        Assert.Contains("Get-AppxPackage 'PrintSink*'", cleanStateScript);
+        Assert.Contains("Get-Printer -Name 'PrintSink*'", cleanStateScript);
+        Assert.Contains("Get-CimInstance Win32_Process", cleanStateScript);
+        Assert.Contains("Stop-Process -Id $processId", cleanStateScript);
+        Assert.Contains("Remove-Printer -Name $queue", cleanStateScript);
+        Assert.Contains("Remove-AppxPackage -Package $package", cleanStateScript);
+        Assert.Contains("PrintSink package, queue, or process state was left behind.", cleanStateScript);
     }
 
     /// <summary>
