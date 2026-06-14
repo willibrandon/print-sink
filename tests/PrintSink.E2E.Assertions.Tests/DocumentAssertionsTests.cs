@@ -319,7 +319,7 @@ internal sealed class DocumentAssertionsTests
         try
         {
             string path = Path.Combine(directory, "truncated.pwg");
-            WritePwgRaster(path, blankBody: false, height: 128, bodyLength: 16);
+            WritePwgRaster(path, blankBody: false, magic: "RaS3", height: 128, bodyLength: 16);
 
             int exitCode = RunAssertion(["--format", "pwg", "--path", path], out string error);
 
@@ -582,12 +582,17 @@ internal sealed class DocumentAssertionsTests
             Encoding.Latin1);
     }
 
-    private static void WritePwgRaster(string path, bool blankBody, uint height = 2, int bodyLength = 16)
+    private static void WritePwgRaster(
+        string path,
+        bool blankBody,
+        string magic = "RaS2",
+        uint height = 2,
+        int bodyLength = 16)
     {
         const int syncWordLength = 4;
         const int version2HeaderLength = 1796;
         byte[] bytes = new byte[syncWordLength + version2HeaderLength + bodyLength];
-        Encoding.ASCII.GetBytes("RaS2").CopyTo(bytes, 0);
+        Encoding.ASCII.GetBytes(magic).CopyTo(bytes, 0);
         WriteRasterUInt32(bytes, syncWordLength + 372, 2);
         WriteRasterUInt32(bytes, syncWordLength + 376, height);
         WriteRasterUInt32(bytes, syncWordLength + 384, 8);

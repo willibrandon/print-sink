@@ -461,6 +461,7 @@ internal static partial class DocumentAssertions
 
         string magic = Encoding.ASCII.GetString(bytes, 0, 4);
         bool isBigEndian = magic is "RaS2" or "RaS3";
+        bool isCompressed = magic is "RaS2" or "2SaR";
         if (!isBigEndian && magic is not ("2SaR" or "3SaR"))
         {
             throw new InvalidDataException($"PWG Raster output has invalid magic '{magic}': {path}");
@@ -505,7 +506,7 @@ internal static partial class DocumentAssertions
         int bodyStart = syncWordLength + version2HeaderLength;
         ulong declaredBodyBytes = (ulong)bytesPerLine * height;
         ulong actualBodyBytes = (ulong)(bytes.Length - bodyStart);
-        if (actualBodyBytes < declaredBodyBytes)
+        if (!isCompressed && actualBodyBytes < declaredBodyBytes)
         {
             throw new InvalidDataException($"PWG Raster page body is shorter than declared page data: {path}");
         }
