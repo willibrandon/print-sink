@@ -82,6 +82,26 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the real print-stack E2E suite refuses unsupported Windows builds.
+    /// </summary>
+    [TestMethod]
+    public void E2eRequiresSupportedWindowsBuild()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+        string validatorScript = File.ReadAllText(validatorPath);
+
+        Assert.Contains("[Version]'10.0.26100.0'", e2eScript);
+        Assert.Contains("OSVersion.Version", e2eScript);
+        Assert.Contains("Current build:", e2eScript);
+        Assert.Contains("[Version]'10.0.26100.0'", validatorScript);
+        Assert.Contains("function Assert-SupportedWindowsVersion", validatorScript);
+        Assert.Contains("Assert-SupportedWindowsVersion -WindowsVersion ([string]$result.windowsVersion)", validatorScript);
+    }
+
+    /// <summary>
     /// Verifies E2E feature evidence must include concrete artifacts.
     /// </summary>
     [TestMethod]

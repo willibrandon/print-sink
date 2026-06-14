@@ -42,6 +42,8 @@ $requiredSnapshotContexts = @(
     'after IPP PSA association'
 )
 
+$minimumWindowsVersion = [Version]'10.0.26100.0'
+
 function Assert-Condition {
     param(
         [bool] $Condition,
@@ -51,6 +53,16 @@ function Assert-Condition {
     if (-not $Condition) {
         throw $Message
     }
+}
+
+function Assert-SupportedWindowsVersion {
+    param(
+        [string] $WindowsVersion
+    )
+
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($WindowsVersion)) 'The E2E result did not include windowsVersion.'
+    $version = [Version]$WindowsVersion
+    Assert-Condition ($version -ge $minimumWindowsVersion) "The E2E result came from Windows build $version; expected $minimumWindowsVersion or later."
 }
 
 function Assert-SetEqual {
@@ -519,6 +531,7 @@ Assert-Condition (Test-Path -LiteralPath $ResultPath -PathType Leaf) "E2E result
 
 $result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json
 Assert-Condition ($null -ne $result) "E2E result could not be parsed: $ResultPath"
+Assert-SupportedWindowsVersion -WindowsVersion ([string]$result.windowsVersion)
 Assert-SetEqual -Actual @($result.queues) -Expected $expectedQueues -Description 'E2E queue list'
 
 Assert-FeatureEvidence `

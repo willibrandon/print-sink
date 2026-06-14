@@ -17,6 +17,12 @@ if (-not $isWindowsPlatform) {
     throw 'PrintSink E2E tests require Windows.'
 }
 
+$minimumWindowsVersion = [Version]'10.0.26100.0'
+$actualWindowsVersion = [Environment]::OSVersion.Version
+if ($actualWindowsVersion -lt $minimumWindowsVersion) {
+    throw "PrintSink E2E tests require Windows build $minimumWindowsVersion or later. Current build: $actualWindowsVersion."
+}
+
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 
 $expectedQueues = @(
