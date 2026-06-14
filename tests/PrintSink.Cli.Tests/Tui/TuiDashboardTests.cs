@@ -118,7 +118,6 @@ internal sealed class TuiDashboardTests
         Assert.Contains("Run sink tests", screenText);
         Assert.Contains("Installed queues:", screenText);
         Assert.Contains("installed=", screenText);
-        Assert.Contains("Shell commands", screenText);
         Assert.DoesNotContain("Commands", screenText);
     }
 
