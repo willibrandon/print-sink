@@ -18,7 +18,7 @@ internal static class TuiDashboard
     /// <returns>The dashboard root widget.</returns>
     public static Hex1bWidget Build(RootContext context, TuiDashboardModel model)
     {
-        return Build(context, model, static () => { }, static () => { }, static () => { }, "Ready.");
+        return Build(context, model, static () => { }, static () => { }, static () => { }, static () => { }, "Ready.");
     }
 
     internal static Hex1bWidget Build(
@@ -27,7 +27,7 @@ internal static class TuiDashboard
         Action refreshDashboard,
         string actionStatus)
     {
-        return Build(context, model, refreshDashboard, static () => { }, static () => { }, actionStatus);
+        return Build(context, model, refreshDashboard, static () => { }, static () => { }, static () => { }, actionStatus);
     }
 
     internal static Hex1bWidget Build(
@@ -36,6 +36,7 @@ internal static class TuiDashboard
         Action refreshDashboard,
         Action installQueues,
         Action removeQueues,
+        Action runSinkTests,
         string actionStatus)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -43,6 +44,7 @@ internal static class TuiDashboard
         ArgumentNullException.ThrowIfNull(refreshDashboard);
         ArgumentNullException.ThrowIfNull(installQueues);
         ArgumentNullException.ThrowIfNull(removeQueues);
+        ArgumentNullException.ThrowIfNull(runSinkTests);
         ArgumentException.ThrowIfNullOrWhiteSpace(actionStatus);
 
         return context.VStack(stack =>
@@ -59,6 +61,7 @@ internal static class TuiDashboard
                 stack.Button("Refresh dashboard").OnClick(_ => refreshDashboard()),
                 stack.Button("Install queues").OnClick(_ => installQueues()),
                 stack.Button("Remove queues").OnClick(_ => removeQueues()),
+                stack.Button("Run sink tests").OnClick(_ => runSinkTests()),
                 stack.Text($"Status: {actionStatus}"),
                 stack.Text(""),
                 stack.Text("Shell commands"),
@@ -158,6 +161,7 @@ internal static class TuiDashboard
                         state.Refresh,
                         state.InstallQueues,
                         state.RemoveQueues,
+                        state.RunSinkTests,
                         state.Status);
                 })
             .Build();

@@ -115,6 +115,7 @@ internal sealed class TuiDashboardTests
         Assert.Contains("Refresh dashboard", screenText);
         Assert.Contains("Install queues", screenText);
         Assert.Contains("Remove queues", screenText);
+        Assert.Contains("Run sink tests", screenText);
         Assert.Contains("Installed queues:", screenText);
         Assert.Contains("installed=", screenText);
         Assert.Contains("Shell commands", screenText);
@@ -196,6 +197,72 @@ internal sealed class TuiDashboardTests
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Verifies that the sink-test dashboard action runs the fixture sink checks from the keyboard.
+    /// </summary>
+    [TestMethod]
+    public async Task DashboardSinkTestActionRunsFixtureChecks()
+    {
+        TuiDashboardRuntimeState state = await TuiDashboardRuntimeState
+            .CreateAsync(
+                Environment.CurrentDirectory,
+                () => PrinterQueueSnapshot.Available([]),
+                (_, _) => Task.FromResult(new TuiPackageCommandResult(CliExitCodes.Success, "ok", string.Empty)),
+                TestContext.CancellationToken)
+            .ConfigureAwait(false);
+
+        using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+            .WithHex1bApp(
+                _ => { },
+                app =>
+                {
+                    state.Attach(app);
+                    return context => TuiDashboard.Build(
+                        context,
+                        state.Model,
+                        state.Refresh,
+                        state.InstallQueues,
+                        state.RemoveQueues,
+                        state.RunSinkTests,
+                        state.Status);
+                })
+            .WithHeadless()
+            .WithDimensions(120, 50)
+            .Build();
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
+
+        Task<int> runTask = terminal.RunAsync(cancellation.Token);
+        await new Hex1bTerminalInputSequenceBuilder()
+            .WaitUntil(
+                screen => screen.ContainsText("Run sink tests"),
+                TimeSpan.FromSeconds(2),
+                "sink test action")
+            .Tab()
+            .Tab()
+            .Tab()
+            .Enter()
+            .WaitUntil(
+                screen => screen.ContainsText($"Fixture sink tests passed for {EndpointCatalog.All.Count} endpoints."),
+                TimeSpan.FromSeconds(2),
+                "fixture sink test completion")
+            .Ctrl()
+            .Key(Hex1bKey.C)
+            .Build()
+            .ApplyAsync(terminal, cancellation.Token)
+            .ConfigureAwait(false);
+
+        await cancellation.CancelAsync().ConfigureAwait(false);
+
+        try
+        {
+            await runTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private static string CreateTestDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PrintSink.Tests", Path.GetRandomFileName());
@@ -236,6 +303,7 @@ internal sealed class TuiDashboardTests
                         state.Refresh,
                         state.InstallQueues,
                         state.RemoveQueues,
+                        state.RunSinkTests,
                         state.Status);
                 })
             .WithHeadless()

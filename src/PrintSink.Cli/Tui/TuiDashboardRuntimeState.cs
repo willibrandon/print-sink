@@ -1,4 +1,5 @@
 using Hex1b;
+using PrintSink.Core.Abstractions;
 using PrintSink.Core.Diagnostics;
 
 namespace PrintSink.Cli.Tui;
@@ -92,6 +93,11 @@ internal sealed class TuiDashboardRuntimeState
             () => RunQueueCommandAsync("--remove-virtual-printers", "Queue removal completed."));
     }
 
+    internal void RunSinkTests()
+    {
+        StartBackgroundWork("Running fixture sink tests.", RunSinkTestsAsync);
+    }
+
     private async Task RefreshAsync()
     {
         try
@@ -148,6 +154,41 @@ internal sealed class TuiDashboardRuntimeState
         catch (InvalidOperationException exception)
         {
             Status = $"Queue command failed: {exception.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+            app?.Invalidate();
+        }
+    }
+
+    private async Task RunSinkTestsAsync()
+    {
+        try
+        {
+            Model = await LoadModelAsync().ConfigureAwait(false);
+            int failedChecks = Model.RouteChecks.Count(routeCheck =>
+                routeCheck.Status != VirtualPrinterJobStatus.Succeeded ||
+                routeCheck.OutputBytes <= 0);
+            Status = failedChecks == 0
+                ? $"Fixture sink tests passed for {Model.RouteChecks.Count} endpoints."
+                : $"Fixture sink tests failed for {failedChecks} endpoints.";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Fixture sink tests canceled.";
+        }
+        catch (IOException exception)
+        {
+            Status = $"Fixture sink tests failed: {exception.Message}";
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Status = $"Fixture sink tests failed: {exception.Message}";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Status = $"Fixture sink tests failed: {exception.Message}";
         }
         finally
         {
