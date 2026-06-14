@@ -36,6 +36,26 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the real print-stack E2E workflow step cannot be made advisory.
+    /// </summary>
+    [TestMethod]
+    public void WindowsCiDoesNotMakeRealPrintStackE2eOptional()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "windows-ci.yml");
+        string workflow = File.ReadAllText(workflowPath);
+        string e2eStep = ExtractScriptBlock(
+            workflow,
+            "- name: Real print-stack E2E",
+            "- name: Upload test results");
+
+        Assert.DoesNotContain("continue-on-error", e2eStep);
+        Assert.DoesNotContain("if: always()", e2eStep);
+        Assert.DoesNotContain("|| true", e2eStep);
+        Assert.DoesNotContain("exit 0", e2eStep);
+    }
+
+    /// <summary>
     /// Verifies E2E feature evidence must include concrete artifacts.
     /// </summary>
     [TestMethod]
