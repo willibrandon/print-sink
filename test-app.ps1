@@ -56,10 +56,59 @@ function Remove-PackagedAppTestPackage {
     Get-Process -Name 'PrintSink.App.Tests' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
 
-    $packages = @(Get-AppxPackage -Name 'PrintSink.App.Tests')
+    $packages = @(Get-AppxPackageFullNamesQuietly -Name 'PrintSink.App.Tests')
     foreach ($package in $packages) {
-        Write-Host "Removing test package $($package.PackageFullName)"
-        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+        Write-Host "Removing test package $package"
+        Remove-AppxPackageQuietly -PackageFullName $package
+    }
+}
+
+function Remove-AppxPackageQuietly {
+    param(
+        [string] $PackageFullName
+    )
+
+    $environmentVariableName = 'PRINTSINK_APPX_PACKAGE_TO_REMOVE'
+    $previousPackageFullName = [Environment]::GetEnvironmentVariable($environmentVariableName, 'Process')
+    $command = '$ErrorActionPreference = ''Stop''; $ProgressPreference = ''SilentlyContinue''; Remove-AppxPackage -Package $env:PRINTSINK_APPX_PACKAGE_TO_REMOVE -ErrorAction Stop'
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+    try {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $PackageFullName, 'Process')
+        & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Remove-AppxPackage failed for $PackageFullName with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $previousPackageFullName, 'Process')
+    }
+}
+
+function Get-AppxPackageFullNamesQuietly {
+    param(
+        [string] $Name
+    )
+
+    $environmentVariableName = 'PRINTSINK_APPX_PACKAGE_NAME'
+    $previousName = [Environment]::GetEnvironmentVariable($environmentVariableName, 'Process')
+    $command = '$ErrorActionPreference = ''Stop''; $ProgressPreference = ''SilentlyContinue''; Get-AppxPackage -Name $env:PRINTSINK_APPX_PACKAGE_NAME -ErrorAction SilentlyContinue | ForEach-Object { $_.PackageFullName }'
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+    try {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $Name, 'Process')
+        $packageFullNames = @(& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand 2> $null)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Get-AppxPackage failed for $Name with exit code $LASTEXITCODE."
+        }
+
+        return @(
+            $packageFullNames |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notlike '#< CLIXML*' -and $_ -notlike '<Objs*' }
+        )
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $previousName, 'Process')
     }
 }
 

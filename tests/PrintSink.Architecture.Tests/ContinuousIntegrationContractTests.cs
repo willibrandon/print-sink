@@ -201,13 +201,20 @@ internal sealed partial class ContinuousIntegrationContractTests
         string cleanStateScript = File.ReadAllText(cleanStatePath);
 
         Assert.Contains("[switch] $Cleanup", cleanStateScript);
-        Assert.Contains("Get-AppxPackage 'PrintSink*'", cleanStateScript);
+        Assert.Contains("function Get-AppxPackageFullNamesQuietly", cleanStateScript);
+        Assert.Contains("Get-AppxPackageFullNamesQuietly -Name 'PrintSink*'", cleanStateScript);
+        Assert.Contains("Get-AppxPackage -Name $env:PRINTSINK_APPX_PACKAGE_NAME", cleanStateScript);
         Assert.Contains("Get-Printer -Name 'PrintSink*'", cleanStateScript);
         Assert.Contains("Get-CimInstance Win32_Process", cleanStateScript);
         Assert.Contains("$ProgressPreference = 'SilentlyContinue'", cleanStateScript);
         Assert.Contains("Stop-Process -Id $processId", cleanStateScript);
         Assert.Contains("Remove-Printer -Name $queue", cleanStateScript);
-        Assert.Contains("Remove-AppxPackage -Package $package", cleanStateScript);
+        Assert.Contains("function Remove-AppxPackageQuietly", cleanStateScript);
+        Assert.Contains("Remove-AppxPackage", cleanStateScript);
+        Assert.Contains("$ProgressPreference = ''SilentlyContinue''", cleanStateScript);
+        Assert.Contains("powershell.exe -NoLogo -NoProfile -NonInteractive", cleanStateScript);
+        Assert.Contains("*> $null", cleanStateScript);
+        Assert.Contains("Remove-AppxPackageQuietly -PackageFullName $package", cleanStateScript);
         Assert.Contains("PrintSink package, queue, or process state was left behind.", cleanStateScript);
     }
 
@@ -257,10 +264,22 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("$e2eParameters.Cleanup = $true", e2eWrapper);
         Assert.Contains("[switch] $KeepPackage", e2eWrapper);
         Assert.Contains("function Remove-PrintSinkPackage", e2eWrapper);
+        Assert.Contains("function Remove-AppxPackageQuietly", e2eWrapper);
+        Assert.Contains("function Get-AppxPackageFullNamesQuietly", e2eWrapper);
         Assert.Contains("Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json", e2eWrapper);
-        Assert.Contains("Where-Object { $_.PackageFullName -eq $packageFullName }", e2eWrapper);
-        Assert.Contains("Get-AppxPackage -Name 'PrintSink'", e2eWrapper);
-        Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", e2eWrapper);
+        Assert.Contains("Get-AppxPackageFullNamesQuietly -Name 'PrintSink'", e2eWrapper);
+        Assert.Contains("@($packageFullName)", e2eWrapper);
+        Assert.Contains("Get-AppxPackage -Name $env:PRINTSINK_APPX_PACKAGE_NAME", e2eWrapper);
+        Assert.Contains("Remove-AppxPackage", e2eWrapper);
+        Assert.Contains("$ProgressPreference = ''SilentlyContinue''", e2eWrapper);
+        Assert.Contains("powershell.exe -NoLogo -NoProfile -NonInteractive", e2eWrapper);
+        Assert.Contains("*> $null", e2eWrapper);
+        Assert.Contains("Remove-AppxPackageQuietly -PackageFullName $package", e2eWrapper);
+        Assert.Contains("function Remove-AppxPackageQuietly", e2eScript);
+        Assert.Contains("function Get-AppxPackageFullNamesQuietly", e2eScript);
+        Assert.Contains("Add-AppxPackage", e2eScript);
+        Assert.Contains("Get-AppxPackageFullNamesQuietly -Name $PackageName", e2eScript);
+        Assert.Contains("ForEach-Object { Remove-AppxPackageQuietly -PackageFullName $_ }", e2eScript);
         Assert.Contains("$shouldRemovePackageAfterRun = (-not $SkipPackageInstall) -and (-not $KeepPackage) -and (-not $KeepQueues)", e2eWrapper);
         Assert.Contains("Assert-PrintSinkE2EResult.ps1", e2eWrapper);
         Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
@@ -271,6 +290,11 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("dotnet run --project $projectPath --configuration $ProductConfiguration", e2eScript);
         Assert.Contains("dotnet build $projectPath --configuration $ProductConfiguration", e2eScript);
         Assert.Contains(@"PrintSink.E2E.IppPrinter\bin\$ProductConfiguration\net10.0", e2eScript);
+        Assert.Contains("function Start-PrintSinkPowerShellProcess", e2eScript);
+        Assert.Contains("$startInfo.RedirectStandardOutput = $true", e2eScript);
+        Assert.Contains("$startInfo.RedirectStandardError = $true", e2eScript);
+        Assert.Contains("$process.StandardOutput.ReadToEnd()", e2eScript);
+        Assert.Contains("$process.StandardError.ReadToEnd()", e2eScript);
         Assert.Contains("'--configuration',", e2eScript);
         Assert.Contains("$ProductConfiguration,", e2eScript);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");

@@ -552,6 +552,55 @@ function Add-PrintSinkPackageCertificateToStore {
     }
 }
 
+function Remove-AppxPackageQuietly {
+    param(
+        [string] $PackageFullName
+    )
+
+    $environmentVariableName = 'PRINTSINK_APPX_PACKAGE_TO_REMOVE'
+    $previousPackageFullName = [Environment]::GetEnvironmentVariable($environmentVariableName, 'Process')
+    $command = '$ErrorActionPreference = ''Stop''; $ProgressPreference = ''SilentlyContinue''; Remove-AppxPackage -Package $env:PRINTSINK_APPX_PACKAGE_TO_REMOVE -ErrorAction Stop'
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+    try {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $PackageFullName, 'Process')
+        & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Remove-AppxPackage failed for $PackageFullName with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $previousPackageFullName, 'Process')
+    }
+}
+
+function Get-AppxPackageFullNamesQuietly {
+    param(
+        [string] $Name
+    )
+
+    $environmentVariableName = 'PRINTSINK_APPX_PACKAGE_NAME'
+    $previousName = [Environment]::GetEnvironmentVariable($environmentVariableName, 'Process')
+    $command = '$ErrorActionPreference = ''Stop''; $ProgressPreference = ''SilentlyContinue''; Get-AppxPackage -Name $env:PRINTSINK_APPX_PACKAGE_NAME -ErrorAction SilentlyContinue | ForEach-Object { $_.PackageFullName }'
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+    try {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $Name, 'Process')
+        $packageFullNames = @(& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand 2> $null)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Get-AppxPackage failed for $Name with exit code $LASTEXITCODE."
+        }
+
+        return @(
+            $packageFullNames |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notlike '#< CLIXML*' -and $_ -notlike '<Objs*' }
+        )
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable($environmentVariableName, $previousName, 'Process')
+    }
+}
+
 function Add-MediumIntegrityProcessLauncher {
     if ('PrintSinkE2E.MediumIntegrityProcessLauncher' -as [type]) {
         return
@@ -1626,6 +1675,9 @@ function Start-PrintSinkPowerShellProcess {
     $startInfo.FileName = (Get-Command powershell.exe).Source
     $startInfo.Arguments = "-Sta -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
     $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     if (-not $process.Start()) {
@@ -1691,6 +1743,14 @@ function Wait-ForPrintSinkProcessSucceeded {
 
     if ($null -eq $exitCode) {
         throw "$Description exited but did not report an exit code. $(Get-PrintSinkProcessOutput -PrintProcess $PrintProcess)"
+    }
+
+    if ($process.StartInfo.RedirectStandardOutput) {
+        $process.StandardOutput.ReadToEnd() | Out-Null
+    }
+
+    if ($process.StartInfo.RedirectStandardError) {
+        $process.StandardError.ReadToEnd() | Out-Null
     }
 
     if ($exitCode -ne 0) {
@@ -6200,8 +6260,13 @@ if (-not $SkipPackageInstall) {
     Import-PrintSinkPackageCertificate -PackagePath $PackagePath
 
     Write-E2EProgress "Installing package from $PackagePath"
-    Get-AppxPackage -Name $PackageName | Remove-AppxPackage -ErrorAction Stop
-    Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ForceUpdateFromAnyVersion
+    Get-AppxPackageFullNamesQuietly -Name $PackageName |
+        ForEach-Object { Remove-AppxPackageQuietly -PackageFullName $_ }
+    Add-AppxPackage `
+        -Path $PackagePath `
+        -ForceApplicationShutdown `
+        -ForceUpdateFromAnyVersion `
+        -ProgressAction SilentlyContinue
 }
 
 Write-E2EProgress "Inspecting installed package $PackageName"

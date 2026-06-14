@@ -69,8 +69,15 @@ internal sealed class BuildScriptContractTests
 
         Assert.Contains("[switch] $KeepPackage", script);
         Assert.Contains("function Remove-PackagedAppTestPackage", script);
-        Assert.Contains("Get-AppxPackage -Name 'PrintSink.App.Tests'", script);
-        Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", script);
+        Assert.Contains("function Remove-AppxPackageQuietly", script);
+        Assert.Contains("function Get-AppxPackageFullNamesQuietly", script);
+        Assert.Contains("Get-AppxPackageFullNamesQuietly -Name 'PrintSink.App.Tests'", script);
+        Assert.Contains("Get-AppxPackage -Name $env:PRINTSINK_APPX_PACKAGE_NAME", script);
+        Assert.Contains("Remove-AppxPackage", script);
+        Assert.Contains("$ProgressPreference = ''SilentlyContinue''", script);
+        Assert.Contains("powershell.exe -NoLogo -NoProfile -NonInteractive", script);
+        Assert.Contains("*> $null", script);
+        Assert.Contains("Remove-AppxPackageQuietly -PackageFullName $package", script);
         Assert.Contains("if (-not $KeepPackage)", script);
         Assert.Contains("exit $testExitCode", script);
         Assert.Contains("$ProgressPreference = 'SilentlyContinue'", script);
