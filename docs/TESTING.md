@@ -204,9 +204,10 @@ Tracked compatibility hooks that are not claimed as supported behavior are writt
 deferred hooks are job notification/job-issue activation and IPP communication-error timeout recovery
 because Windows does not expose deterministic triggers for those events in the supported E2E path,
 plus provider-v2 PDL passthrough with job attributes when the live provider reports provider2 as
-unsupported or the runtime cannot encode provider-v2 IPP attributes. For the provider-v2 hook,
-deferred evidence must still carry the live capability-refresh, PDL-passthrough-provider, and
-physical-workflow diagnostics observed during the run.
+unsupported or the runtime cannot deliver the full passthrough-attribute workflow. For the
+provider-v2 hook, deferred evidence must still carry the live capability-refresh,
+PDL-passthrough-provider, IPP attribute source and buffer-size details when provider-v2 submission is
+used, and physical-workflow diagnostics observed during the run.
 
 Real output assertions:
 
@@ -236,8 +237,9 @@ Real output assertions:
   local IPP request evidence. Physical pass-through is optional evidence because PrintSink does not
   claim physical target-stream replacement.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
-  Windows' PDL passthrough provider. Diagnostics must prove provider-v2 submission when the runtime
-  can execute it and explicit v1 fallback when provider-v2 is unsupported or unusable.
+  Windows' PDL passthrough provider. Diagnostics must prove provider-v2 submission with encoded IPP
+  job and operation attribute buffers when the runtime can execute it, including the attribute source,
+  and explicit v1 fallback when provider-v2 is unsupported or unusable.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
 - Settings UI activation must show the Reactor settings surface, disable the real Windows print dialog

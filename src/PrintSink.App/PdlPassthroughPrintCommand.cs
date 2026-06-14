@@ -1,5 +1,6 @@
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using System.Globalization;
 using Windows.Devices.Printers;
 using Windows.Graphics.Printing.PrintTicket;
 using Windows.Storage.Streams;
@@ -59,7 +60,11 @@ internal static class PdlPassthroughPrintCommand
                 try
                 {
                     (IBuffer jobAttributes, IBuffer operationAttributes, string attributeDetail) =
-                        CreateIppAttributeBuffers(printDevice, printDevice.UserDefaultPrintTicket);
+                        CreateIppAttributeBuffers(
+                            printDevice,
+                            printDevice.UserDefaultPrintTicket,
+                            jobName,
+                            PdlFormatInfo.PdfContentType);
                     target = UniversalApiContract19PrinterApis.StartPrintJobWithIppJobAttributes(
                         provider2Reference,
                         jobName,
@@ -140,17 +145,36 @@ internal static class PdlPassthroughPrintCommand
             normalizedProviderDetail,
             "provider2Submit=fallback-v1",
             $"provider2Fallback={fallbackReason}",
-            $"provider2FallbackHResult=0x{exception.HResult:X8}");
+            $"provider2FallbackHResult=0x{exception.HResult:X8}",
+            $"provider2FallbackException={exception.GetType().Name}",
+            $"provider2FallbackMessage={SanitizeProviderDetail(exception.Message)}");
     }
 
     private static (IBuffer JobAttributes, IBuffer OperationAttributes, string Detail) CreateIppAttributeBuffers(
         IppPrintDevice printDevice,
-        WorkflowPrintTicket printTicket)
+        WorkflowPrintTicket printTicket,
+        string jobName,
+        string targetPdlFormat)
+    {
+        try
+        {
+            return CreateIppAttributeBuffersFromPrintTicket(printDevice, printTicket, targetPdlFormat);
+        }
+        catch (Exception ex) when (CanFallbackFromProvider2(ex))
+        {
+            return CreateMinimalIppAttributeBuffers(printTicket, jobName, targetPdlFormat, ex);
+        }
+    }
+
+    private static (IBuffer JobAttributes, IBuffer OperationAttributes, string Detail) CreateIppAttributeBuffersFromPrintTicket(
+        IppPrintDevice printDevice,
+        WorkflowPrintTicket printTicket,
+        string targetPdlFormat)
     {
         var attributesByGroup = IppAttributeConverter.ConvertPrintTicketToIppAttributesForPrinter(
             printDevice.PrinterName,
             printTicket,
-            PdlFormatInfo.PdfContentType);
+            targetPdlFormat);
 
         IDictionary<string, IppAttributeValue> jobAttributes = attributesByGroup.TryGetValue(
             IppAttributeGroupKind.Job,
@@ -172,11 +196,71 @@ internal static class PdlPassthroughPrintCommand
 
         string detail = string.Join(
             "; ",
+            "ippAttributeSource=print-ticket-converter",
             $"ippJobAttributes={jobAttributes.Count}",
             $"ippJobAttributeBytes={jobAttributesBuffer.Length}",
             $"ippOperationAttributes={operationAttributes.Count}",
             $"ippOperationAttributeBytes={operationAttributesBuffer.Length}");
         return (jobAttributesBuffer, operationAttributesBuffer, detail);
+    }
+
+    private static (IBuffer JobAttributes, IBuffer OperationAttributes, string Detail) CreateMinimalIppAttributeBuffers(
+        WorkflowPrintTicket printTicket,
+        string jobName,
+        string targetPdlFormat,
+        Exception converterException)
+    {
+        Dictionary<string, IppAttributeValue> jobAttributes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["job-name"] = IppAttributeValue.CreateNameWithoutLanguage(jobName),
+        };
+        int? copies = UserDefaultPrintTicketEditor.ReadCopies(printTicket);
+        if (copies is int copyCount)
+        {
+            jobAttributes["copies"] = IppAttributeValue.CreateInteger(copyCount);
+        }
+
+        Dictionary<string, IppAttributeValue> operationAttributes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["attributes-charset"] = IppAttributeValue.CreateCharset("utf-8"),
+            ["attributes-natural-language"] = IppAttributeValue.CreateNaturalLanguage(GetIppNaturalLanguage()),
+            ["document-format"] = IppAttributeValue.CreateMimeMedia(targetPdlFormat),
+            ["requesting-user-name"] = IppAttributeValue.CreateNameWithoutLanguage(Environment.UserName),
+        };
+
+        IBuffer jobAttributesBuffer = IppAttributeConverter.ConvertIppAttributesToBuffer(
+            jobAttributes,
+            IppAttributeGroupKind.Job);
+        IBuffer operationAttributesBuffer = IppAttributeConverter.ConvertIppAttributesToBuffer(
+            operationAttributes,
+            IppAttributeGroupKind.Operation);
+
+        string detail = string.Join(
+            "; ",
+            "ippAttributeSource=minimal-fallback",
+            $"ippAttributeFallbackHResult=0x{converterException.HResult:X8}",
+            $"ippAttributeFallbackException={converterException.GetType().Name}",
+            $"ippJobAttributes={jobAttributes.Count}",
+            $"ippJobAttributeBytes={jobAttributesBuffer.Length}",
+            $"ippOperationAttributes={operationAttributes.Count}",
+            $"ippOperationAttributeBytes={operationAttributesBuffer.Length}");
+        return (jobAttributesBuffer, operationAttributesBuffer, detail);
+    }
+
+    private static string GetIppNaturalLanguage()
+    {
+        string language = CultureInfo.CurrentUICulture.Name;
+        return string.IsNullOrWhiteSpace(language)
+            ? "en-US"
+            : language;
+    }
+
+    private static string SanitizeProviderDetail(string detail)
+    {
+        return detail
+            .ReplaceLineEndings(" ")
+            .Replace(';', ',')
+            .Trim();
     }
 
     private static void DisposeTarget(PdlPassthroughTarget? target)

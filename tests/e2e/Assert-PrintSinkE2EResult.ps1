@@ -337,8 +337,13 @@ function Assert-FeatureEvidence {
     Assert-Condition ($pdfPassthroughProviderDetail -notlike '*provider2=error*') 'Deferred row 28 provider-v2 probe failed.'
     if ($pdfPassthroughProviderDetail -like '*provider2=supported*') {
         Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=used*') 'Deferred row 28 reported provider-v2 support but did not submit through provider-v2.'
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeSource=*') 'Deferred row 28 provider-v2 submission omitted its IPP attribute source.'
         Assert-Condition ($pdfPassthroughProviderDetail -like '*ippJobAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded job-attribute bytes.'
         Assert-Condition ($pdfPassthroughProviderDetail -like '*ippOperationAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded operation-attribute bytes.'
+        if ($pdfPassthroughProviderDetail -like '*ippAttributeSource=minimal-fallback*') {
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackHResult=*') 'Deferred row 28 provider-v2 minimal fallback omitted the converter HRESULT.'
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackException=*') 'Deferred row 28 provider-v2 minimal fallback omitted the converter exception type.'
+        }
     }
     elseif ($pdfPassthroughProviderDetail -like '*provider2=runtime-unusable*') {
         Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=fallback-v1*') 'Deferred row 28 runtime-unusable provider-v2 path did not fall back to v1.'
@@ -561,6 +566,11 @@ function Assert-AdditionalOutputs {
     Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*provider2Submit=*') 'PDF passthrough provider evidence omitted provider2 submission detail.'
     Assert-Condition ([string]$pdfPassthroughProvider.detail -notlike '*projection-unavailable*') 'PDF passthrough provider evidence still reports provider2 projection unavailable.'
     Assert-Condition ([string]$pdfPassthroughProvider.detail -notlike '*provider2=error*') 'PDF passthrough provider2 probe failed.'
+    if ([string]$pdfPassthroughProvider.detail -like '*provider2Submit=used*') {
+        Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*ippAttributeSource=*') 'PDF passthrough provider-v2 submission omitted its IPP attribute source.'
+        Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*ippJobAttributeBytes=*') 'PDF passthrough provider-v2 submission omitted encoded job-attribute bytes.'
+        Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*ippOperationAttributeBytes=*') 'PDF passthrough provider-v2 submission omitted encoded operation-attribute bytes.'
+    }
 
     $winRtSource = Get-ResultProperty -Object $Result -Name 'winRtSource'
     Assert-CompletedJob -Result $winRtSource -Queue 'WinRT source print'
