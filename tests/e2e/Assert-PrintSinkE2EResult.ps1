@@ -426,6 +426,86 @@ function Assert-XpsCopyEvidence {
     Assert-Condition ([string](Get-ResultProperty -Object $result -Name 'sourceApplication') -eq 'powershell.exe') 'XPS copy feature evidence reported the wrong source application.'
 }
 
+function Assert-PdfWatermarkResult {
+    param(
+        [object] $Result,
+        [string] $Description,
+        [string] $Contains,
+        [string] $NotContains = '',
+        [switch] $RequiresImage,
+        [string] $ExpectedMode = ''
+    )
+
+    Assert-CompletedJob -Result $Result -Queue $Description
+    Assert-SourceApplication -Result $Result -ExpectedSourceApplication 'powershell.exe' -Description $Description
+    Assert-Route -Result $Result -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description $Description
+    Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'queue') -eq 'PrintSink - PDF') "$Description did not target the PDF queue."
+    Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'format') -eq 'pdf') "$Description did not produce PDF output."
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedMode)) {
+        Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'mode') -eq $ExpectedMode) "$Description did not report mode $ExpectedMode."
+    }
+
+    if ($RequiresImage) {
+        Assert-Document `
+            -Format 'pdf' `
+            -Path ([string](Get-ResultProperty -Object $Result -Name 'outputPath')) `
+            -ExpectedBytes ([long](Get-ResultProperty -Object $Result -Name 'bytes')) `
+            -Contains $Contains `
+            -NotContains $NotContains `
+            -RequiresImage
+    }
+    else {
+        Assert-Document `
+            -Format 'pdf' `
+            -Path ([string](Get-ResultProperty -Object $Result -Name 'outputPath')) `
+            -ExpectedBytes ([long](Get-ResultProperty -Object $Result -Name 'bytes')) `
+            -Contains $Contains `
+            -NotContains $NotContains
+    }
+}
+
+function Assert-WatermarkEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Watermark evidence did not include an artifact.'
+
+    $settingsText = Get-ResultProperty -Object $Artifact -Name 'settingsText'
+    Assert-PdfWatermarkResult `
+        -Result $settingsText `
+        -Description 'Default text watermark feature evidence' `
+        -Contains 'CI DEFAULT WATERMARK'
+
+    $settingsImage = Get-ResultProperty -Object $Artifact -Name 'settingsImage'
+    Assert-PdfWatermarkResult `
+        -Result $settingsImage `
+        -Description 'Default image watermark feature evidence' `
+        -Contains 'foo' `
+        -RequiresImage
+
+    $jobUiText = Get-ResultProperty -Object $Artifact -Name 'jobUiText'
+    Assert-PdfWatermarkResult `
+        -Result $jobUiText `
+        -Description 'Job UI text watermark feature evidence' `
+        -Contains 'CI WATERMARK' `
+        -NotContains 'ci-password' `
+        -ExpectedMode 'job-ui-watermark'
+
+    $jobUiPdl = Get-ResultProperty -Object $jobUiText -Name 'jobUiPdl'
+    Assert-Condition ($null -ne $jobUiPdl) 'Watermark evidence omitted Job UI PDL metadata.'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiPdl -Name 'message') -eq 'Job UI PDL received') 'Watermark evidence did not record Job UI PDL receipt.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $jobUiPdl -Name 'detail')) `
+        -ExpectedParts @(
+            'kind=virtual-printer',
+            'jobTitle=PrintSink E2E Job UI Watermark',
+            'source=powershell.exe',
+            'contentType=application/oxps') `
+        -Description 'Watermark Job UI PDL evidence'
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -654,6 +734,10 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 8) {
             Assert-XpsCopyEvidence -Artifact @($artifact)
+        }
+
+        if ($number -eq 9) {
+            Assert-WatermarkEvidence -Artifact $artifact
         }
 
         if ($number -eq 19) {

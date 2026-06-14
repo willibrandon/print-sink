@@ -4863,6 +4863,30 @@ function Test-XpsCopyEvidence {
         -and (Test-RouteEquals -Result $XpsPrint -ExpectedRoute 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.')
 }
 
+function Test-WatermarkEvidence {
+    param(
+        [object] $SettingsText,
+        [object] $SettingsImage,
+        [object] $JobUiText
+    )
+
+    return (Test-FileOutputResult -Result $SettingsText) `
+        -and (Test-FileOutputResult -Result $SettingsImage) `
+        -and (Test-FileOutputResult -Result $JobUiText) `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsText -Name 'queue') -eq 'PrintSink - PDF' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsImage -Name 'queue') -eq 'PrintSink - PDF' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiText -Name 'queue') -eq 'PrintSink - PDF' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsText -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsImage -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiText -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and (Test-RouteEquals -Result $SettingsText -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.') `
+        -and (Test-RouteEquals -Result $SettingsImage -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.') `
+        -and (Test-RouteEquals -Result $JobUiText -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.') `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiText -Name 'mode') -eq 'job-ui-watermark' `
+        -and [string](Get-ObjectPropertyValue -Object (Get-ObjectPropertyValue -Object $JobUiText -Name 'jobUiPdl') -Name 'detail') -like '*kind=virtual-printer*' `
+        -and [string](Get-ObjectPropertyValue -Object (Get-ObjectPropertyValue -Object $JobUiText -Name 'jobUiPdl') -Name 'detail') -like '*contentType=application/oxps*'
+}
+
 function Test-PreferredInputFormatEvidence {
     param(
         [object[]] $VirtualPrinters,
@@ -5330,11 +5354,11 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 9 `
         -Feature 'Watermark (text + image) on XPS pages' `
-        -Passed (
-            $SettingsWatermark.bytes -gt 0 `
-                -and $SettingsImageWatermark.bytes -gt 0 `
-                -and $JobUiWatermark.bytes -gt 0) `
-        -Evidence 'Default text watermark, default image watermark, and per-job UI watermark each produced validated PDF output.' `
+        -Passed (Test-WatermarkEvidence `
+            -SettingsText $SettingsWatermark `
+            -SettingsImage $SettingsImageWatermark `
+            -JobUiText $JobUiWatermark) `
+        -Evidence 'Default text watermark, default image watermark, and per-job UI watermark each produced exact real PDF artifacts with matching routes and validated content.' `
         -Artifact ([ordered]@{
             settingsText = $SettingsWatermark
             settingsImage = $SettingsImageWatermark

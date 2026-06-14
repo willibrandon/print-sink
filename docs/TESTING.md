@@ -265,6 +265,9 @@ Real output assertions:
   owner while open, and restore the owner when closed.
 - Package-local default text watermark settings appear in a real PDF after a capability refresh.
 - Package-local default image watermark settings add PDF image content after a capability refresh.
+- Watermark feature evidence must include the default text, default image, and Job UI text watermark
+  artifacts, with matching PDF routes, extracted watermark text, image-content validation, and Job UI
+  PDL metadata for the per-job path.
 - A corrupt image watermark causes a real background-task failure, records `Job failed` with an
   exception/HRESULT detail, and leaves the target file empty or absent.
 - Job UI activation must record virtual-printer PDL metadata for the real job title, source application,

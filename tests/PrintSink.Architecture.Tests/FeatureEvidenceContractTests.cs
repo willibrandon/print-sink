@@ -197,6 +197,38 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies watermark feature evidence validates each real watermark output.
+    /// </summary>
+    [TestMethod]
+    public void WatermarkEvidenceRequiresTextImageAndJobUiOutputs()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-WatermarkEvidence", e2eScript);
+        Assert.Contains("Default text watermark, default image watermark, and per-job UI watermark", e2eScript);
+        Assert.Contains("exact real PDF artifacts with matching routes and validated content", e2eScript);
+
+        Assert.Contains("Assert-WatermarkEvidence", validatorScript);
+        Assert.Contains("Assert-PdfWatermarkResult", validatorScript);
+        Assert.Contains("Default text watermark feature evidence", validatorScript);
+        Assert.Contains("Default image watermark feature evidence", validatorScript);
+        Assert.Contains("Job UI text watermark feature evidence", validatorScript);
+        Assert.Contains("CI DEFAULT WATERMARK", validatorScript);
+        Assert.Contains("CI WATERMARK", validatorScript);
+        Assert.Contains("-RequiresImage", validatorScript);
+        Assert.Contains("Watermark Job UI PDL evidence", validatorScript);
+
+        Assert.Contains("PrintSink.Xps + E2E", design);
+        Assert.Contains("default text, default image, and per-job UI watermark outputs", design);
+        Assert.Contains("image-content evidence", design);
+        Assert.Contains("Watermark feature evidence must include the default text, default image, and Job UI text watermark", testing);
+        Assert.Contains("image-content validation", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]
