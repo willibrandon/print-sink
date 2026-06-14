@@ -1,66 +1,91 @@
 using System.Runtime.InteropServices;
 using Windows.Devices.Printers;
 using Windows.Foundation.Metadata;
+using Windows.Storage.Streams;
 using WinRT;
 
 namespace PrintSink.App;
 
-internal static unsafe partial class UniversalApiContract19PrinterApis
+internal static unsafe class UniversalApiContract19PrinterApis
 {
-    private const int InterfaceMethodStart = 6;
     private const int ErrorNoInterface = unchecked((int)0x80004002);
     private const string PdlPassthroughProviderType = "Windows.Devices.Printers.PdlPassthroughProvider";
 
-    private static readonly Guid PdlPassthroughProvider2InterfaceId =
-        new("7330305c-a17d-52ec-a129-9a4ff9c8f655");
-
-    internal static string GetPdlPassthroughWithJobAttributesDetail(PdlPassthroughProvider provider)
+    internal static bool TryCreateSupportedPdlPassthroughProvider2Reference(
+        PdlPassthroughProvider provider,
+        out IObjectReference? provider2Reference,
+        out string providerDetail)
     {
         ArgumentNullException.ThrowIfNull(provider);
 
+        provider2Reference = null;
         if (!ApiInformation.IsPropertyPresent(PdlPassthroughProviderType, "IsPassthroughWithJobAttributesSupported")
             || !ApiInformation.IsMethodPresent(PdlPassthroughProviderType, "StartPrintJobWithIppJobAttributes"))
         {
-            return "pdlPassthroughProvider=v1; provider2=unavailable";
+            providerDetail = "pdlPassthroughProvider=v1; provider2=unavailable; provider2Submit=fallback-v1";
+            return false;
         }
 
-        int queryResult = QueryInterface(provider, PdlPassthroughProvider2InterfaceId, out IntPtr thisPtr);
+        int queryResult = QueryInterface(
+            provider,
+            ABI.Windows.Devices.Printers.IPdlPassthroughProvider2Methods.IID,
+            out IntPtr provider2Ptr);
         if (queryResult == ErrorNoInterface)
         {
-            return "pdlPassthroughProvider=v1; provider2=unavailable";
+            providerDetail = "pdlPassthroughProvider=v1; provider2=unavailable; provider2Submit=fallback-v1";
+            return false;
         }
 
         try
         {
             Marshal.ThrowExceptionForHR(queryResult);
-            IntPtr* vtable = *(IntPtr**)thisPtr;
-            string provider2 = ReadBoolean(thisPtr, vtable[InterfaceMethodStart]) ? "supported" : "unsupported";
-            return $"pdlPassthroughProvider=v1; provider2={provider2}; provider2Submit=projection-unavailable";
+            provider2Reference = ComWrappersSupport.GetObjectReferenceForInterface(
+                provider2Ptr,
+                ABI.Windows.Devices.Printers.IPdlPassthroughProvider2Methods.IID,
+                false);
+            if (!ABI.Windows.Devices.Printers.IPdlPassthroughProvider2Methods
+                .get_IsPassthroughWithJobAttributesSupported(provider2Reference))
+            {
+                providerDetail = "pdlPassthroughProvider=v1; provider2=unsupported; provider2Submit=fallback-v1";
+                provider2Reference.Dispose();
+                provider2Reference = null;
+                return false;
+            }
+
+            providerDetail = "pdlPassthroughProvider=v1; provider2=supported";
+            return true;
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException)
         {
-            return $"pdlPassthroughProvider=v1; provider2=error; provider2Error=0x{ex.HResult:X8}";
+            providerDetail = $"pdlPassthroughProvider=v1; provider2=runtime-unusable; provider2ProbeHResult=0x{ex.HResult:X8}; provider2Submit=fallback-v1";
+            provider2Reference?.Dispose();
+            provider2Reference = null;
+            return false;
         }
         finally
         {
-            Marshal.Release(thisPtr);
+            if (provider2Ptr != IntPtr.Zero)
+            {
+                Marshal.Release(provider2Ptr);
+            }
         }
     }
 
-    private static bool ReadBoolean(IntPtr thisPtr, IntPtr methodPointer)
+    internal static PdlPassthroughTarget StartPrintJobWithIppJobAttributes(
+        IObjectReference provider2Reference,
+        string jobName,
+        string pdlContentType,
+        IBuffer jobAttributes,
+        IBuffer operationAttributes)
     {
-        IntPtr valuePointer = Marshal.AllocHGlobal(sizeof(byte));
-        try
-        {
-            Marshal.WriteByte(valuePointer, 0);
-            var getValue = (delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)methodPointer;
-            Marshal.ThrowExceptionForHR(getValue(thisPtr, valuePointer));
-            return Marshal.ReadByte(valuePointer) != 0;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(valuePointer);
-        }
+        ArgumentNullException.ThrowIfNull(provider2Reference);
+
+        return ABI.Windows.Devices.Printers.IPdlPassthroughProvider2Methods.StartPrintJobWithIppJobAttributes(
+            provider2Reference,
+            jobName,
+            pdlContentType,
+            jobAttributes,
+            operationAttributes);
     }
 
     private static int QueryInterface(object instance, Guid interfaceId, out IntPtr thisPtr)

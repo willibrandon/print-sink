@@ -275,9 +275,30 @@ function Assert-FeatureEvidence {
     $capabilityRefresh = Get-ResultProperty -Object $artifact -Name 'capabilityRefresh'
     $pdfPassthroughProvider = Get-ResultProperty -Object $artifact -Name 'pdfPassthroughProvider'
     $physicalWorkflow = Get-ResultProperty -Object $artifact -Name 'physicalWorkflow'
-    Assert-Condition ([string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail') -like '*pdlPassthroughWithJobAttributes=*') 'Deferred row 28 omitted capability refresh availability detail.'
-    Assert-Condition ([string](Get-ResultProperty -Object $pdfPassthroughProvider -Name 'detail') -like '*provider2=*') 'Deferred row 28 omitted provider-v2 availability detail.'
-    Assert-Condition ([string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail') -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
+    $capabilityRefreshDetail = [string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail')
+    $pdfPassthroughProviderDetail = [string](Get-ResultProperty -Object $pdfPassthroughProvider -Name 'detail')
+    $physicalWorkflowDetail = [string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail')
+    Assert-Condition ($capabilityRefreshDetail -like '*pdlPassthroughWithJobAttributes=enabled*') 'Deferred row 28 did not enable passthrough-with-job-attributes during capability refresh.'
+    Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2=*') 'Deferred row 28 omitted provider-v2 availability detail.'
+    Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=*') 'Deferred row 28 omitted provider-v2 submission detail.'
+    Assert-Condition ($pdfPassthroughProviderDetail -notlike '*projection-unavailable*') 'Deferred row 28 still reports the provider-v2 projection as unavailable.'
+    Assert-Condition ($pdfPassthroughProviderDetail -notlike '*provider2=error*') 'Deferred row 28 provider-v2 probe failed.'
+    if ($pdfPassthroughProviderDetail -like '*provider2=supported*') {
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=used*') 'Deferred row 28 reported provider-v2 support but did not submit through provider-v2.'
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*ippJobAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded job-attribute bytes.'
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*ippOperationAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded operation-attribute bytes.'
+    }
+    elseif ($pdfPassthroughProviderDetail -like '*provider2=runtime-unusable*') {
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=fallback-v1*') 'Deferred row 28 runtime-unusable provider-v2 path did not fall back to v1.'
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Fallback=*') 'Deferred row 28 runtime-unusable provider-v2 path omitted the fallback reason.'
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2FallbackHResult=*' -or $pdfPassthroughProviderDetail -like '*provider2ProbeHResult=*') 'Deferred row 28 runtime-unusable provider-v2 path omitted the HRESULT.'
+    }
+    else {
+        Assert-Condition ($pdfPassthroughProviderDetail -like '*provider2Submit=fallback-v1*') 'Deferred row 28 provider-v2 fallback was not explicit.'
+    }
+
+    Assert-Condition ($physicalWorkflowDetail -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
+    Assert-Condition ($physicalWorkflowDetail -notlike '*passthroughWithAttributes=error*') 'Deferred row 28 workflow passthrough-with-attributes probe failed.'
 }
 
 function Get-ExpectedSupportedFeatures {
@@ -428,6 +449,9 @@ function Assert-AdditionalOutputs {
     Assert-Condition ($null -ne $pdfPassthroughProvider) 'PDF passthrough did not report provider evidence.'
     Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*pdlPassthroughProvider=*') 'PDF passthrough provider evidence omitted provider detail.'
     Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*provider2=*') 'PDF passthrough provider evidence omitted provider2 availability detail.'
+    Assert-Condition ([string]$pdfPassthroughProvider.detail -like '*provider2Submit=*') 'PDF passthrough provider evidence omitted provider2 submission detail.'
+    Assert-Condition ([string]$pdfPassthroughProvider.detail -notlike '*projection-unavailable*') 'PDF passthrough provider evidence still reports provider2 projection unavailable.'
+    Assert-Condition ([string]$pdfPassthroughProvider.detail -notlike '*provider2=error*') 'PDF passthrough provider2 probe failed.'
 
     $winRtSource = Get-ResultProperty -Object $Result -Name 'winRtSource'
     Assert-CompletedJob -Result $winRtSource -Queue 'WinRT source print'

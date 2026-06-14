@@ -119,7 +119,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                 bool ippTimeoutsConfigured = false;
                 int resourceCount = 0;
                 string pdlPassthroughWithAttributesDetail =
-                    UniversalApiContract19PrintSupport.GetPdlPassthroughWithJobAttributesDetail(args);
+                    UniversalApiContract19PrintSupport.EnablePdlPassthroughWithJobAttributes(args);
 
                 XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
                 XmlDocument updatedCapabilities = ApplyPrintSinkCapabilities(capabilities);

@@ -180,8 +180,8 @@ operator workflows; it references the same core library but is not an OS print a
 Rows 1-21, 23-25, and 27 are supported PrintSink capabilities. Each supported row is implemented and covered
 by CI. The E2E run writes `featureEvidence` for the print-stack rows it proves. Pure model behavior is
 covered by unit tests. Rows 22, 26, and 28 are tracked separately as deferred compatibility hooks until
-Windows can deliver them through deterministic E2E paths or PrintSink can submit the matching provider
-payloads end to end. The physical IPP path is limited to PSA
+Windows can deliver them through deterministic E2E paths, including a live provider that can encode
+and accept provider-v2 passthrough attributes for row 28. The physical IPP path is limited to PSA
 association and activation evidence; document output is a virtual-printer feature.
 
 | # | Feature | Contract / API | Component | Notes |
@@ -213,7 +213,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 25 | Localized printer queue display names | `DisplayName="ms-resource:…"` + `.resw` | Manifest + Strings | |
 | 26 | IPP communication-error timeout recovery | `PrintSupportExtensionSession.CommunicationErrorDetected`, `PrintSupportIppCommunicationConfiguration` | `PrintSupportExtensionBackgroundTask` | Tracked only. Defensive handler configures IPP timeouts when Windows reports a timeout; not a supported feature claim until a deterministic real-device E2E can trigger the event. |
 | 27 | IPP compression compatibility handling | `PrintWorkflowJobStartingEventArgs.IsIppCompressionEnabled`, `DisableIppCompressionForJob()` | `PrintSupportWorkflowBackgroundTask` + E2E | Real IPP workflow activation records the platform compression state and keeps system rendering enabled. |
-| 28 | PDL passthrough with IPP job-attribute compatibility | `SetPdlPassthroughWithJobAttributesSupported`, `IPdlPassthroughProvider2`, `PrintWorkflowPrinterJob3` | `PrintSupportExtensionBackgroundTask` + `PrintSupportWorkflowBackgroundTask` + `PrintSink.App` | Tracked only. Windows exposes the APIs in system metadata, but the stock .NET ref pack used by the project does not expose the managed converter/provider types. PrintSink records live availability in E2E, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job/operation attribute buffers are implemented and proven by real E2E. |
+| 28 | PDL passthrough with IPP job-attribute compatibility | `SetPdlPassthroughWithJobAttributesSupported`, `IPdlPassthroughProvider2`, `PrintWorkflowPrinterJob3` | `PrintSupportExtensionBackgroundTask` + `PrintSupportWorkflowBackgroundTask` + `PrintSink.App` | Tracked only. PrintSink enables the capability, records workflow passthrough-attribute state, and uses a scoped CsWinRT projection for `IppAttributeConverter` / `IPdlPassthroughProvider2`. When the live runtime can encode IPP job and operation attributes and accepts provider-v2 submission, CI records that path. When Windows reports provider-v2 as unsupported or the attribute conversion API is unusable, CI records the explicit v1 fallback and HRESULT instead of claiming row 28 support. |
 
 ---
 
@@ -832,11 +832,11 @@ must run inside the app's package identity. PrintSink uses MTP/MSTest on **.NET 
 6. **CLI/TUI model:** `System.CommandLine` for scriptable commands and Hex1b for terminal UI. The
    project references the Hex1b NuGet package.
 7. **Virtual Printer WinRT projections:** target a Windows App SDK / `Microsoft.Windows.SDK.NET.Ref`
-   build that projects the `Windows.Devices.Printers` v4 / virtual-printer surface. The reference sample
-   temporarily `#if VIRTUAL_PRINTER_DISABLED`-gated these because an older ref package conflicted with
-   `IppPrintDevice`. **PrintSink resolves this by pinning to a ref package that includes the projections;
-   if a conflict remains, author a scoped CsWinRT projection (`CsWinRTIncludes`) for the virtual-printer
-   namespace only.** No functionality is left disabled.
+   build that projects the stable virtual-printer surface. The reference sample temporarily
+   `#if VIRTUAL_PRINTER_DISABLED`-gated these because an older ref package conflicted with
+   `IppPrintDevice`. PrintSink pins the stable projections and adds scoped CsWinRT private projections
+   only for newer contract-19 members that exist in Windows metadata but are missing from the managed ref
+   assembly.
 8. **Testing:** MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E — the current
    Microsoft-recommended stack.
 9. **Localization shipped** (display names + custom features via `.resw`/PDR), not deferred.

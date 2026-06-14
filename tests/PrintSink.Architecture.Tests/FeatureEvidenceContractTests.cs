@@ -105,9 +105,14 @@ internal sealed partial class FeatureEvidenceContractTests
         Assert.Contains("IPP communication error", extensionTask);
 
         Assert.Contains("SetPdlPassthroughWithJobAttributesSupported", printSupportContract19);
-        Assert.Contains("pdlPassthroughWithJobAttributes=available-not-enabled", printSupportContract19);
+        Assert.Contains("pdlPassthroughWithJobAttributes=enabled", printSupportContract19);
         Assert.Contains("IsPassthroughWithJobAttributesSupported", printerContract19);
-        Assert.Contains("provider2Submit=projection-unavailable", printerContract19);
+        Assert.Contains("provider2=runtime-unusable", printerContract19);
+        Assert.Contains("provider2Submit=fallback-v1", printerContract19);
+        string pdlPassthroughPrintCommand = ReadRepositoryFile("src", "PrintSink.App", "PdlPassthroughPrintCommand.cs");
+        Assert.Contains("provider2Submit=used", pdlPassthroughPrintCommand);
+        Assert.Contains("provider2Fallback={fallbackReason}", pdlPassthroughPrintCommand);
+        Assert.Contains("ipp-attribute-conversion-failed", pdlPassthroughPrintCommand);
     }
 
     private static int[] ExtractDesignFeatureNumbers(string design)

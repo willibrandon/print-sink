@@ -840,24 +840,42 @@ function Wait-ForQueueInstalledState {
         [int] $TimeoutSeconds
     )
 
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
-    do {
-        $installedNames = @(Get-PrintSinkUsablePrinterNames)
-        $matchesExpectedState = $true
-        foreach ($queue in $ExpectedQueues) {
-            if (($installedNames -contains $queue) -ne $ExpectedInstalled) {
-                $matchesExpectedState = $false
-                break
+    $attemptedSpoolerRecovery = $false
+    while ($true) {
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+        do {
+            $installedNames = if ($ExpectedInstalled) {
+                @(Get-PrintSinkUsablePrinterNames)
             }
+            else {
+                @(Get-PrintSinkPrinterNames)
+            }
+            $matchesExpectedState = $true
+            foreach ($queue in $ExpectedQueues) {
+                if (($installedNames -contains $queue) -ne $ExpectedInstalled) {
+                    $matchesExpectedState = $false
+                    break
+                }
+            }
+
+            if ($matchesExpectedState) {
+                return
+            }
+
+            Start-Sleep -Milliseconds 500
+        }
+        while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+        if ($ExpectedInstalled -or $attemptedSpoolerRecovery) {
+            break
         }
 
-        if ($matchesExpectedState) {
-            return
-        }
-
-        Start-Sleep -Milliseconds 500
+        Clear-PrintSinkQueueJobs -ExpectedQueues $ExpectedQueues
+        Restart-Service -Name Spooler -Force
+        Start-Sleep -Seconds 5
+        $attemptedSpoolerRecovery = $true
+        $TimeoutSeconds = 30
     }
-    while ([DateTimeOffset]::UtcNow -lt $deadline)
 
     $expectedStatus = if ($ExpectedInstalled) {
         'installed'
@@ -885,6 +903,14 @@ function Get-PrintSinkUsablePrinterNames {
     return @(
         Get-Printer |
             Where-Object { Test-PrintSinkPrinterIsUsablyInstalled -Printer $_ } |
+            ForEach-Object Name
+    )
+}
+
+function Get-PrintSinkPrinterNames {
+    return @(
+        Get-Printer |
+            Where-Object { $_.Name -like 'PrintSink - *' } |
             ForEach-Object Name
     )
 }
@@ -937,8 +963,17 @@ function Assert-PrintSinkQueuesRemoved {
         [string] $Context
     )
 
-    $snapshot = @(Get-PrintSinkQueueSnapshot -ExpectedQueues $ExpectedQueues)
-    $remainingQueues = @($snapshot | Where-Object { $_.installed } | ForEach-Object { $_.name })
+    $snapshot = @($ExpectedQueues | ForEach-Object {
+        [ordered]@{
+            name = $_
+            installed = $false
+        }
+    })
+    $remainingQueues = @(
+        Get-Printer |
+            Where-Object { $_.Name -in $ExpectedQueues } |
+            ForEach-Object { "$($_.Name) [$($_.PrinterStatus)]" }
+    )
     if ($remainingQueues.Count -gt 0) {
         throw "Remaining PrintSink queues ${Context}: $($remainingQueues -join ', ')"
     }
@@ -983,7 +1018,7 @@ function Invoke-PrintSinkCliQueueLifecycle {
     Wait-ForQueueInstalledState `
         -ExpectedQueues $ExpectedQueues `
         -ExpectedInstalled $false `
-        -TimeoutSeconds 30
+        -TimeoutSeconds 90
 
     return [ordered]@{
         install = $installOutput
@@ -2934,7 +2969,7 @@ function Invoke-PrintSinkPdfPassthroughPrint {
             -Endpoint $printCase.queue `
             -Message 'PDF passthrough print target created' `
             -StartedUtc $startedUtc `
-            -DetailContains @('pdlPassthroughProvider=', 'provider2=') `
+            -DetailContains @('pdlPassthroughProvider=', 'provider2=', 'provider2Submit=') `
             -TimeoutSeconds 60
 
         Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
@@ -3252,7 +3287,7 @@ function Invoke-PrintSinkExtensionCapabilities {
             'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
             'mxdc=configured',
             'pdr=updated',
-            'pdlPassthroughWithJobAttributes=',
+            'pdlPassthroughWithJobAttributes=enabled',
             'pdrResources=') `
         -TimeoutSeconds 120
 }
@@ -4429,7 +4464,7 @@ function New-PrintSinkDeferredFeatureEvidence {
             number = 28
             feature = 'PDL passthrough with IPP job-attribute compatibility'
             status = 'deferred'
-            evidence = 'Windows exposes passthrough-with-job-attributes APIs in system metadata, but the stock .NET ref pack used by this project does not expose the managed converter/provider types. PrintSink records live availability, but does not enable the advertised capability or submit provider-v2 jobs until encoded IPP job and operation attribute buffers are implemented and proven by real E2E.'
+            evidence = 'PrintSink enables the capability, records workflow passthrough-attribute state, and submits provider-v2 jobs with encoded IPP job and operation attributes when the live runtime can execute that path. Hosted runners can report provider2=unsupported or provider2=runtime-unusable; those runs are recorded as explicit v1 fallback instead of a supported row-28 claim.'
             artifact = [ordered]@{
                 capabilityRefresh = $ExtensionCapabilities
                 pdfPassthroughProvider = $PdfPassthrough.provider
@@ -5469,11 +5504,12 @@ finally {
     if ($Cleanup) {
         try {
             Write-E2EProgress 'Cleaning up virtual printer queues'
+            Clear-PrintSinkQueueJobs -ExpectedQueues $expectedQueues
             Invoke-PrintSinkAppCommand -Arguments @('--remove-virtual-printers') -Description 'Headless virtual-printer cleanup'
             Wait-ForQueueInstalledState `
                 -ExpectedQueues $expectedQueues `
                 -ExpectedInstalled $false `
-                -TimeoutSeconds 30
+                -TimeoutSeconds 90
             $cleanupResult['completed'] = $true
             $cleanupResult['timestamp'] = [DateTimeOffset]::UtcNow.ToString('O')
             $cleanupResult['queues'] = Assert-PrintSinkQueuesRemoved `

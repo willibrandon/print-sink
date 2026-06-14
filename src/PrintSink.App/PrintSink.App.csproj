@@ -51,7 +51,11 @@
             Windows.Devices.Printers.IVirtualPrinterInstallationResult;
             Windows.Devices.Printers.IVirtualPrinterManagerStatics;
             Windows.Devices.Printers.IVirtualPrinterSupportedFormat;
-            Windows.Devices.Printers.IVirtualPrinterSupportedFormatFactory
+            Windows.Devices.Printers.IVirtualPrinterSupportedFormatFactory;
+            Windows.Devices.Printers.IppAttributeConverter;
+            Windows.Devices.Printers.IppAttributeGroupKind;
+            Windows.Devices.Printers.IIppAttributeConverterStatics;
+            Windows.Devices.Printers.IPdlPassthroughProvider2
         </CsWinRTIncludesPrivate>
         <!--
             Default unqualified CLI runs to x64 through the Platform property above. Keeping all

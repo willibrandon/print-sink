@@ -20,7 +20,7 @@ internal static unsafe class UniversalApiContract19PrintSupport
     private static readonly Guid PrintWorkflowPrinterJob3InterfaceId =
         new("f0c8eeec-66ac-5e14-8906-0de610769368");
 
-    internal static string GetPdlPassthroughWithJobAttributesDetail(
+    internal static string EnablePdlPassthroughWithJobAttributes(
         PrintSupportPrintDeviceCapabilitiesChangedEventArgs args)
     {
         ArgumentNullException.ThrowIfNull(args);
@@ -41,11 +41,20 @@ internal static unsafe class UniversalApiContract19PrintSupport
         try
         {
             Marshal.ThrowExceptionForHR(queryResult);
-            return "pdlPassthroughWithJobAttributes=available-not-enabled";
+            IntPtr* vtable = *(IntPtr**)thisPtr;
+            WriteBoolean(thisPtr, vtable[InterfaceMethodStart], true);
+            return "pdlPassthroughWithJobAttributes=enabled";
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            return $"pdlPassthroughWithJobAttributes=error; pdlPassthroughWithJobAttributesError=0x{ex.HResult:X8}";
         }
         finally
         {
-            Marshal.Release(thisPtr);
+            if (thisPtr != IntPtr.Zero)
+            {
+                Marshal.Release(thisPtr);
+            }
         }
     }
 
@@ -64,9 +73,9 @@ internal static unsafe class UniversalApiContract19PrintSupport
             return "passthroughWithAttributes=unavailable";
         }
 
-        Marshal.ThrowExceptionForHR(queryResult);
         try
         {
+            Marshal.ThrowExceptionForHR(queryResult);
             IntPtr* vtable = *(IntPtr**)thisPtr;
             if (!ReadBoolean(thisPtr, vtable[InterfaceMethodStart]))
             {
@@ -81,9 +90,16 @@ internal static unsafe class UniversalApiContract19PrintSupport
                 $"passthroughJobAttributes={jobAttributes}",
                 $"passthroughOperationAttributes={operationAttributes}");
         }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        {
+            return $"passthroughWithAttributes=error; passthroughWithAttributesError=0x{ex.HResult:X8}";
+        }
         finally
         {
-            Marshal.Release(thisPtr);
+            if (thisPtr != IntPtr.Zero)
+            {
+                Marshal.Release(thisPtr);
+            }
         }
     }
 
@@ -124,6 +140,12 @@ internal static unsafe class UniversalApiContract19PrintSupport
         {
             Marshal.FreeHGlobal(valuePointer);
         }
+    }
+
+    private static void WriteBoolean(IntPtr thisPtr, IntPtr methodPointer, bool value)
+    {
+        var setValue = (delegate* unmanaged[Stdcall]<IntPtr, byte, int>)methodPointer;
+        Marshal.ThrowExceptionForHR(setValue(thisPtr, value ? (byte)1 : (byte)0));
     }
 
     private static int QueryInterface(object instance, Guid interfaceId, out IntPtr thisPtr)
