@@ -23,6 +23,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("platform: x64", workflow);
         Assert.Contains("platform: ARM64", workflow);
         Assert.Contains("Real print-stack E2E", workflow);
+        Assert.Contains(".\\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}", workflow);
         Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
         Assert.Contains("Visual Studio Test Platform for packaged WinUI app tests", design);
         Assert.DoesNotContain("MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E", design);
@@ -36,12 +37,13 @@ internal sealed partial class ContinuousIntegrationContractTests
             workflow.Contains("StoreName]::Root", StringComparison.Ordinal),
             "CI package trust must not write to a Root store.");
 
-        AssertBefore(workflow, "Build", "Test");
-        AssertBefore(workflow, "Test", "Packaged app tests");
-        AssertBefore(workflow, "Packaged app tests", "Core coverage");
-        AssertBefore(workflow, "Core coverage", "Real print-stack E2E");
-        AssertBefore(workflow, "Real print-stack E2E", "Assert clean PrintSink state");
-        AssertBefore(workflow, "Assert clean PrintSink state", "Upload test results");
+        AssertBefore(workflow, "- name: Build", "- name: Release build");
+        AssertBefore(workflow, "- name: Release build", "- name: Test");
+        AssertBefore(workflow, "- name: Test", "- name: Packaged app tests");
+        AssertBefore(workflow, "- name: Packaged app tests", "- name: Core coverage");
+        AssertBefore(workflow, "- name: Core coverage", "- name: Real print-stack E2E");
+        AssertBefore(workflow, "- name: Real print-stack E2E", "- name: Assert clean PrintSink state");
+        AssertBefore(workflow, "- name: Assert clean PrintSink state", "- name: Upload test results");
     }
 
     /// <summary>
@@ -165,6 +167,10 @@ internal sealed partial class ContinuousIntegrationContractTests
 
         Assert.Contains("<WindowsPackageType>MSIX</WindowsPackageType>", appProject);
         Assert.Contains("<EnableMsixTooling>true</EnableMsixTooling>", appProject);
+        Assert.Contains("<RuntimeIdentifier Condition=\"'$(Configuration)' == 'Release' And '$(RuntimeIdentifier)' == '' And '$(Platform)' == 'x64'\">win-x64</RuntimeIdentifier>", appProject);
+        Assert.Contains("<RuntimeIdentifier Condition=\"'$(Configuration)' == 'Release' And '$(RuntimeIdentifier)' == '' And '$(Platform)' == 'ARM64'\">win-arm64</RuntimeIdentifier>", appProject);
+        Assert.Contains("<PublishReadyToRun Condition=\"'$(Configuration)' != 'Debug'\">True</PublishReadyToRun>", appProject);
+        Assert.Contains("<PublishTrimmed>False</PublishTrimmed>", appProject);
         Assert.Contains("<AppxAutoIncrementPackageRevision Condition=\"'$(Configuration)' == 'Release'\">True</AppxAutoIncrementPackageRevision>", appProject);
     }
 

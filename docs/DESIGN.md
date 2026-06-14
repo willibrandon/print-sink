@@ -299,13 +299,17 @@ etc. Assembly name = project name; the root namespace token is always `PrintSink
   <OutputType>WinExe</OutputType>
   <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
   <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
-  <RootNamespace>PrintSink</RootNamespace>
+  <RootNamespace>PrintSink.App</RootNamespace>
   <Platforms>x64;ARM64</Platforms>
   <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+  <RuntimeIdentifier Condition="'$(Configuration)' == 'Release' And '$(RuntimeIdentifier)' == '' And '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+  <RuntimeIdentifier Condition="'$(Configuration)' == 'Release' And '$(RuntimeIdentifier)' == '' And '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
   <UseWinUI>true</UseWinUI>
   <EnableMsixTooling>true</EnableMsixTooling>
   <WindowsPackageType>MSIX</WindowsPackageType>
   <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+  <PublishTrimmed>False</PublishTrimmed>
   <Nullable>enable</Nullable>
 </PropertyGroup>
 <ItemGroup>
@@ -807,7 +811,9 @@ the generated `.appxrecipe` when tests must run inside a packaged WinUI app iden
   copy `PrintSink.Tasks.winmd` and the XPS side-by-side manifest into the package output, as in the
   reference sample.
 - **Packaging:** single-project MSIX (`EnableMsixTooling`, `WindowsPackageType=MSIX`,
-  `WindowsAppSDKSelfContained=true`). Requires the **Single-project MSIX Packaging Tools** VS extension.
+  `WindowsAppSDKSelfContained=true`). Release builds set a platform runtime identifier for ReadyToRun,
+  keep trimming off until there is a trim-safe release evidence gate, and auto-increment the package
+  revision. Requires the **Single-project MSIX Packaging Tools** VS extension.
 - **Signing:** package signed with a trusted cert (`AppxPackageSigningEnabled=true`,
   `PackageCertificateThumbprint`). For lab installs, enable test-signing and trust the dev cert.
 - **Architectures:** x64 and ARM64.

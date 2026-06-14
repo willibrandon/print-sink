@@ -112,6 +112,10 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Configuration Debug -Platform ${{ matrix.platform }}
 
+      - name: Release build
+        shell: pwsh
+        run: .\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}
+
       - name: Test
         shell: pwsh
         run: .\test.ps1 -Configuration Debug -Platform ${{ matrix.platform }} -NoBuild
