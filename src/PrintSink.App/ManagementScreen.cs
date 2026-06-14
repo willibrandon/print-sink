@@ -47,11 +47,16 @@ internal sealed class ManagementScreen : Component
             }
         }
 
+        void StartManagementOperation(Func<Task> operation)
+        {
+            _ = Task.Run(operation);
+        }
+
         UseEffect(() =>
         {
-            _ = RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText);
-            _ = LoadJobUiOptionsAsync(setJobUiOptions, setStatusText);
-            _ = LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText);
+            StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText));
+            StartManagementOperation(() => LoadJobUiOptionsAsync(setJobUiOptions, setStatusText));
+            StartManagementOperation(() => LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText));
             return static () => { };
         }, EmptyDependencies);
 
@@ -67,18 +72,18 @@ internal sealed class ManagementScreen : Component
                     EndpointPanel(selectedEndpoint, selectedSnapshot, route)
                         .Grid(row: 0, column: 1)),
                 ValidationPanel(statusText, () =>
-                    _ = RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText),
-                    () => _ = InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText),
-                    () => _ = RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText),
-                    () => _ = RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText),
+                    StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText)),
+                    () => StartManagementOperation(() => InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
+                    () => StartManagementOperation(() => RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
+                    () => StartManagementOperation(() => RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText)),
                     defaultCopies,
                     setDefaultCopies,
                     selectedSnapshot.CanModifyUserDefaultPrintTicket == true,
-                    () => _ = SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText),
+                    () => StartManagementOperation(() => SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText)),
                     jobUiOptions.LaunchJobUi,
-                    () => _ = SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText),
-                    () => _ = SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText)),
-                DiagnosticsPanel(diagnosticEvents, () => _ = LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText))))
+                    () => StartManagementOperation(() => SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText)),
+                    () => StartManagementOperation(() => SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText))),
+                DiagnosticsPanel(diagnosticEvents, () => StartManagementOperation(() => LoadDiagnosticsAsync(setDiagnosticEvents, setStatusText)))))
             .Padding(32)
             .MaxWidth(1180)
             .HAlign(HorizontalAlignment.Center);
@@ -480,7 +485,7 @@ internal sealed class ManagementScreen : Component
     {
         try
         {
-            setStatusText("Installing virtual printer queues...");
+            UiDispatch.Post(() => setStatusText("Installing virtual printer queues..."));
             await VirtualPrinterInstaller
                 .InstallAllAsync(CancellationToken.None)
                 .ConfigureAwait(false);
@@ -504,7 +509,7 @@ internal sealed class ManagementScreen : Component
     {
         try
         {
-            setStatusText("Removing virtual printer queues...");
+            UiDispatch.Post(() => setStatusText("Removing virtual printer queues..."));
             await VirtualPrinterInstaller
                 .RemoveAllAsync(CancellationToken.None)
                 .ConfigureAwait(false);
