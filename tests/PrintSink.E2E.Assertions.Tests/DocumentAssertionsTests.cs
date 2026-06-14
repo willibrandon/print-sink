@@ -219,6 +219,52 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies PostScript with a nonnumeric page count is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsInvalidPostScriptPageCount()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "invalid-pages.ps");
+            WritePostScript(path, "foo", "many");
+
+            int exitCode = RunAssertion(["--format", "postscript", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("does not contain a resolved page count", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies PostScript with a nonnumeric bounding box is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsInvalidPostScriptBoundingBox()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "invalid-bounding-box.ps");
+            WritePostScript(path, "foo", "1", boundingBox: "left bottom right top");
+
+            int exitCode = RunAssertion(["--format", "postscript", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("does not contain a resolved bounding box", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies a valid PWG Raster byte stream is accepted.
     /// </summary>
     [TestMethod]
@@ -496,14 +542,14 @@ internal sealed class DocumentAssertionsTests
         writer.Write(text);
     }
 
-    private static void WritePostScript(string path, string text, string pagesValue)
+    private static void WritePostScript(string path, string text, string pagesValue, string boundingBox = "0 0 612 792")
     {
         File.WriteAllText(
             path,
             $"""
             %!PS-Adobe-3.0
             %%Pages: {pagesValue}
-            %%BoundingBox: 0 0 612 792
+            %%BoundingBox: {boundingBox}
             %%Page: 1 1
             ({text}) show
             %%PageTrailer

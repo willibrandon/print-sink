@@ -343,12 +343,12 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"PostScript output does not declare pages: {path}");
         }
 
-        if (!HasResolvedDscLine(text, "%%Pages:"))
+        if (!HasResolvedPostScriptPageCount(text))
         {
             throw new InvalidDataException($"PostScript output does not contain a resolved page count: {path}");
         }
 
-        if (!HasResolvedDscLine(text, "%%BoundingBox:"))
+        if (!HasResolvedPostScriptBoundingBox(text))
         {
             throw new InvalidDataException($"PostScript output does not contain a resolved bounding box: {path}");
         }
@@ -373,13 +373,74 @@ internal static partial class DocumentAssertions
         }
     }
 
-    private static bool HasResolvedDscLine(string text, string prefix)
+    private static bool HasResolvedPostScriptPageCount(string text)
     {
         using StringReader reader = new(text);
         while (reader.ReadLine() is { } line)
         {
-            if (line.StartsWith(prefix, StringComparison.Ordinal)
-                && !line.Contains("(atend)", StringComparison.OrdinalIgnoreCase))
+            if (!line.StartsWith("%%Pages:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string value = line["%%Pages:".Length..].Trim();
+            if (value.Contains("(atend)", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int pageCount)
+                && pageCount > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasResolvedPostScriptBoundingBox(string text)
+    {
+        using StringReader reader = new(text);
+        while (reader.ReadLine() is { } line)
+        {
+            if (!line.StartsWith("%%BoundingBox:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string value = line["%%BoundingBox:".Length..].Trim();
+            if (value.Contains("(atend)", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string[] parts = value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 4)
+            {
+                continue;
+            }
+
+            double[] coordinates = new double[parts.Length];
+            bool parsed = true;
+            for (int index = 0; index < parts.Length; index++)
+            {
+                if (double.TryParse(
+                    parts[index],
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double coordinate)
+                    && double.IsFinite(coordinate))
+                {
+                    coordinates[index] = coordinate;
+                    continue;
+                }
+
+                parsed = false;
+                break;
+            }
+
+            if (parsed && coordinates[2] > coordinates[0] && coordinates[3] > coordinates[1])
             {
                 return true;
             }
