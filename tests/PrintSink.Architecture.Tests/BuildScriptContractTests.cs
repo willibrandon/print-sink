@@ -53,6 +53,7 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("Cleanup = $true", script);
         Assert.Contains("Remove-PrintSinkPackage -ResultPath $resultPath", script);
         Assert.Contains("$LASTEXITCODE -ne 0", script);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", script);
         Assert.DoesNotContain("StoreName]::Root", script);
     }
 
@@ -72,5 +73,6 @@ internal sealed class BuildScriptContractTests
         Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", script);
         Assert.Contains("if (-not $KeepPackage)", script);
         Assert.Contains("exit $testExitCode", script);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", script);
     }
 }

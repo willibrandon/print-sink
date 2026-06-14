@@ -175,6 +175,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("Get-AppxPackage 'PrintSink*'", cleanStateScript);
         Assert.Contains("Get-Printer -Name 'PrintSink*'", cleanStateScript);
         Assert.Contains("Get-CimInstance Win32_Process", cleanStateScript);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", cleanStateScript);
         Assert.Contains("Stop-Process -Id $processId", cleanStateScript);
         Assert.Contains("Remove-Printer -Name $queue", cleanStateScript);
         Assert.Contains("Remove-AppxPackage -Package $package", cleanStateScript);
@@ -221,6 +222,8 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("/p:PackageCertificateThumbprint=$($Certificate.Thumbprint)", e2eWrapper);
         Assert.Contains("Add-CertificateToStore", e2eWrapper);
         Assert.Contains("StoreName]::TrustedPeople", e2eWrapper);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", e2eWrapper);
+        Assert.Contains("$ProgressPreference = 'SilentlyContinue'", e2eScript);
         Assert.DoesNotContain("StoreName]::Root", e2eWrapper);
         Assert.Contains("$e2eParameters.Cleanup = $true", e2eWrapper);
         Assert.Contains("[switch] $KeepPackage", e2eWrapper);

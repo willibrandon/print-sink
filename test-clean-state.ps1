@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 function Get-PrintSinkState {
     $packages = @(Get-AppxPackage 'PrintSink*' | ForEach-Object { $_.PackageFullName })

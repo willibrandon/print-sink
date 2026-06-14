@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 function Find-VSTestConsole {
     if ($env:VSTEST_CONSOLE -and (Test-Path -LiteralPath $env:VSTEST_CONSOLE)) {

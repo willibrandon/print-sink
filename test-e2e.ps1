@@ -19,6 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 $PackageCertificateSubject = 'CN=PrintSink'
 $PackageCertificateFriendlyName = 'PrintSink local E2E package signing'

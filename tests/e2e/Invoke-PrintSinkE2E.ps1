@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 . (Join-Path $PSScriptRoot 'PrintSinkFeatureMatrix.ps1')
 
