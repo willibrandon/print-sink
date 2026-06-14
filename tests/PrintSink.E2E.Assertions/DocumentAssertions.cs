@@ -311,7 +311,9 @@ internal static partial class DocumentAssertions
             pieceStream.CopyTo(buffer);
         }
 
-        return Encoding.UTF8.GetString(buffer.ToArray());
+        buffer.Position = 0;
+        using StreamReader reader = new(buffer, Encoding.UTF8, true);
+        return reader.ReadToEnd();
     }
 
     private static int GetInterleavedPieceIndex(ZipArchiveEntry entry)

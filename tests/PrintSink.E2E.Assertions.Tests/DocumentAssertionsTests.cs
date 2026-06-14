@@ -129,6 +129,28 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies a valid OXPS package with interleaved fixed-page pieces is accepted.
+    /// </summary>
+    [TestMethod]
+    public void RunAcceptsInterleavedOxpsWithExpectedText()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "interleaved.oxps");
+            WriteInterleavedXpsPackage(path);
+
+            int exitCode = RunAssertion(["--format", "oxps", "--path", path, "--contains", "foo"], out string error);
+
+            Assert.AreEqual(0, exitCode, error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies an OXPS package with missing expected text is rejected.
     /// </summary>
     [TestMethod]
@@ -435,11 +457,42 @@ internal sealed class DocumentAssertionsTests
             """);
     }
 
-    private static void WriteZipEntry(ZipArchive archive, string name, string text)
+    private static void WriteInterleavedXpsPackage(string path)
+    {
+        const string fixedPageStart =
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <FixedPage xmlns="http://schemas.microsoft.com/xps/2005/06" Width="816" Height="1056">
+              <Glyphs UnicodeString="fo
+            """;
+        const string fixedPageEnd =
+            """
+            o" />
+            </FixedPage>
+            """;
+
+        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteZipEntry(
+            archive,
+            "[Content_Types].xml",
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="fdseq" ContentType="application/vnd.ms-package.xps-fixeddocumentsequence+xml" />
+              <Default Extension="fdoc" ContentType="application/vnd.ms-package.xps-fixeddocument+xml" />
+              <Default Extension="fpage" ContentType="application/vnd.ms-package.xps-fixedpage+xml" />
+              <Default Extension="piece" ContentType="application/vnd.ms-package.interleaved-part" />
+            </Types>
+            """);
+        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[1].piece", fixedPageEnd, emitBom: false);
+        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[0].piece", fixedPageStart, emitBom: true);
+    }
+
+    private static void WriteZipEntry(ZipArchive archive, string name, string text, bool emitBom = true)
     {
         ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.Optimal);
         using Stream stream = entry.Open();
-        using StreamWriter writer = new(stream, Encoding.UTF8);
+        using StreamWriter writer = new(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: emitBom));
         writer.Write(text);
     }
 
