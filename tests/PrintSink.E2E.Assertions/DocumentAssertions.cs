@@ -542,19 +542,14 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"PostScript output does not declare pages: {path}");
         }
 
-        if (!HasResolvedPostScriptPageCount(text))
-        {
-            throw new InvalidDataException($"PostScript output does not contain a resolved page count: {path}");
-        }
+        AssertPostScriptPageCount(text, path);
 
         if (!HasResolvedPostScriptBoundingBox(text))
         {
             throw new InvalidDataException($"PostScript output does not contain a resolved bounding box: {path}");
         }
 
-        if (!text.Contains("%%PageTrailer", StringComparison.Ordinal)
-            || !text.Contains("%%Trailer", StringComparison.Ordinal)
-            || !text.Contains("%%EOF", StringComparison.Ordinal))
+        if (!HasOrderedPostScriptClosingMarkers(text))
         {
             throw new InvalidDataException($"PostScript output is missing required DSC closing markers: {path}");
         }
@@ -572,8 +567,45 @@ internal static partial class DocumentAssertions
         }
     }
 
-    private static bool HasResolvedPostScriptPageCount(string text)
+    private static void AssertPostScriptPageCount(string text, string path)
     {
+        int pageMarkerCount = CountPostScriptPageMarkers(text);
+        if (pageMarkerCount == 0)
+        {
+            throw new InvalidDataException($"PostScript output does not contain page records: {path}");
+        }
+
+        int[] resolvedPageCounts = GetResolvedPostScriptPageCounts(text);
+        if (resolvedPageCounts.Length == 0)
+        {
+            throw new InvalidDataException($"PostScript output does not contain a resolved page count: {path}");
+        }
+
+        int declaredPageCount = resolvedPageCounts[^1];
+        if (declaredPageCount != pageMarkerCount)
+        {
+            throw new InvalidDataException($"PostScript resolved page count {declaredPageCount} does not match {pageMarkerCount} page record(s): {path}");
+        }
+    }
+
+    private static int CountPostScriptPageMarkers(string text)
+    {
+        int count = 0;
+        using StringReader reader = new(text);
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.StartsWith("%%Page:", StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int[] GetResolvedPostScriptPageCounts(string text)
+    {
+        List<int> pageCounts = [];
         using StringReader reader = new(text);
         while (reader.ReadLine() is { } line)
         {
@@ -591,11 +623,25 @@ internal static partial class DocumentAssertions
             if (int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int pageCount)
                 && pageCount > 0)
             {
-                return true;
+                pageCounts.Add(pageCount);
             }
         }
 
-        return false;
+        return [.. pageCounts];
+    }
+
+    private static bool HasOrderedPostScriptClosingMarkers(string text)
+    {
+        int pageTrailerIndex = text.LastIndexOf("%%PageTrailer", StringComparison.Ordinal);
+        int trailerIndex = text.LastIndexOf("%%Trailer", StringComparison.Ordinal);
+        int eofIndex = text.LastIndexOf("%%EOF", StringComparison.Ordinal);
+        if (pageTrailerIndex < 0 || trailerIndex <= pageTrailerIndex || eofIndex <= trailerIndex)
+        {
+            return false;
+        }
+
+        string afterEof = text[(eofIndex + "%%EOF".Length)..];
+        return afterEof.All(static character => char.IsWhiteSpace(character) || character == '\u0004');
     }
 
     private static bool HasResolvedPostScriptBoundingBox(string text)

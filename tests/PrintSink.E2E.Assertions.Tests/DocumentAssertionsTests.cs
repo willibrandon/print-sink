@@ -311,6 +311,29 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies PostScript with a resolved page count that does not match page records is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsMismatchedPostScriptPageCount()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "mismatched-pages.ps");
+            WritePostScript(path, "foo", "2");
+
+            int exitCode = RunAssertion(["--format", "postscript", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("resolved page count 2 does not match 1 page record", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies PostScript with a nonnumeric bounding box is rejected.
     /// </summary>
     [TestMethod]
@@ -326,6 +349,30 @@ internal sealed class DocumentAssertionsTests
 
             Assert.AreEqual(1, exitCode);
             Assert.Contains("does not contain a resolved bounding box", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies PostScript with executable content after EOF is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsPostScriptContentAfterEof()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "content-after-eof.ps");
+            WritePostScript(path, "foo", "1");
+            File.AppendAllText(path, "showpage\n", Encoding.Latin1);
+
+            int exitCode = RunAssertion(["--format", "postscript", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("missing required DSC closing markers", error);
         }
         finally
         {
