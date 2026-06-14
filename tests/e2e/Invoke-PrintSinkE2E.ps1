@@ -5665,6 +5665,33 @@ function Write-PrintSinkE2EResult {
     return $resultJson
 }
 
+function Write-PrintSinkE2ESummary {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $Result
+    )
+
+    $package = Get-ObjectPropertyValue -Object $Result -Name 'package'
+    $queues = @(Get-ObjectPropertyValue -Object $Result -Name 'queues')
+    $queueSnapshots = @(Get-ObjectPropertyValue -Object $Result -Name 'queueSnapshots')
+    $featureEvidence = @(Get-ObjectPropertyValue -Object $Result -Name 'featureEvidence')
+    $deferredFeatureEvidence = @(Get-ObjectPropertyValue -Object $Result -Name 'deferredFeatureEvidence')
+
+    $summary = [ordered]@{
+        resultPath = [string](Get-ObjectPropertyValue -Object $Result -Name 'resultPath')
+        productConfiguration = [string](Get-ObjectPropertyValue -Object $Result -Name 'productConfiguration')
+        packageBuildConfiguration = [string](Get-ObjectPropertyValue -Object $package -Name 'buildConfiguration')
+        packageBuildPlatform = [string](Get-ObjectPropertyValue -Object $package -Name 'buildPlatform')
+        queues = $queues.Count
+        queueSnapshots = $queueSnapshots.Count
+        passedFeatures = $featureEvidence.Count
+        deferredFeatures = $deferredFeatureEvidence.Count
+    }
+
+    $summaryJson = $summary | ConvertTo-Json -Depth 4
+    Write-Host 'PrintSink E2E summary:'
+    Write-Host $summaryJson
+}
+
 function Read-PrintSinkDiagnosticEvents {
     param(
         [string] $DiagnosticPath
@@ -6329,8 +6356,8 @@ try {
         deferredFeatureEvidence = $deferredFeatureEvidence
     }
 
-    $resultJson = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath
-    $resultJson
+    $null = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath
+    Write-PrintSinkE2ESummary -Result $result
     $completedSuccessfully = $true
 }
 finally {

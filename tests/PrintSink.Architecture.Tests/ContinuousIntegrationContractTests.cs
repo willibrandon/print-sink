@@ -467,6 +467,29 @@ internal sealed partial class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the live E2E suite keeps full JSON in the artifact and prints only a short CI summary.
+    /// </summary>
+    [TestMethod]
+    public void E2ePrintsSummaryInsteadOfFullResultJson()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string e2eScript = File.ReadAllText(e2ePath);
+
+        Assert.Contains("function Write-PrintSinkE2ESummary", e2eScript);
+        Assert.Contains("PrintSink E2E summary:", e2eScript);
+        Assert.Contains("passedFeatures = $featureEvidence.Count", e2eScript);
+        Assert.Contains("deferredFeatures = $deferredFeatureEvidence.Count", e2eScript);
+        Assert.Contains("$null = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath", e2eScript);
+        Assert.Contains("Write-PrintSinkE2ESummary -Result $result", e2eScript);
+        Assert.DoesNotContain("$resultJson = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath", e2eScript);
+        AssertBefore(
+            e2eScript,
+            "$null = Write-PrintSinkE2EResult -Result $result -ResultPath $resultPath",
+            "Write-PrintSinkE2ESummary -Result $result");
+    }
+
+    /// <summary>
     /// Verifies the real E2E suite proves the management UI exposes queue lifecycle actions.
     /// </summary>
     [TestMethod]
