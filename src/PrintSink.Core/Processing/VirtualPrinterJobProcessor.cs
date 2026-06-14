@@ -348,6 +348,7 @@ public sealed class VirtualPrinterJobProcessor
                 if (target is not null)
                 {
                     await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    EnsureNonEmptyTarget(target, job.Endpoint);
                 }
 
                 await RecordDiagnosticEventAsync(
@@ -357,7 +358,7 @@ public sealed class VirtualPrinterJobProcessor
                         nameof(VirtualPrinterJobProcessor),
                         "Job sink write completed",
                         job.Endpoint.QueueName,
-                        $"targetFormat={plan.TargetFormat}"),
+                        $"targetFormat={plan.TargetFormat}; bytes={GetWrittenByteCount(output, target)}"),
                     cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -383,6 +384,27 @@ public sealed class VirtualPrinterJobProcessor
             throw new InvalidOperationException(
                 $"Endpoint '{endpoint.QueueName}' produced empty {endpoint.TargetFormat} output.");
         }
+    }
+
+    private static void EnsureNonEmptyTarget(Stream target, VirtualEndpoint endpoint)
+    {
+        if (endpoint.RequiresTargetFile && target.CanSeek && target.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Endpoint '{endpoint.QueueName}' target stream is empty after sink write.");
+        }
+    }
+
+    private static string GetWrittenByteCount(Stream output, Stream? target)
+    {
+        if (target is not null && target.CanSeek)
+        {
+            return target.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return output.CanSeek
+            ? output.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : "unknown";
     }
 
     private static long GetElapsedMilliseconds(long started)

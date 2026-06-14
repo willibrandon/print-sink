@@ -88,6 +88,29 @@ internal sealed class VirtualPrinterJobProcessorTests
     }
 
     /// <summary>
+    /// Verifies file-backed jobs fail when the sink writes no target bytes.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsyncFailsFileJobWhenSinkWritesNoTargetBytes()
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(EndpointKind.Pdf);
+        InMemoryVirtualPrinterJob job = new(
+            PdlFormatInfo.PdfContentType,
+            endpoint,
+            Encoding.UTF8.GetBytes("%PDF-1.7"),
+            true);
+        VirtualPrinterJobProcessor processor = CreateProcessor(new NoOpSink(), new TestPdlConverter([]));
+
+        VirtualPrinterJobResult result = await processor.ProcessAsync(job, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, result.Status);
+        Assert.AreEqual(VirtualPrinterJobStatus.Failed, job.CompletedStatus);
+        InvalidOperationException exception = Assert.IsInstanceOfType<InvalidOperationException>(result.Exception);
+        Assert.Contains("target stream is empty", exception.Message);
+        CollectionAssert.AreEqual(Array.Empty<byte>(), job.TargetBytes);
+    }
+
+    /// <summary>
     /// Verifies transformed XPS bytes are passed to the converter before sink writes.
     /// </summary>
     [TestMethod]
