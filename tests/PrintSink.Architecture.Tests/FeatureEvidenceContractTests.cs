@@ -17,9 +17,11 @@ internal sealed partial class FeatureEvidenceContractTests
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string designPath = Path.Combine(repositoryRoot, "docs", "DESIGN.md");
         string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorPath = Path.Combine(repositoryRoot, "tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
 
         string design = File.ReadAllText(designPath);
         string e2eScript = File.ReadAllText(e2ePath);
+        string validatorScript = File.ReadAllText(validatorPath);
 
         int[] designFeatureNumbers = ExtractDesignFeatureNumbers(design);
         int[] trackedDesignNumbers = ExtractTrackedDesignFeatureNumbers(design);
@@ -29,6 +31,8 @@ internal sealed partial class FeatureEvidenceContractTests
         Dictionary<int, string> designFeatureNames = ExtractDesignFeatureNames(design);
         Dictionary<int, string> supportedEvidenceNames = ExtractSupportedEvidenceNames(e2eScript);
         Dictionary<int, string> deferredEvidenceNames = ExtractDeferredEvidenceNames(e2eScript);
+        Dictionary<int, string> validatorSupportedNames = ExtractValidatorSupportedFeatureNames(validatorScript);
+        Dictionary<int, string> validatorDeferredNames = ExtractValidatorDeferredFeatureNames(validatorScript);
 
         Assert.IsEmpty(
             supportedEvidenceNumbers.Intersect(deferredEvidenceNumbers).ToArray(),
@@ -48,6 +52,8 @@ internal sealed partial class FeatureEvidenceContractTests
             "Every design feature row must have a parsed feature name.");
         AssertEvidenceNamesMatchDesign(designFeatureNames, supportedEvidenceNames, "supported");
         AssertEvidenceNamesMatchDesign(designFeatureNames, deferredEvidenceNames, "deferred");
+        AssertEvidenceNamesMatchDesign(designFeatureNames, validatorSupportedNames, "validator-supported");
+        AssertEvidenceNamesMatchDesign(designFeatureNames, validatorDeferredNames, "validator-deferred");
     }
 
     /// <summary>
@@ -191,6 +197,29 @@ internal sealed partial class FeatureEvidenceContractTests
                 static match => match.Groups["feature"].Value);
     }
 
+    private static Dictionary<int, string> ExtractValidatorSupportedFeatureNames(string validatorScript)
+    {
+        Match functionMatch = ValidatorSupportedFeaturesFunctionRegex().Match(validatorScript);
+        Assert.IsTrue(functionMatch.Success, "Could not find Get-ExpectedSupportedFeatures.");
+        return ExtractValidatorFeatureNames(functionMatch.Groups["body"].Value);
+    }
+
+    private static Dictionary<int, string> ExtractValidatorDeferredFeatureNames(string validatorScript)
+    {
+        Match functionMatch = ValidatorDeferredFeaturesFunctionRegex().Match(validatorScript);
+        Assert.IsTrue(functionMatch.Success, "Could not find Get-ExpectedDeferredFeatures.");
+        return ExtractValidatorFeatureNames(functionMatch.Groups["body"].Value);
+    }
+
+    private static Dictionary<int, string> ExtractValidatorFeatureNames(string functionBody)
+    {
+        return ValidatorFeatureNameRegex()
+            .Matches(functionBody)
+            .ToDictionary(
+                static match => int.Parse(match.Groups["number"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                static match => match.Groups["feature"].Value);
+    }
+
     private static void AssertEvidenceNamesMatchDesign(
         Dictionary<int, string> designFeatureNames,
         Dictionary<int, string> evidenceFeatureNames,
@@ -244,4 +273,13 @@ internal sealed partial class FeatureEvidenceContractTests
 
     [GeneratedRegex(@"number\s*=\s*(?<number>\d+)[\s\S]*?feature\s*=\s*'(?<feature>[^']+)'", RegexOptions.CultureInvariant)]
     private static partial Regex DeferredEvidenceNameRegex();
+
+    [GeneratedRegex(@"function Get-ExpectedSupportedFeatures\s*\{(?<body>.*?)^\}", RegexOptions.Multiline | RegexOptions.Singleline)]
+    private static partial Regex ValidatorSupportedFeaturesFunctionRegex();
+
+    [GeneratedRegex(@"function Get-ExpectedDeferredFeatures\s*\{(?<body>.*?)^\}", RegexOptions.Multiline | RegexOptions.Singleline)]
+    private static partial Regex ValidatorDeferredFeaturesFunctionRegex();
+
+    [GeneratedRegex(@"'(?<number>\d+)'\s*=\s*'(?<feature>[^']+)'", RegexOptions.CultureInvariant)]
+    private static partial Regex ValidatorFeatureNameRegex();
 }

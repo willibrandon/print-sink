@@ -232,20 +232,37 @@ function Assert-FeatureEvidence {
         [object[]] $DeferredFeatureEvidence
     )
 
-    $supportedNumbers = @(1..21) + @(23, 24, 25, 27)
+    $expectedSupportedFeatures = Get-ExpectedSupportedFeatures
+    $expectedDeferredFeatures = Get-ExpectedDeferredFeatures
+    $supportedNumbers = @($expectedSupportedFeatures.Keys | ForEach-Object { [int]$_ } | Sort-Object)
     $actualNumbers = @($FeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
     Assert-SetEqual -Actual $actualNumbers -Expected $supportedNumbers -Description 'Supported feature evidence numbers'
 
     foreach ($evidence in $FeatureEvidence) {
         $number = [int](Get-ResultProperty -Object $evidence -Name 'number')
+        $feature = [string](Get-ResultProperty -Object $evidence -Name 'feature')
+        $expectedFeature = $expectedSupportedFeatures[[string]$number]
         $passed = Get-ResultProperty -Object $evidence -Name 'passed'
         $artifact = Get-ResultProperty -Object $evidence -Name 'artifact'
+        Assert-Condition ($feature -eq $expectedFeature) "Feature evidence #$number had name '$feature'; expected '$expectedFeature'."
         Assert-Condition ([bool]$passed) "Feature evidence #$number was not marked as passed."
         Assert-Condition ($null -ne $artifact) "Feature evidence #$number had no artifact."
     }
 
     $deferredNumbers = @($DeferredFeatureEvidence | ForEach-Object { [int](Get-ResultProperty -Object $_ -Name 'number') })
-    Assert-SetEqual -Actual $deferredNumbers -Expected @(22, 26, 28) -Description 'Deferred feature evidence numbers'
+    Assert-SetEqual `
+        -Actual $deferredNumbers `
+        -Expected @($expectedDeferredFeatures.Keys | ForEach-Object { [int]$_ } | Sort-Object) `
+        -Description 'Deferred feature evidence numbers'
+
+    foreach ($evidence in $DeferredFeatureEvidence) {
+        $number = [int](Get-ResultProperty -Object $evidence -Name 'number')
+        $feature = [string](Get-ResultProperty -Object $evidence -Name 'feature')
+        $expectedFeature = $expectedDeferredFeatures[[string]$number]
+        $status = [string](Get-ResultProperty -Object $evidence -Name 'status')
+        Assert-Condition ($feature -eq $expectedFeature) "Deferred feature evidence #$number had name '$feature'; expected '$expectedFeature'."
+        Assert-Condition ($status -eq 'deferred') "Deferred feature evidence #$number was not marked deferred."
+    }
 
     $pdlPassthroughWithAttributes = @($DeferredFeatureEvidence |
         Where-Object { [int](Get-ResultProperty -Object $_ -Name 'number') -eq 28 } |
@@ -261,6 +278,44 @@ function Assert-FeatureEvidence {
     Assert-Condition ([string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail') -like '*pdlPassthroughWithJobAttributes=*') 'Deferred row 28 omitted capability refresh availability detail.'
     Assert-Condition ([string](Get-ResultProperty -Object $pdfPassthroughProvider -Name 'detail') -like '*provider2=*') 'Deferred row 28 omitted provider-v2 availability detail.'
     Assert-Condition ([string](Get-ResultProperty -Object $physicalWorkflow -Name 'detail') -like '*passthroughWithAttributes=*') 'Deferred row 28 omitted workflow passthrough-with-attributes detail.'
+}
+
+function Get-ExpectedSupportedFeatures {
+    return @{
+        '1' = 'Install N virtual print queues from one package'
+        '2' = 'Receive spooled PDL + content type'
+        '3' = 'Preferred input format negotiation'
+        '4' = 'Passthrough formats (no OS re-render)'
+        '5' = 'File-printer "Save As" target'
+        '6' = 'Non-file sinks (cloud / OneNote-style)'
+        '7' = 'OXPS → PDF / PWG-Raster / PCLm conversion'
+        '8' = 'XPS/OXPS passthrough (copy)'
+        '9' = 'Watermark (text + image) on XPS pages'
+        '10' = 'Per-job UI / preview launched from background'
+        '11' = 'Custom print-preferences UI'
+        '12' = 'Print-ticket validation / resolve'
+        '13' = 'PDC regeneration / custom features'
+        '14' = 'PDR localization of custom features'
+        '15' = 'Refresh PDC on settings change'
+        '16' = 'Get/set user default print ticket'
+        '17' = 'Physical IPP PSA association + workflow activation'
+        '18' = 'MXDC image quality per output quality'
+        '19' = 'Printer-selected adaptive card in MPD'
+        '20' = 'IPP attribute get behavior for installed virtual queues'
+        '21' = 'Multiple instances for concurrent jobs'
+        '23' = 'Graceful cancel / abort / fail'
+        '24' = 'Job password option model'
+        '25' = 'Localized printer queue display names'
+        '27' = 'IPP compression compatibility handling'
+    }
+}
+
+function Get-ExpectedDeferredFeatures {
+    return @{
+        '22' = 'Job notification compatibility hook'
+        '26' = 'IPP communication-error timeout recovery'
+        '28' = 'PDL passthrough with IPP job-attribute compatibility'
+    }
 }
 
 function Assert-QueuePersistence {
