@@ -191,8 +191,9 @@ The required E2E suite proves the current installed-package behavior:
     with the runtime failure detail.
 13. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
-14. Launch the Settings UI from the real Windows print dialog, assert it disables its owner while open,
-   and assert the owner is restored when Settings closes.
+14. Launch the Settings UI from the real Windows print dialog, assert the owner window title,
+   Settings window title, package identity, printer-selected diagnostic, absence of Reactor render
+   errors, owner disabled state while open, and owner restored state when Settings closes.
 15. Set package-local default text and image watermarks, call
    `IppPrintDevice.RefreshPrintDeviceCapabilities`, print real PDFs with Job UI disabled, and assert
    the outputs reflect those defaults.
@@ -261,8 +262,9 @@ Real output assertions:
   and explicit v1 fallback when provider-v2 is unsupported or unusable.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
-- Settings UI activation must show the Reactor settings surface, disable the real Windows print dialog
-  owner while open, and restore the owner when closed.
+- Settings UI activation must show the Reactor settings surface, record the real owner and Settings
+  window titles, disable the real Windows print dialog owner while open, restore the owner when closed,
+  and prove no Reactor render error was present.
 - Package-local default text watermark settings appear in a real PDF after a capability refresh.
 - Package-local default image watermark settings add PDF image content after a capability refresh.
 - Watermark feature evidence must include the default text, default image, and Job UI text watermark

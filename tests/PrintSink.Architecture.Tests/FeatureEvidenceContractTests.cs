@@ -229,6 +229,37 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies Settings UI evidence records the real modal owner lifecycle.
+    /// </summary>
+    [TestMethod]
+    public void SettingsUiEvidenceRequiresModalOwnerLifecycle()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-SettingsUiOwnerEvidence", e2eScript);
+        Assert.Contains("ownerWindowTitle", e2eScript);
+        Assert.Contains("settingsWindowTitle", e2eScript);
+        Assert.Contains("ownerRestored", e2eScript);
+        Assert.Contains("renderErrorAbsent", e2eScript);
+        Assert.Contains("no Reactor render error was present", e2eScript);
+
+        Assert.Contains("Assert-SettingsUiOwner", validatorScript);
+        Assert.Contains("Settings UI owner evidence did not prove the owner was disabled while modal.", validatorScript);
+        Assert.Contains("Settings UI owner evidence did not prove the owner was restored after close.", validatorScript);
+        Assert.Contains("Settings UI owner evidence did not prove the Reactor surface rendered without error.", validatorScript);
+        Assert.Contains("Settings UI owner printer selection", validatorScript);
+
+        Assert.Contains("Settings UI + E2E", design);
+        Assert.Contains("owner disabled/restored state", design);
+        Assert.Contains("no Reactor render error", design);
+        Assert.Contains("absence of Reactor render", testing);
+        Assert.Contains("owner restored state when Settings closes", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]

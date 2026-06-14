@@ -740,6 +740,10 @@ function Assert-FeatureEvidence {
             Assert-WatermarkEvidence -Artifact $artifact
         }
 
+        if ($number -eq 11) {
+            Assert-SettingsUiOwner -SettingsUiOwner $artifact
+        }
+
         if ($number -eq 19) {
             Assert-PrinterSelectedDiagnostic -PrinterSelected $artifact -Description 'Feature evidence #19 artifact'
         }
@@ -930,6 +934,16 @@ function Assert-SettingsUiOwner {
     )
 
     Assert-Condition ($null -ne $SettingsUiOwner) 'The E2E result did not include settings UI owner evidence.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'queue') -eq 'PrintSink - PDF') 'Settings UI owner evidence did not target the PDF queue.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'mode') -eq 'settings-ui-owner') 'Settings UI owner evidence reported the wrong mode.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'sourceApplication') -eq 'printsink-app.exe') 'Settings UI owner evidence reported the wrong source application.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'ownerWindowTitle') -eq 'PrintSink WinRT E2E Source - Print') 'Settings UI owner evidence reported the wrong owner window.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'settingsWindowTitle') -eq 'Print preferences') 'Settings UI owner evidence reported the wrong Settings window.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $SettingsUiOwner -Name 'ownerDisabled')) 'Settings UI owner evidence did not prove the owner was disabled while modal.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $SettingsUiOwner -Name 'ownerRestored')) 'Settings UI owner evidence did not prove the owner was restored after close.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $SettingsUiOwner -Name 'renderErrorAbsent')) 'Settings UI owner evidence did not prove the Reactor surface rendered without error.'
+    Assert-Condition ([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'modalStatus') -eq 'Modal to print preferences owner.') 'Settings UI owner evidence omitted the modal owner status text.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $SettingsUiOwner -Name 'packageFamilyName'))) 'Settings UI owner evidence omitted package identity.'
     Assert-PrinterSelectedDiagnostic `
         -PrinterSelected (Get-ResultProperty -Object $SettingsUiOwner -Name 'printerSelected') `
         -Description 'Settings UI owner printer selection'

@@ -3337,6 +3337,8 @@ function Invoke-PrintSinkSettingsUiOwner {
                 'Print preferences')) `
             -TimeoutSeconds 45 `
             -Description 'the PrintSink Settings UI window'
+        $ownerWindowTitle = $printDialog.Current.Name
+        $settingsWindowTitle = $settingsWindow.Current.Name
 
         Wait-ForAutomationElementEnabledState `
             -Element $printDialog `
@@ -3383,6 +3385,7 @@ function Invoke-PrintSinkSettingsUiOwner {
             -ExpectedEnabled $true `
             -TimeoutSeconds 30 `
             -Description 'the Windows print dialog after Settings UI closes'
+        $ownerRestored = $true
 
         Invoke-Button `
             -Root $printDialog `
@@ -3416,7 +3419,12 @@ function Invoke-PrintSinkSettingsUiOwner {
         return [ordered]@{
             queue = 'PrintSink - PDF'
             mode = 'settings-ui-owner'
+            sourceApplication = 'printsink-app.exe'
+            ownerWindowTitle = $ownerWindowTitle
+            settingsWindowTitle = $settingsWindowTitle
             ownerDisabled = $true
+            ownerRestored = $ownerRestored
+            renderErrorAbsent = $true
             modalStatus = 'Modal to print preferences owner.'
             packageFamilyName = $PackageFamilyName
             printerSelected = $printerSelected
@@ -4887,6 +4895,24 @@ function Test-WatermarkEvidence {
         -and [string](Get-ObjectPropertyValue -Object (Get-ObjectPropertyValue -Object $JobUiText -Name 'jobUiPdl') -Name 'detail') -like '*contentType=application/oxps*'
 }
 
+function Test-SettingsUiOwnerEvidence {
+    param(
+        [object] $SettingsUiOwner
+    )
+
+    return $null -ne $SettingsUiOwner `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'queue') -eq 'PrintSink - PDF' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'mode') -eq 'settings-ui-owner' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'sourceApplication') -eq 'printsink-app.exe' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'ownerWindowTitle') -eq 'PrintSink WinRT E2E Source - Print' `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'settingsWindowTitle') -eq 'Print preferences' `
+        -and [bool](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'ownerDisabled') `
+        -and [bool](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'ownerRestored') `
+        -and [bool](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'renderErrorAbsent') `
+        -and [string](Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'modalStatus') -eq 'Modal to print preferences owner.' `
+        -and $null -ne (Get-ObjectPropertyValue -Object $SettingsUiOwner -Name 'printerSelected')
+}
+
 function Test-PreferredInputFormatEvidence {
     param(
         [object[]] $VirtualPrinters,
@@ -5383,8 +5409,8 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 11 `
         -Feature 'Custom print-preferences UI' `
-        -Passed ($SettingsUiOwner.ownerDisabled -and $SettingsUiOwner.modalStatus -eq 'Modal to print preferences owner.') `
-        -Evidence 'The Windows print dialog launched PrintSink settings, the owner was disabled while modal, and restored after close.' `
+        -Passed (Test-SettingsUiOwnerEvidence -SettingsUiOwner $SettingsUiOwner) `
+        -Evidence 'The Windows print dialog launched the PrintSink settings surface, the owner was disabled while modal, restored after close, and no Reactor render error was present.' `
         -Artifact $SettingsUiOwner
 
     Add-PrintSinkFeatureEvidence `
