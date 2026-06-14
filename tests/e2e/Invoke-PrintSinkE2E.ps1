@@ -1739,11 +1739,22 @@ function Start-PrintSinkIppPrinterServer {
 
     $projectPath = Join-Path $PSScriptRoot '..\PrintSink.E2E.IppPrinter\PrintSink.E2E.IppPrinter.csproj'
     $assemblyPath = Join-Path $PSScriptRoot "..\PrintSink.E2E.IppPrinter\bin\$ProductConfiguration\net10.0\PrintSink.E2E.IppPrinter.dll"
-    if (-not (Test-Path -LiteralPath $assemblyPath)) {
+    if ($null -eq $script:PrintSinkIppPrinterBuilds) {
+        $script:PrintSinkIppPrinterBuilds = @{}
+    }
+
+    $buildKey = [System.IO.Path]::GetFullPath($assemblyPath)
+    if (-not $script:PrintSinkIppPrinterBuilds.ContainsKey($buildKey)) {
         $buildOutput = & dotnet build $projectPath --configuration $ProductConfiguration 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Building the E2E IPP printer failed. $($buildOutput -join [Environment]::NewLine)"
         }
+
+        if (-not (Test-Path -LiteralPath $assemblyPath)) {
+            throw "Building the E2E IPP printer did not produce $assemblyPath."
+        }
+
+        $script:PrintSinkIppPrinterBuilds[$buildKey] = $true
     }
 
     $readyFile = Join-Path $OutputDirectory 'ipp-printer.ready'
@@ -2485,6 +2496,119 @@ function Invoke-PrintSinkIppWorkflowActivationPrint {
     }
 }
 
+function Wait-ForPrintSinkIppJob {
+    param(
+        [string] $EvidencePath,
+        [string] $JobName,
+        [DateTimeOffset] $StartedUtc,
+        [int] $TimeoutSeconds = 60
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $EvidencePath -PathType Leaf) {
+            try {
+                $evidence = Get-Content -LiteralPath $EvidencePath -Raw | ConvertFrom-Json
+                $job = @($evidence.jobs |
+                    Where-Object {
+                        [string]$_.name -eq $JobName `
+                            -and [long]$_.documentBytes -gt 0 `
+                            -and [DateTimeOffset]::Parse([string]$_.createdUtc) -ge $StartedUtc
+                    } |
+                    Select-Object -Last 1)[0]
+                if ($null -ne $job) {
+                    return $job
+                }
+            }
+            catch {
+                # The helper can rewrite the JSON while the print stack is still completing the job.
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for IPP helper job '$JobName' in $EvidencePath."
+}
+
+function Invoke-PrintSinkIppPassthroughWithAttributesPrint {
+    param(
+        [string] $PrinterName,
+        [string] $PackageFamilyName,
+        [string] $OutputDirectory,
+        [string] $EvidencePath
+    )
+
+    $sourcePath = Join-Path $OutputDirectory 'PrintSink-Ipp-Passthrough-Attributes-Source.pdf'
+    New-PrintSinkSourcePdf -Path $sourcePath -Text 'foo ipp passthrough attributes'
+    $jobName = [System.IO.Path]::GetFileNameWithoutExtension($sourcePath)
+    $startedUtc = [DateTimeOffset]::UtcNow
+
+    try {
+        Invoke-PrintSinkAppCommand `
+            -Arguments @('--print-pdf-passthrough', '--printer', $PrinterName, '--source', $sourcePath) `
+            -Description "Submitting PDF passthrough-with-attributes job to $PrinterName"
+    }
+    catch {
+        return [ordered]@{
+            status = 'provider-unavailable'
+            printer = $PrinterName
+            sourceApplication = 'printsink-app.exe'
+            documentName = $jobName
+            sourcePath = $sourcePath
+            failure = $_.Exception.Message
+        }
+    }
+
+    $provider = Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint $PrinterName `
+        -Message 'PDF passthrough print target created' `
+        -StartedUtc $startedUtc `
+        -DetailContains @('pdlPassthroughProvider=', 'provider2=', 'provider2Submit=') `
+        -TimeoutSeconds 60
+
+    $workflowStart = Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint '' `
+        -Message 'Workflow job starting' `
+        -StartedUtc $startedUtc `
+        -DetailContains @('skipSystemRendering=default', 'ippCompression=') `
+        -TimeoutSeconds 60
+
+    $workflowDetailParts = @('target=system', 'passthroughWithAttributes=')
+    if ([string]$provider.detail -like '*provider2Submit=used*') {
+        $workflowDetailParts += 'passthroughWithAttributes=true'
+    }
+
+    $workflow = Wait-ForPrintSinkDiagnostic `
+        -PackageFamilyName $PackageFamilyName `
+        -Endpoint $PrinterName `
+        -Message 'Workflow job passed through' `
+        -StartedUtc $startedUtc `
+        -DetailContains $workflowDetailParts `
+        -TimeoutSeconds 60
+
+    $ippJob = Wait-ForPrintSinkIppJob `
+        -EvidencePath $EvidencePath `
+        -JobName $jobName `
+        -StartedUtc $startedUtc
+    Assert-FileBytesEqual -ExpectedPath $sourcePath -ActualPath ([string]$ippJob.documentPath)
+
+    return [ordered]@{
+        status = 'submitted'
+        printer = $PrinterName
+        sourceApplication = 'printsink-app.exe'
+        documentName = $jobName
+        sourcePath = $sourcePath
+        provider = $provider
+        workflowStart = $workflowStart
+        workflow = $workflow
+        ippJob = $ippJob
+    }
+}
+
 function Invoke-PrintSinkIppAssociation {
     param(
         [string] $OutputDirectory,
@@ -2506,6 +2630,7 @@ function Invoke-PrintSinkIppAssociation {
     $publishedName = $null
     $certificateThumbprint = $null
     $printerStateProbe = $null
+    $passthroughWithAttributesPrint = $null
 
     Remove-Printer -Name $printerName -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testDirectory -Recurse -Force -ErrorAction SilentlyContinue
@@ -2590,6 +2715,12 @@ function Invoke-PrintSinkIppAssociation {
             -PrinterName $printerName `
             -PackageFamilyName $PackageFamilyName
 
+        $passthroughWithAttributesPrint = Invoke-PrintSinkIppPassthroughWithAttributesPrint `
+            -PrinterName $printerName `
+            -PackageFamilyName $PackageFamilyName `
+            -OutputDirectory $testDirectory `
+            -EvidencePath $evidencePath
+
         $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
         $requests = @($evidence.requests)
         if ($requests.Count -eq 0) {
@@ -2612,6 +2743,7 @@ function Invoke-PrintSinkIppAssociation {
             printerStateProbe = $printerStateProbe
             ticketValidation = $ticketValidation
             workflowActivationPrint = $workflowActivationPrint
+            passthroughWithAttributesPrint = $passthroughWithAttributesPrint
         }
     }
     finally {
@@ -5267,6 +5399,7 @@ function New-PrintSinkDeferredFeatureEvidence {
                 physicalWorkflow = $IppAssociation.workflowActivationPrint.workflow
                 physicalWorkflowStatus = $IppAssociation.workflowActivationPrint.workflowStatus
                 physicalWorkflowDetail = $IppAssociation.workflowActivationPrint.workflowDetail
+                physicalPassthroughWithAttributes = $IppAssociation.passthroughWithAttributesPrint
                 printServiceEvents = $IppAssociation.workflowActivationPrint.printServiceEvents
             }
         }

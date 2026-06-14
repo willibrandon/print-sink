@@ -35,17 +35,33 @@ internal static class PdlPassthroughPrintCommand
                 nameof(endpointKind));
         }
 
+        return await PrintPdfToPrinterAsync(
+                endpoint.QueueName,
+                sourcePath,
+                printTargetCreated,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<(int PrintJobId, string ProviderDetail)> PrintPdfToPrinterAsync(
+        string printerName,
+        string sourcePath,
+        Func<int, string, CancellationToken, Task>? printTargetCreated,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(printerName);
         string fullSourcePath = Path.GetFullPath(sourcePath);
         if (!File.Exists(fullSourcePath))
         {
             throw new FileNotFoundException("PDF passthrough source was not found.", fullSourcePath);
         }
 
-        IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
-        if (!printDevice.IsPdlPassthroughSupported(PdlFormatInfo.PdfContentType))
+        IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(printerName);
+        bool pdlPassthroughSupported = printDevice.IsPdlPassthroughSupported(PdlFormatInfo.PdfContentType);
+        if (!pdlPassthroughSupported)
         {
-            throw new InvalidOperationException(
-                $"Printer '{endpoint.QueueName}' does not report PDF passthrough support.");
+            TryRefreshPrintDeviceCapabilities(printDevice);
+            pdlPassthroughSupported = printDevice.IsPdlPassthroughSupported(PdlFormatInfo.PdfContentType);
         }
 
         string jobName = Path.GetFileNameWithoutExtension(fullSourcePath);
@@ -54,6 +70,7 @@ internal static class PdlPassthroughPrintCommand
             provider,
             out IObjectReference? provider2Reference,
             out string providerDetail);
+        providerDetail = $"{providerDetail}; pdlSupportProbe={pdlPassthroughSupported}";
         PdlPassthroughTarget? target = null;
         InMemoryRandomAccessStream? printTicketStream = null;
         IInputStream? printTicketInput = null;
@@ -361,6 +378,17 @@ internal static class PdlPassthroughPrintCommand
     private static void DisposeTarget(PdlPassthroughTarget? target)
     {
         target?.Dispose();
+    }
+
+    private static void TryRefreshPrintDeviceCapabilities(IppPrintDevice printDevice)
+    {
+        try
+        {
+            printDevice.RefreshPrintDeviceCapabilities();
+        }
+        catch (Exception ex) when (CanFallbackFromProvider2(ex))
+        {
+        }
     }
 
     private static async Task<InMemoryRandomAccessStream> CreatePrintTicketStreamAsync(

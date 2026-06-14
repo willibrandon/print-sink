@@ -35,6 +35,7 @@ internal static class VirtualPrinterCommandLine
         bool clearWatermark = Contains(commandArgs, "--clear-watermark");
         bool refreshCapabilities = Contains(commandArgs, "--refresh-capabilities");
         bool printPdfPassthrough = Contains(commandArgs, "--print-pdf-passthrough");
+        bool printPdfPassthroughToPrinter = printPdfPassthrough && HasOption(commandArgs, "--printer");
         bool setDefaultCopies = Contains(commandArgs, "--set-default-copies");
         bool assertVirtualAttributeRead = Contains(commandArgs, "--assert-virtual-attribute-read");
         bool help = Contains(commandArgs, "--help") || Contains(commandArgs, "-h") || Contains(commandArgs, "-?");
@@ -72,7 +73,10 @@ internal static class VirtualPrinterCommandLine
             return Success;
         }
 
-        if ((install && remove) || (enableJobUi && disableJobUi) || ((setTextWatermark || setImageWatermark) && clearWatermark))
+        if ((install && remove)
+            || (enableJobUi && disableJobUi)
+            || ((setTextWatermark || setImageWatermark) && clearWatermark)
+            || (printPdfPassthroughToPrinter && HasOption(commandArgs, "--endpoint")))
         {
             SetCommandLineExitCode(activationArguments, Failure);
             return Failure;
@@ -87,7 +91,7 @@ internal static class VirtualPrinterCommandLine
                 || setImageWatermark
                 || clearWatermark
                 || refreshCapabilities
-                || printPdfPassthrough
+                || (printPdfPassthrough && !printPdfPassthroughToPrinter)
                 || setDefaultCopies
                 || assertVirtualAttributeRead;
             if (needsEndpoint)
@@ -134,10 +138,12 @@ internal static class VirtualPrinterCommandLine
 
             if (printPdfPassthrough)
             {
-                string endpointName = EndpointCatalog.GetByKind(endpointKind).QueueName;
+                string printerName = printPdfPassthroughToPrinter
+                    ? GetRequiredOptionValue(commandArgs, "--printer")
+                    : EndpointCatalog.GetByKind(endpointKind).QueueName;
                 (int printJobId, string providerDetail) = await PdlPassthroughPrintCommand
-                    .PrintPdfAsync(
-                        endpointKind,
+                    .PrintPdfToPrinterAsync(
+                        printerName,
                         GetRequiredOptionValue(commandArgs, "--source"),
                         async (createdPrintJobId, createdProviderDetail, createdCancellationToken) =>
                         {
@@ -145,7 +151,7 @@ internal static class VirtualPrinterCommandLine
                             WriteDiagnostic($"PDF passthrough print target created: {createdDetail}");
                             await AppendDiagnosticAsync(
                                     "PDF passthrough print target created",
-                                    endpointName,
+                                    printerName,
                                     createdDetail,
                                     createdCancellationToken)
                                 .ConfigureAwait(false);
@@ -156,7 +162,7 @@ internal static class VirtualPrinterCommandLine
                 WriteDiagnostic($"PDF passthrough print job submitted: {detail}");
                 await AppendDiagnosticAsync(
                         "PDF passthrough print job submitted",
-                        endpointName,
+                        printerName,
                         detail,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -401,6 +407,7 @@ internal static class VirtualPrinterCommandLine
             "  --assert-virtual-attribute-read  Assert virtual-printer IPP attribute behavior.",
             "  --winrt-source-print        Open a WinRT print-source harness for E2E validation.",
             "  --endpoint <kind>           Endpoint kind: Pdf, Xps, PostScript, Cloud, PwgRaster, Pclm.",
+            "  --printer <name>            Printer name used with --print-pdf-passthrough instead of --endpoint.",
             "  --text <value>              Text used with --set-text-watermark.",
             "  --image <path>              Image file used with --set-image-watermark.",
             "  --source <path>             Source file used with --print-pdf-passthrough.",
@@ -427,6 +434,11 @@ internal static class VirtualPrinterCommandLine
     private static bool Contains(IReadOnlyList<string> args, string value)
     {
         return args.Any(arg => string.Equals(arg, value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasOption(IReadOnlyList<string> args, string option)
+    {
+        return args.Any(arg => string.Equals(arg, option, StringComparison.OrdinalIgnoreCase));
     }
 
     private static int GetRequiredIntegerOptionValue(

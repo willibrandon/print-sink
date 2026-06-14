@@ -462,6 +462,7 @@ internal sealed partial class FeatureEvidenceContractTests
             "Assert-GracefulCancelAndFailEvidence",
             "Assert-JobPasswordEvidence",
             "Assert-IppWorkflowStartEvidence",
+            "Assert-IppPassthroughWithAttributesPrint",
         ];
 
         foreach (string expectedValidator in expectedValidators)
@@ -469,7 +470,10 @@ internal sealed partial class FeatureEvidenceContractTests
             Assert.Contains(expectedValidator, validatorScript);
         }
 
-        Assert.Contains("IPP association operations", validatorScript);
+        Assert.Contains("IPP association evidence did not record a real IPP print job.", validatorScript);
+        Assert.Contains("provider-unavailable", validatorScript);
+        Assert.Contains("GetPdlPassthroughProvider", validatorScript);
+        Assert.Contains("IPP passthrough-with-attributes helper job omitted job attributes.", validatorScript);
         Assert.Contains("PSA_PrintSinkE2E_IPP_Pri21CF", validatorScript);
         Assert.Contains("Virtual-printer attribute-read evidence", validatorScript);
         Assert.Contains("Concurrent print queues", validatorScript);

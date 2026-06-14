@@ -184,9 +184,9 @@ The required E2E suite proves the current installed-package behavior:
    `GetPrinterAttributes` traffic, a stopped/rejecting IPP probe reports `printer-state=stopped`,
    `printer-state-reasons=paused`, and `printer-is-accepting-jobs=false`, the real
    `PrintSupportExtensionBackgroundTask` validates print tickets for that IPP queue, and a real print
-   job records `PrintSupportWorkflowBackgroundTask` start/compression-state. Physical
-   `PdlModificationRequested` pass-through is recorded when Windows delivers it, but document-output
-   assertions are made through the PrintSink virtual queues.
+   job records `PrintSupportWorkflowBackgroundTask` start/compression-state. The named-printer
+   provider-v2 passthrough probe must either reach the helper with document bytes and raw IPP
+   attributes or record the real Windows provider refusal.
 12. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
     target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
     copy route and provider-v2 state. If the live runtime can encode IPP job and operation attributes
@@ -194,6 +194,10 @@ The required E2E suite proves the current installed-package behavior:
     converter is unusable but provider-v2 is available, the run must prove the core-mapped IPP
     fallback attributes before provider submission. If the provider reports unsupported or provider-v2
     submission is unusable, the run must record explicit v1 fallback with the runtime failure detail.
+    When provider-v2 submission is used for the physical IPP queue, the workflow diagnostic must report
+    `passthroughWithAttributes=true` and present job/operation attribute maps. When Windows refuses to
+    expose a passthrough provider for that queue, the run must record `provider-unavailable` with the
+    `GetPdlPassthroughProvider` failure instead of claiming physical passthrough support.
 13. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
 14. Launch the Settings UI from the real Windows print dialog, assert the owner window title,
@@ -260,14 +264,15 @@ Real output assertions:
 - IPP PSA association must prove a signed extension INF can associate the installed package AUMID
   with real Microsoft IPP Class Driver devices, observe stopped/rejecting printer state from the local
   IPP device, trigger ticket validation for that queue, submit a real print job that activates
-  workflow start, record IPP compression state while leaving system rendering enabled, and produce
-  local IPP request evidence. Physical pass-through is optional evidence because PrintSink does not
-  claim physical target-stream replacement.
+  workflow start, and record IPP compression state while leaving system rendering enabled. The
+  named-printer provider-v2 passthrough probe must produce local IPP request/job evidence when Windows
+  exposes a provider, or explicit `provider-unavailable` evidence when Windows refuses the provider.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider. Diagnostics must prove provider-v2 submission with encoded IPP
   job and operation attribute buffers when the runtime can execute it, including the attribute source
   and any core-mapped fallback attribute names, and explicit v1 fallback when provider-v2 is unsupported
-  or unusable.
+  or unusable. Physical workflow passthrough-with-attributes evidence is required only when Windows
+  exposes a physical passthrough provider for the temporary IPP queue.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
 - Settings UI activation must show the Reactor settings surface, record the real owner and Settings

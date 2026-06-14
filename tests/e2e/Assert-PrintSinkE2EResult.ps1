@@ -737,11 +737,18 @@ function Assert-IppAssociationEvidence {
     Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'certificateThumbprint') -match '^[0-9A-Fa-f]{40}$') 'IPP association evidence omitted the driver-signing certificate thumbprint.'
     Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $Artifact -Name 'ippEvidencePath'))
     Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'ippRequestCount') -gt 0) 'IPP association evidence did not record IPP requests.'
-    Assert-SetEqual `
-        -Actual @(Get-ResultProperty -Object $Artifact -Name 'ippOperations') `
-        -Expected @('GetPrinterAttributes') `
-        -Description 'IPP association operations'
-    Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'ippJobCount') -eq 0) 'IPP association evidence unexpectedly recorded IPP jobs for the association probe.'
+    $ippOperations = @(Get-ResultProperty -Object $Artifact -Name 'ippOperations')
+    Assert-Condition ($ippOperations -contains 'GetPrinterAttributes') 'IPP association evidence did not record GetPrinterAttributes traffic.'
+    $passthroughWithAttributesPrint = Get-ResultProperty -Object $Artifact -Name 'passthroughWithAttributesPrint'
+    $passthroughStatus = [string](Get-ResultProperty -Object $passthroughWithAttributesPrint -Name 'status')
+    if ([string]::IsNullOrWhiteSpace($passthroughStatus)) {
+        $passthroughStatus = 'submitted'
+    }
+
+    if ($passthroughStatus -eq 'submitted') {
+        Assert-Condition (@($ippOperations | Where-Object { $_ -in @('PrintJob', 'CreateJob', 'SendDocument') }).Count -gt 0) 'IPP association evidence did not record a real IPP print job.'
+        Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'ippJobCount') -ge 1) 'IPP association evidence did not record the physical passthrough job.'
+    }
 
     $stateProbe = Get-ResultProperty -Object $Artifact -Name 'printerStateProbe'
     Assert-Condition ($null -ne $stateProbe) 'IPP association evidence omitted printer-state probe evidence.'
@@ -785,6 +792,10 @@ function Assert-IppAssociationEvidence {
     $printServiceEvents = @(Get-ResultProperty -Object $workflowActivationPrint -Name 'printServiceEvents')
     Assert-Condition ($printServiceEvents.Count -gt 0) 'IPP workflow activation omitted PrintService events.'
     Assert-Condition (@($printServiceEvents | Where-Object { [int](Get-ResultProperty -Object $_ -Name 'id') -eq 300 }).Count -gt 0) 'IPP workflow activation did not include the PrintService printer-created event.'
+
+    Assert-IppPassthroughWithAttributesPrint `
+        -Artifact $passthroughWithAttributesPrint `
+        -ExpectedPrinter $printer
 }
 
 function Assert-VirtualPrinterAttributeReadEvidence {
@@ -913,6 +924,84 @@ function Assert-IppWorkflowStartEvidence {
         -Description 'IPP workflow-start evidence'
     Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'detail') -notlike '*ippCompression=error*') 'IPP workflow-start evidence reported an IPP compression probe error.'
     Get-ResultTimestamp -Result $Artifact -Description 'IPP workflow-start evidence' | Out-Null
+}
+
+function Assert-IppPassthroughWithAttributesPrint {
+    param(
+        [object] $Artifact,
+        [string] $ExpectedPrinter = ''
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'IPP passthrough-with-attributes evidence did not include an artifact.'
+    $printer = [string](Get-ResultProperty -Object $Artifact -Name 'printer')
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($printer)) 'IPP passthrough-with-attributes evidence omitted the printer name.'
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedPrinter)) {
+        Assert-Condition ($printer -eq $ExpectedPrinter) 'IPP passthrough-with-attributes evidence used the wrong printer.'
+    }
+
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'sourceApplication') -eq 'printsink-app.exe') 'IPP passthrough-with-attributes evidence used the wrong source application.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'documentName') -eq 'PrintSink-Ipp-Passthrough-Attributes-Source') 'IPP passthrough-with-attributes evidence used the wrong document name.'
+    Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $Artifact -Name 'sourcePath'))
+
+    $status = [string](Get-ResultProperty -Object $Artifact -Name 'status')
+    if ([string]::IsNullOrWhiteSpace($status)) {
+        $status = 'submitted'
+    }
+
+    if ($status -eq 'provider-unavailable') {
+        $failure = [string](Get-ResultProperty -Object $Artifact -Name 'failure')
+        Assert-Condition ($failure -like '*GetPdlPassthroughProvider*') 'IPP passthrough-with-attributes provider-unavailable evidence did not capture the Windows provider failure.'
+        Assert-Condition ($failure -like '*current state*') 'IPP passthrough-with-attributes provider-unavailable evidence did not capture the provider state failure.'
+        return
+    }
+
+    Assert-Condition ($status -eq 'submitted') "IPP passthrough-with-attributes evidence used an unknown status: $status."
+
+    $provider = Get-ResultProperty -Object $Artifact -Name 'provider'
+    Assert-Condition ([string](Get-ResultProperty -Object $provider -Name 'source') -eq 'VirtualPrinterCommandLine') 'IPP passthrough-with-attributes provider evidence used the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $provider -Name 'message') -eq 'PDF passthrough print target created') 'IPP passthrough-with-attributes provider evidence used the wrong message.'
+    Assert-Condition ([string](Get-ResultProperty -Object $provider -Name 'endpoint') -eq $printer) 'IPP passthrough-with-attributes provider evidence targeted the wrong printer.'
+    $providerDetail = [string](Get-ResultProperty -Object $provider -Name 'detail')
+    Assert-DetailContainsParts `
+        -Detail $providerDetail `
+        -ExpectedParts @('pdlPassthroughProvider=', 'provider2=', 'provider2Submit=') `
+        -Description 'IPP passthrough-with-attributes provider evidence'
+    Assert-Condition ($providerDetail -notlike '*provider2=error*') 'IPP passthrough-with-attributes provider-v2 probe failed.'
+
+    Assert-IppWorkflowStartEvidence -Artifact (Get-ResultProperty -Object $Artifact -Name 'workflowStart')
+    $workflow = Get-ResultProperty -Object $Artifact -Name 'workflow'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'source') -eq 'PrintSupportWorkflowBackgroundTask') 'IPP passthrough-with-attributes workflow evidence used the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'message') -eq 'Workflow job passed through') 'IPP passthrough-with-attributes workflow evidence used the wrong message.'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'endpoint') -eq $printer) 'IPP passthrough-with-attributes workflow evidence targeted the wrong printer.'
+    $workflowDetail = [string](Get-ResultProperty -Object $workflow -Name 'detail')
+    Assert-DetailContainsParts `
+        -Detail $workflowDetail `
+        -ExpectedParts @('source=application/pdf', 'target=system', 'job-password=absent', 'passthroughWithAttributes=') `
+        -Description 'IPP passthrough-with-attributes workflow evidence'
+    Assert-Condition ($workflowDetail -notlike '*passthroughWithAttributes=error*') 'IPP passthrough-with-attributes workflow probe failed.'
+
+    $ippJob = Get-ResultProperty -Object $Artifact -Name 'ippJob'
+    Assert-Condition ([string](Get-ResultProperty -Object $ippJob -Name 'name') -eq 'PrintSink-Ipp-Passthrough-Attributes-Source') 'IPP passthrough-with-attributes helper job used the wrong name.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ippJob -Name 'state') -eq 'completed') 'IPP passthrough-with-attributes helper job did not complete.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ippJob -Name 'documentFormat') -eq 'application/pdf') 'IPP passthrough-with-attributes helper job used the wrong document format.'
+    Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $ippJob -Name 'documentPath'))
+    Assert-FilesEqual `
+        -ExpectedPath ([string](Get-ResultProperty -Object $Artifact -Name 'sourcePath')) `
+        -ActualPath ([string](Get-ResultProperty -Object $ippJob -Name 'documentPath')) `
+        -Description 'IPP passthrough-with-attributes helper document'
+
+    if ($providerDetail -like '*provider2Submit=used*') {
+        Assert-DetailContainsParts `
+            -Detail $providerDetail `
+            -ExpectedParts @('ippAttributeSource=', 'ippJobAttributeBytes=', 'ippOperationAttributeBytes=') `
+            -Description 'IPP passthrough-with-attributes provider-v2 evidence'
+        Assert-DetailContainsParts `
+            -Detail $workflowDetail `
+            -ExpectedParts @('passthroughWithAttributes=true', 'passthroughJobAttributes=present', 'passthroughOperationAttributes=present') `
+            -Description 'IPP passthrough-with-attributes workflow provider-v2 evidence'
+        Assert-Condition (@(Get-ResultProperty -Object $ippJob -Name 'operationAttributes') -contains 'document-format') 'IPP passthrough-with-attributes helper job omitted document-format.'
+        Assert-Condition (@(Get-ResultProperty -Object $ippJob -Name 'jobAttributes').Count -gt 0) 'IPP passthrough-with-attributes helper job omitted job attributes.'
+    }
 }
 
 function Get-ResultTimestamp {
@@ -1243,6 +1332,7 @@ function Assert-FeatureEvidence {
     $pdfPassthroughProvider = Get-ResultProperty -Object $artifact -Name 'pdfPassthroughProvider'
     $physicalWorkflowStart = Get-ResultProperty -Object $artifact -Name 'physicalWorkflowStart'
     $physicalWorkflow = Get-ResultProperty -Object $artifact -Name 'physicalWorkflow'
+    $physicalPassthroughWithAttributes = Get-ResultProperty -Object $artifact -Name 'physicalPassthroughWithAttributes'
     $physicalWorkflowStatus = [string](Get-ResultProperty -Object $artifact -Name 'physicalWorkflowStatus')
     $physicalWorkflowDetail = [string](Get-ResultProperty -Object $artifact -Name 'physicalWorkflowDetail')
     $capabilityRefreshDetail = [string](Get-ResultProperty -Object $capabilityRefresh -Name 'detail')
@@ -1284,6 +1374,8 @@ function Assert-FeatureEvidence {
         Assert-Condition ($physicalWorkflowStatus -eq 'pdl-modification-not-delivered') 'Deferred row 28 omitted physical workflow non-delivery status.'
         Assert-Condition (-not [string]::IsNullOrWhiteSpace($physicalWorkflowDetail)) 'Deferred row 28 omitted physical workflow non-delivery detail.'
     }
+
+    Assert-IppPassthroughWithAttributesPrint -Artifact $physicalPassthroughWithAttributes
 }
 
 function Assert-QueuePersistence {

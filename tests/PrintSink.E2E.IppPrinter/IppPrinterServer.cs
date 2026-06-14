@@ -106,16 +106,58 @@ internal sealed class IppPrinterServer
                 CharsetConfigured = "utf-8",
                 CharsetSupported = ["utf-8"],
                 CompressionSupported = [Compression.None],
+                ClientInfoSupported =
+                [
+                    ClientInfoMember.ClientName,
+                    ClientInfoMember.ClientType,
+                    ClientInfoMember.ClientVersion,
+                ],
                 DocumentFormatDefault = options.DocumentFormat,
+                DocumentFormatDetailsSupported =
+                [
+                    DocumentFormatDetail.DocumentFormat,
+                    DocumentFormatDetail.DocumentFormatName,
+                    DocumentFormatDetail.DocumentSourceApplicationName,
+                    DocumentFormatDetail.DocumentSourceOsName,
+                ],
                 DocumentFormatSupported =
                 [
                     options.DocumentFormat,
                     "application/pdf",
                     "image/pwg-raster",
+                    "application/pclm",
                     "application/PCLm",
                 ],
+                FinishingsDefault = Finishings.None,
                 GeneratedNaturalLanguageSupported = ["en-us"],
                 IppVersionsSupported = [new IppVersion(1, 1), new IppVersion(2, 0)],
+                MediaBottomMarginSupported = [0],
+                MediaColDatabase = [CreateLetterMediaCol()],
+                MediaColDefault = CreateLetterMediaCol(),
+                MediaColReady = [CreateLetterMediaCol()],
+                MediaColSupported =
+                [
+                    MediaColMember.MediaBottomMargin,
+                    MediaColMember.MediaLeftMargin,
+                    MediaColMember.MediaRightMargin,
+                    MediaColMember.MediaSize,
+                    MediaColMember.MediaSizeName,
+                    MediaColMember.MediaSource,
+                    MediaColMember.MediaTopMargin,
+                    MediaColMember.MediaType,
+                ],
+                MediaLeftMarginSupported = [0],
+                MediaRightMarginSupported = [0],
+                MediaSizeSupported =
+                [
+                    new MediaSizeSupported
+                    {
+                        XDimension = new SharpIpp.Protocol.Models.Range(21590, 21590, false),
+                        YDimension = new SharpIpp.Protocol.Models.Range(27940, 27940, false),
+                    },
+                ],
+                MediaTopMarginSupported = [0],
+                MultipleDocumentHandlingDefault = MultipleDocumentHandling.SingleDocument,
                 MultipleDocumentJobsSupported = true,
                 NaturalLanguageConfigured = "en-us",
                 OperationsSupported =
@@ -129,13 +171,49 @@ internal sealed class IppPrinterServer
                     IppOperation.GetJobs,
                     IppOperation.GetPrinterAttributes,
                 ],
+                PagesPerMinute = 10,
+                PagesPerMinuteColor = 10,
+                PdfKOctetsSupported = new SharpIpp.Protocol.Models.Range(0, int.MaxValue, false),
+                PdfVersionsSupported =
+                [
+                    PdfVersion.Adobe17,
+                    PdfVersion.Iso3200012008,
+                    PdfVersion.Pwg51023,
+                ],
+                PresentationDirectionNumberUpDefault = PresentationDirectionNumberUp.TorightTobottom,
+                PresentationDirectionNumberUpSupported =
+                [
+                    PresentationDirectionNumberUp.TorightTobottom,
+                ],
+                PrintScalingDefault = PrintScaling.AutoFit,
+                PrintScalingSupported =
+                [
+                    PrintScaling.Auto,
+                    PrintScaling.AutoFit,
+                    PrintScaling.Fill,
+                    PrintScaling.Fit,
+                    PrintScaling.None,
+                ],
                 PrinterInfo = options.PrinterName,
                 PrinterIsAcceptingJobs = !options.RejectJobs,
+                PrinterMandatoryJobAttributes =
+                [
+                    PrinterMandatoryJobAttribute.PrinterUri,
+                    PrinterMandatoryJobAttribute.JobName,
+                    PrinterMandatoryJobAttribute.DocumentFormat,
+                ],
                 PrinterMakeAndModel = "PrintSink E2E IPP Printer",
                 PrinterName = options.PrinterName,
                 PrinterState = GetPrinterState(),
                 PrinterStateReasons = options.PrinterStateReasons,
                 PrinterUriSupported = [options.PrinterUri],
+                PwgRasterDocumentResolutionSupported =
+                [
+                    new Resolution(300, 300, ResolutionUnit.DotsPerInch, true),
+                    new Resolution(600, 600, ResolutionUnit.DotsPerInch, true),
+                ],
+                PwgRasterDocumentSheetBack = PwgRasterDocumentSheetBack.Normal,
+                PwgRasterDocumentTypeSupported = ["sgray_8", "srgb_8", "rgb_8"],
                 QueuedJobCount = GetQueuedJobCount(),
                 UriAuthenticationSupported = [UriAuthentication.None],
                 UriSecuritySupported = [UriSecurity.None],
@@ -607,6 +685,18 @@ internal sealed class IppPrinterServer
                 Tag.Resolution,
                 "printer-resolution-default",
                 new Resolution(300, 300, ResolutionUnit.DotsPerInch, true)));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Boolean, "pdf-fit-to-page-default", true));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(Tag.Keyword, "pclm-raster-back-side", "normal"));
+        AddMissingAttribute(
+            attributes,
+            new IppAttribute(
+                Tag.Resolution,
+                "pclm-source-resolution-supported",
+                new Resolution(300, 300, ResolutionUnit.DotsPerInch, true)));
 
         AddMissingKeywordAttributes(attributes, "job-password-encryption-supported", "sha2-256", "none");
         AddMissingKeywordAttributes(attributes, "media-supported", "na_letter_8.5x11in", "northamericaletter");
@@ -622,6 +712,7 @@ internal sealed class IppPrinterServer
         AddMissingKeywordAttributes(attributes, "page-delivery-supported", "same-order", "reverse-order", "oddpagesthenevenpages");
         AddMissingKeywordAttributes(attributes, "print-color-mode-supported", "monochrome", "color");
         AddMissingKeywordAttributes(attributes, "print-scaling-supported", "auto", "auto-fit", "fill", "fit", "none");
+        AddMissingBooleanAttributes(attributes, "pdf-fit-to-page-supported", false, true);
         AddMissingKeywordAttributes(attributes, "sides-supported", "one-sided", "two-sided-long-edge", "two-sided-short-edge");
         AddMissingIntegerAttributes(attributes, Tag.Enum, "finishings-supported", 3, 4, 20, 21, 22, 23);
         AddMissingIntegerAttributes(attributes, Tag.Enum, "orientation-requested-supported", 3, 4, 5, 6);
@@ -632,6 +723,25 @@ internal sealed class IppPrinterServer
         AddMissingRangeAttribute(attributes, "job-pages-per-set-supported", 1, int.MaxValue);
         AddMissingRangeAttribute(attributes, "number-up-supported", 1, 16);
         AddMissingResolutionAttributes(attributes, "printer-resolution-supported");
+    }
+
+    private static MediaCol CreateLetterMediaCol()
+    {
+        return new MediaCol
+        {
+            MediaBottomMargin = 0,
+            MediaLeftMargin = 0,
+            MediaRightMargin = 0,
+            MediaSize = new MediaSize
+            {
+                XDimension = new SharpIpp.Protocol.Models.Range(21590, 21590, false),
+                YDimension = new SharpIpp.Protocol.Models.Range(27940, 27940, false),
+            },
+            MediaSizeName = Media.NaLetter85x11in,
+            MediaSource = MediaSource.Auto,
+            MediaTopMargin = 0,
+            MediaType = MediaType.Stationery,
+        };
     }
 
     private static string GetPrinterDeviceId()
@@ -683,6 +793,22 @@ internal sealed class IppPrinterServer
         foreach (int value in values.Distinct())
         {
             attributes.Add(new IppAttribute(tag, name, value));
+        }
+    }
+
+    private static void AddMissingBooleanAttributes(
+        List<IppAttribute> attributes,
+        string name,
+        params bool[] values)
+    {
+        if (attributes.Any(existing => string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        foreach (bool value in values.Distinct())
+        {
+            attributes.Add(new IppAttribute(Tag.Boolean, name, value));
         }
     }
 
