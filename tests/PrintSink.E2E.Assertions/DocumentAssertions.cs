@@ -503,6 +503,13 @@ internal static partial class DocumentAssertions
         }
 
         int bodyStart = syncWordLength + version2HeaderLength;
+        ulong declaredBodyBytes = (ulong)bytesPerLine * height;
+        ulong actualBodyBytes = (ulong)(bytes.Length - bodyStart);
+        if (actualBodyBytes < declaredBodyBytes)
+        {
+            throw new InvalidDataException($"PWG Raster page body is shorter than declared page data: {path}");
+        }
+
         int distinctBodyBytes = bytes
             .Skip(bodyStart)
             .Take(1024 * 1024)

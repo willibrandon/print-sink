@@ -310,6 +310,29 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies a PWG Raster stream shorter than its declared page body is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsTruncatedPwgRaster()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "truncated.pwg");
+            WritePwgRaster(path, blankBody: false, height: 128, bodyLength: 16);
+
+            int exitCode = RunAssertion(["--format", "pwg", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("PWG Raster page body is shorter than declared page data", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies a PDF/PCLm document with image content is accepted.
     /// </summary>
     [TestMethod]
@@ -559,15 +582,14 @@ internal sealed class DocumentAssertionsTests
             Encoding.Latin1);
     }
 
-    private static void WritePwgRaster(string path, bool blankBody)
+    private static void WritePwgRaster(string path, bool blankBody, uint height = 2, int bodyLength = 16)
     {
         const int syncWordLength = 4;
         const int version2HeaderLength = 1796;
-        const int bodyLength = 16;
         byte[] bytes = new byte[syncWordLength + version2HeaderLength + bodyLength];
         Encoding.ASCII.GetBytes("RaS2").CopyTo(bytes, 0);
         WriteRasterUInt32(bytes, syncWordLength + 372, 2);
-        WriteRasterUInt32(bytes, syncWordLength + 376, 2);
+        WriteRasterUInt32(bytes, syncWordLength + 376, height);
         WriteRasterUInt32(bytes, syncWordLength + 384, 8);
         WriteRasterUInt32(bytes, syncWordLength + 388, 8);
         WriteRasterUInt32(bytes, syncWordLength + 392, 2);
@@ -577,8 +599,15 @@ internal sealed class DocumentAssertionsTests
 
         if (!blankBody)
         {
-            bytes[syncWordLength + version2HeaderLength] = 0x00;
-            bytes[syncWordLength + version2HeaderLength + 1] = 0xFF;
+            if (bodyLength > 0)
+            {
+                bytes[syncWordLength + version2HeaderLength] = 0x00;
+            }
+
+            if (bodyLength > 1)
+            {
+                bytes[syncWordLength + version2HeaderLength + 1] = 0xFF;
+            }
         }
 
         File.WriteAllBytes(path, bytes);
