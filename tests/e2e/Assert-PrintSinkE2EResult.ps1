@@ -1307,7 +1307,17 @@ function Assert-CompletedJob {
     $diagnostic = Get-ResultProperty -Object $Result -Name 'diagnostic'
     Assert-Condition ($null -ne $diagnostic) "Missing completion diagnostic for $Queue."
     Assert-Condition ((Get-ResultProperty -Object $diagnostic -Name 'message') -eq 'Job completed') "Expected completed diagnostic for $Queue."
-    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $diagnostic -Name 'route'))) "Missing route diagnostic for $Queue."
+    $route = [string](Get-ResultProperty -Object $diagnostic -Name 'route')
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($route)) "Missing route diagnostic for $Queue."
+
+    $completionTimestamp = Get-ResultTimestamp -Result $diagnostic -Description "$Queue completion diagnostic"
+    $routeTimestamp = Get-ResultTimestamp -Result $diagnostic -Description "$Queue route diagnostic" -Name 'routeTimestamp'
+    Assert-Condition ($completionTimestamp -ge $routeTimestamp) "$Queue completion diagnostic timestamp preceded the route timestamp."
+
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $diagnostic -Name 'detail')) `
+        -ExpectedParts @('Succeeded;', "route=$route", 'job-password=') `
+        -Description "$Queue completion diagnostic"
 }
 
 function Assert-Route {

@@ -463,6 +463,10 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("Assert-CliQueueLifecycle -CliQueueLifecycle $result.cliQueueLifecycle", validatorScript);
         Assert.Contains("function Assert-Route", validatorScript);
         Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);
+        Assert.Contains("routeTimestamp", validatorScript);
+        Assert.Contains("completionTimestamp -ge $routeTimestamp", validatorScript);
+        Assert.Contains("'Succeeded;'", validatorScript);
+        Assert.Contains("'job-password='", validatorScript);
         Assert.Contains("application/oxps -> Pdf; Convert; Convert XPS to PDF.", validatorScript);
         Assert.Contains("application/oxps -> Oxps; Copy; Endpoint supports passthrough.", validatorScript);
         Assert.Contains("application/postscript -> PostScript; Copy; Endpoint supports passthrough.", validatorScript);
