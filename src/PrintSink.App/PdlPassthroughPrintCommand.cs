@@ -1,6 +1,10 @@
 using PrintSink.Core.Endpoints;
 using PrintSink.Core.Pdl;
+using AttributeMergePolicyOptions = PrintSink.Core.Tickets.AttributeMergePolicyOptions;
+using CoreIppAttributeValue = PrintSink.Core.Tickets.IppAttributeValue;
+using IppAttributeMapper = PrintSink.Core.Tickets.IppAttributeMapper;
 using System.Globalization;
+using System.Xml.Linq;
 using Windows.Devices.Printers;
 using Windows.Graphics.Printing.PrintTicket;
 using Windows.Storage.Streams;
@@ -162,7 +166,7 @@ internal static class PdlPassthroughPrintCommand
         }
         catch (Exception ex) when (CanFallbackFromProvider2(ex))
         {
-            return CreateMinimalIppAttributeBuffers(printTicket, jobName, targetPdlFormat, ex);
+            return CreateCoreMappedIppAttributeBuffers(printTicket, jobName, targetPdlFormat, ex);
         }
     }
 
@@ -204,18 +208,32 @@ internal static class PdlPassthroughPrintCommand
         return (jobAttributesBuffer, operationAttributesBuffer, detail);
     }
 
-    private static (IBuffer JobAttributes, IBuffer OperationAttributes, string Detail) CreateMinimalIppAttributeBuffers(
+    private static (IBuffer JobAttributes, IBuffer OperationAttributes, string Detail) CreateCoreMappedIppAttributeBuffers(
         WorkflowPrintTicket printTicket,
         string jobName,
         string targetPdlFormat,
         Exception converterException)
     {
+        IppAttributeMapper mapper = new();
+        XDocument printTicketXml = XDocument.Parse(printTicket.XmlNode.GetXml(), LoadOptions.None);
+        IReadOnlyDictionary<string, CoreIppAttributeValue> mappedAttributes = mapper.ApplyMergePolicy(
+            mapper.FromPrintTicket(printTicketXml),
+            AttributeMergePolicyOptions.RemovePdlEmbeddedMediaSize);
         Dictionary<string, IppAttributeValue> jobAttributes = new(StringComparer.OrdinalIgnoreCase)
         {
             ["job-name"] = IppAttributeValue.CreateNameWithoutLanguage(jobName),
         };
-        int? copies = UserDefaultPrintTicketEditor.ReadCopies(printTicket);
-        if (copies is int copyCount)
+
+        foreach (KeyValuePair<string, CoreIppAttributeValue> mappedAttribute in mappedAttributes)
+        {
+            if (TryCreateWinRtJobAttribute(mappedAttribute.Value, out IppAttributeValue? winRtAttribute)
+                && winRtAttribute is not null)
+            {
+                jobAttributes[mappedAttribute.Key] = winRtAttribute;
+            }
+        }
+
+        if (!jobAttributes.ContainsKey("copies") && UserDefaultPrintTicketEditor.ReadCopies(printTicket) is int copyCount)
         {
             jobAttributes["copies"] = IppAttributeValue.CreateInteger(copyCount);
         }
@@ -237,14 +255,91 @@ internal static class PdlPassthroughPrintCommand
 
         string detail = string.Join(
             "; ",
-            "ippAttributeSource=minimal-fallback",
+            "ippAttributeSource=core-fallback",
             $"ippAttributeFallbackHResult=0x{converterException.HResult:X8}",
             $"ippAttributeFallbackException={converterException.GetType().Name}",
+            $"ippMappedJobAttributes={mappedAttributes.Count}",
+            $"ippMappedJobAttributeNames={FormatAttributeNames(mappedAttributes.Keys)}",
             $"ippJobAttributes={jobAttributes.Count}",
             $"ippJobAttributeBytes={jobAttributesBuffer.Length}",
             $"ippOperationAttributes={operationAttributes.Count}",
             $"ippOperationAttributeBytes={operationAttributesBuffer.Length}");
         return (jobAttributesBuffer, operationAttributesBuffer, detail);
+    }
+
+    private static bool TryCreateWinRtJobAttribute(
+        CoreIppAttributeValue attribute,
+        out IppAttributeValue? winRtAttribute)
+    {
+        winRtAttribute = null;
+        if (attribute.Collections.Count > 0 || attribute.Values.Count == 0)
+        {
+            return false;
+        }
+
+        string[] values = [.. attribute.Values];
+        winRtAttribute = attribute.Name switch
+        {
+            "copies" or "number-up" => CreateIntegerAttribute(values),
+            "finishings" or "orientation-requested" or "print-quality" => CreateEnumAttribute(values),
+            _ => CreateKeywordAttribute(values),
+        };
+        return winRtAttribute is not null;
+    }
+
+    private static IppAttributeValue? CreateIntegerAttribute(string[] values)
+    {
+        int[] parsedValues = ParseIntegerValues(values);
+        return parsedValues.Length switch
+        {
+            0 => null,
+            1 => IppAttributeValue.CreateInteger(parsedValues[0]),
+            _ => IppAttributeValue.CreateIntegerArray(parsedValues),
+        };
+    }
+
+    private static IppAttributeValue? CreateEnumAttribute(string[] values)
+    {
+        int[] parsedValues = ParseIntegerValues(values);
+        return parsedValues.Length switch
+        {
+            0 => null,
+            1 => IppAttributeValue.CreateEnum(parsedValues[0]),
+            _ => IppAttributeValue.CreateEnumArray(parsedValues),
+        };
+    }
+
+    private static IppAttributeValue CreateKeywordAttribute(string[] values)
+    {
+        return values.Length == 1
+            ? IppAttributeValue.CreateKeyword(values[0])
+            : IppAttributeValue.CreateKeywordArray(values);
+    }
+
+    private static int[] ParseIntegerValues(string[] values)
+    {
+        List<int> parsedValues = [];
+        foreach (string value in values)
+        {
+            if (!int.TryParse(
+                value,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int parsedValue))
+            {
+                return [];
+            }
+
+            parsedValues.Add(parsedValue);
+        }
+
+        return [.. parsedValues];
+    }
+
+    private static string FormatAttributeNames(IEnumerable<string> attributeNames)
+    {
+        string[] names = [.. attributeNames.Order(StringComparer.OrdinalIgnoreCase)];
+        return names.Length == 0 ? "<none>" : string.Join(',', names);
     }
 
     private static string GetIppNaturalLanguage()

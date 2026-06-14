@@ -188,9 +188,10 @@ The required E2E suite proves the current installed-package behavior:
 12. Send a real source PDF through `IppPrintDevice.GetPdlPassthroughProvider`, drive the Save As
     target, and assert the output remains byte-for-byte identical while diagnostics report the PDF
     copy route and provider-v2 state. If the live runtime can encode IPP job and operation attributes
-    and accepts provider-v2 submission, the run must prove that path. If the provider reports
-    unsupported or the attribute conversion API is unusable, the run must record explicit v1 fallback
-    with the runtime failure detail.
+    and accepts provider-v2 submission, the run must prove that path. If the Windows print-ticket
+    converter is unusable but provider-v2 is available, the run must prove the core-mapped IPP
+    fallback attributes before provider submission. If the provider reports unsupported or provider-v2
+    submission is unusable, the run must record explicit v1 fallback with the runtime failure detail.
 13. Launch the packaged WinRT print-source harness, drive the real Windows print dialog to
    `PrintSink - PDF`, and assert the PDF output and route diagnostics.
 14. Launch the Settings UI from the real Windows print dialog, assert the owner window title,
@@ -228,8 +229,9 @@ because Windows does not expose deterministic triggers for those events in the s
 plus provider-v2 PDL passthrough with job attributes when the live provider reports provider2 as
 unsupported or the runtime cannot deliver the full passthrough-attribute workflow. For the
 provider-v2 hook, deferred evidence must still carry the live capability-refresh,
-PDL-passthrough-provider, IPP attribute source and buffer-size details when provider-v2 submission is
-used, and physical-workflow diagnostics observed during the run.
+PDL-passthrough-provider, IPP attribute source, mapped fallback attribute names when that fallback is
+used, and buffer-size details when provider-v2 submission is used, plus physical-workflow diagnostics
+observed during the run.
 
 Real output assertions:
 
@@ -261,8 +263,9 @@ Real output assertions:
   claim physical target-stream replacement.
 - PDF passthrough output must be byte-for-byte identical to the valid source PDF submitted through
   Windows' PDL passthrough provider. Diagnostics must prove provider-v2 submission with encoded IPP
-  job and operation attribute buffers when the runtime can execute it, including the attribute source,
-  and explicit v1 fallback when provider-v2 is unsupported or unusable.
+  job and operation attribute buffers when the runtime can execute it, including the attribute source
+  and any core-mapped fallback attribute names, and explicit v1 fallback when provider-v2 is unsupported
+  or unusable.
 - WinRT source printing must produce a valid PDF containing the source text through the real Windows
   print dialog.
 - Settings UI activation must show the Reactor settings surface, record the real owner and Settings

@@ -554,9 +554,13 @@ internal sealed partial class FeatureEvidenceContractTests
         string pdlPassthroughPrintCommand = ReadRepositoryFile("src", "PrintSink.App", "PdlPassthroughPrintCommand.cs");
         Assert.Contains("provider2Submit=used", pdlPassthroughPrintCommand);
         Assert.Contains("ippAttributeSource=print-ticket-converter", pdlPassthroughPrintCommand);
-        Assert.Contains("ippAttributeSource=minimal-fallback", pdlPassthroughPrintCommand);
+        Assert.Contains("ippAttributeSource=core-fallback", pdlPassthroughPrintCommand);
+        Assert.Contains("IppAttributeMapper", pdlPassthroughPrintCommand);
+        Assert.Contains("ippMappedJobAttributeNames={FormatAttributeNames(mappedAttributes.Keys)}", pdlPassthroughPrintCommand);
         Assert.Contains("IppAttributeValue.CreateMimeMedia", pdlPassthroughPrintCommand);
         Assert.Contains("IppAttributeValue.CreateNameWithoutLanguage", pdlPassthroughPrintCommand);
+        Assert.Contains("IppAttributeValue.CreateKeyword", pdlPassthroughPrintCommand);
+        Assert.Contains("IppAttributeValue.CreateEnum", pdlPassthroughPrintCommand);
         Assert.Contains("provider2Fallback={fallbackReason}", pdlPassthroughPrintCommand);
         Assert.Contains("ipp-attribute-conversion-failed", pdlPassthroughPrintCommand);
     }

@@ -5254,7 +5254,7 @@ function New-PrintSinkDeferredFeatureEvidence {
             number = 28
             feature = 'PDL passthrough with IPP job-attribute compatibility'
             status = 'deferred'
-            evidence = 'PrintSink enables the capability and submits provider-v2 jobs with encoded IPP job and operation attributes when the live runtime can execute that path. Physical workflow passthrough-attribute state is recorded only when Windows delivers PdlModificationRequested. Hosted runners can report provider2=unsupported or provider2=runtime-unusable; those runs are recorded as explicit v1 fallback instead of a supported row-28 claim.'
+            evidence = 'PrintSink enables the capability and submits provider-v2 jobs with encoded IPP job and operation attributes when the live runtime can execute that path, using core-mapped fallback attributes when Windows print-ticket conversion is unavailable. Physical workflow passthrough-attribute state is recorded only when Windows delivers PdlModificationRequested. Hosted runners can report provider2=unsupported or provider2=runtime-unusable; those runs are recorded as explicit v1 fallback instead of a supported row-28 claim.'
             artifact = [ordered]@{
                 capabilityRefresh = $ExtensionCapabilities
                 pdfPassthroughProvider = $PdfPassthrough.provider

@@ -1229,9 +1229,11 @@ function Assert-FeatureEvidence {
         Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeSource=*') 'Deferred row 28 provider-v2 submission omitted its IPP attribute source.'
         Assert-Condition ($pdfPassthroughProviderDetail -like '*ippJobAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded job-attribute bytes.'
         Assert-Condition ($pdfPassthroughProviderDetail -like '*ippOperationAttributeBytes=*') 'Deferred row 28 provider-v2 submission omitted encoded operation-attribute bytes.'
-        if ($pdfPassthroughProviderDetail -like '*ippAttributeSource=minimal-fallback*') {
-            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackHResult=*') 'Deferred row 28 provider-v2 minimal fallback omitted the converter HRESULT.'
-            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackException=*') 'Deferred row 28 provider-v2 minimal fallback omitted the converter exception type.'
+        if ($pdfPassthroughProviderDetail -like '*ippAttributeSource=core-fallback*') {
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackHResult=*') 'Deferred row 28 provider-v2 core fallback omitted the converter HRESULT.'
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippAttributeFallbackException=*') 'Deferred row 28 provider-v2 core fallback omitted the converter exception type.'
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippMappedJobAttributes=*') 'Deferred row 28 provider-v2 core fallback omitted the mapped attribute count.'
+            Assert-Condition ($pdfPassthroughProviderDetail -like '*ippMappedJobAttributeNames=*') 'Deferred row 28 provider-v2 core fallback omitted the mapped attribute names.'
         }
     }
     elseif ($pdfPassthroughProviderDetail -like '*provider2=runtime-unusable*') {
