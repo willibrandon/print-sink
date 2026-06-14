@@ -52,6 +52,11 @@ internal sealed class ManagementScreen : Component
             _ = Task.Run(operation);
         }
 
+        void StartUiManagementOperation(Func<Task> operation)
+        {
+            UiDispatch.Enqueue(() => _ = operation());
+        }
+
         UseEffect(() =>
         {
             StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText));
@@ -75,11 +80,11 @@ internal sealed class ManagementScreen : Component
                     StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText)),
                     () => StartManagementOperation(() => InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
                     () => StartManagementOperation(() => RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
-                    () => StartManagementOperation(() => RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText)),
+                    () => StartUiManagementOperation(() => RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText)),
                     defaultCopies,
                     setDefaultCopies,
                     selectedSnapshot.CanModifyUserDefaultPrintTicket == true,
-                    () => StartManagementOperation(() => SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText)),
+                    () => StartUiManagementOperation(() => SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText)),
                     jobUiOptions.LaunchJobUi,
                     () => StartManagementOperation(() => SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText)),
                     () => StartManagementOperation(() => SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText))),
