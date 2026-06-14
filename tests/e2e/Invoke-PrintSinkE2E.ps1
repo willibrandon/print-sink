@@ -3706,6 +3706,7 @@ function Invoke-PrintSinkExtensionCapabilities {
         [DateTimeOffset] $StartedUtc
     )
 
+    $refreshRequestedUtc = [DateTimeOffset]::UtcNow
     Invoke-PrintSinkAppCommand `
         -Arguments @('--refresh-capabilities', '--endpoint', 'Pdf') `
         -Description 'Refreshing PDF capabilities through the packaged app'
@@ -3714,7 +3715,7 @@ function Invoke-PrintSinkExtensionCapabilities {
         -PackageFamilyName $PackageFamilyName `
         -Endpoint 'PrintSink - PDF' `
         -Message 'Capabilities updated' `
-        -StartedUtc $StartedUtc `
+        -StartedUtc $refreshRequestedUtc `
         -DetailContains @(
             'features=PageMediaSize,PageMediaType,JobInputBin,JobOutputBin,JobPageOrder,JobStapleAllDocuments,PageResolution,JobWatermarkMode',
             $expectedPdcFeatureDetail,
@@ -3904,9 +3905,11 @@ function Invoke-PrintSinkManagementUi {
             -PackageFamilyName $PackageFamilyName `
             -Endpoint 'PrintSink - PDF' `
             -Message 'Management UI capabilities refreshed' `
-            -StartedUtc $StartedUtc `
+            -StartedUtc $capabilityRefreshRequestedUtc `
             -DetailContains @('Capabilities refreshed for PrintSink - PDF') `
-            -TimeoutSeconds 60
+            -StartedSkewSeconds 0 `
+            -FailureMessages @('Management UI capabilities refresh failed') `
+            -TimeoutSeconds 180
         $extensionCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint 'PrintSink - PDF' `
@@ -6248,6 +6251,7 @@ function Wait-ForPrintSinkDiagnostic {
         [string] $Message,
         [DateTimeOffset] $StartedUtc,
         [string[]] $DetailContains = @(),
+        [string[]] $FailureMessages = @(),
         [double] $StartedSkewSeconds = 5,
         [int] $TimeoutSeconds = 45
     )
@@ -6255,10 +6259,12 @@ function Wait-ForPrintSinkDiagnostic {
     $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     $lastCandidate = $null
+    $recentDiagnostics = @()
     do {
         if (Test-Path -LiteralPath $diagnosticPath) {
             try {
                 $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
+                $recentDiagnostics = @($events | Select-Object -Last 8)
             }
             catch [System.IO.IOException] {
                 Start-Sleep -Milliseconds 250
@@ -6275,6 +6281,17 @@ function Wait-ForPrintSinkDiagnostic {
                         -and $_.message -eq $Message `
                         -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds $StartedSkewSeconds)
                 })
+
+            $failures = @($events |
+                Where-Object {
+                    ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
+                        -and $_.message -in $FailureMessages `
+                        -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds $StartedSkewSeconds)
+                })
+            if ($failures.Count -gt 0) {
+                $failure = $failures[-1]
+                throw "Observed failure diagnostic '$($failure.message)' on '$($failure.endpoint)': $($failure.detail)"
+            }
 
             foreach ($candidate in $candidates) {
                 $lastCandidate = $candidate
@@ -6300,7 +6317,16 @@ function Wait-ForPrintSinkDiagnostic {
         throw "Timed out waiting for diagnostic '$Message' on '$Endpoint' with details '$($DetailContains -join ', ')'. Last detail: $($lastCandidate.detail)"
     }
 
-    throw "Timed out waiting for diagnostic '$Message' on '$Endpoint'."
+    $recentSummary = if ($recentDiagnostics.Count -eq 0) {
+        '<none>'
+    }
+    else {
+        (@($recentDiagnostics | ForEach-Object {
+            "$($_.timestamp) [$($_.endpoint)] $($_.message): $($_.detail)"
+        })) -join '; '
+    }
+
+    throw "Timed out waiting for diagnostic '$Message' on '$Endpoint'. Recent diagnostics: $recentSummary"
 }
 
 function Wait-ForPrintSinkJobCanceled {
@@ -6687,6 +6713,14 @@ try {
     $completedSuccessfully = $true
 }
 finally {
+    try {
+        $diagnosticSnapshotPath = Join-Path $OutputDirectory 'diagnostic-events.final.json'
+        Copy-Item -LiteralPath $diagnosticPath -Destination $diagnosticSnapshotPath -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Could not preserve PrintSink diagnostics: $($_.Exception.Message)"
+    }
+
     $cleanupFailures = [System.Collections.Generic.List[string]]::new()
     $cleanupResult = [ordered]@{
         requested = [bool]$Cleanup

@@ -52,11 +52,6 @@ internal sealed class ManagementScreen : Component
             _ = Task.Run(operation);
         }
 
-        void StartUiManagementOperation(Func<Task> operation)
-        {
-            UiDispatch.Enqueue(() => _ = operation());
-        }
-
         UseEffect(() =>
         {
             StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText));
@@ -80,11 +75,11 @@ internal sealed class ManagementScreen : Component
                     StartManagementOperation(() => RefreshInstalledPrintersAsync(setInstalledPrinters, setStatusText)),
                     () => StartManagementOperation(() => InstallVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
                     () => StartManagementOperation(() => RemoveVirtualPrintersAsync(setInstalledPrinters, setStatusText)),
-                    () => StartUiManagementOperation(() => RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText)),
+                    () => StartManagementOperation(() => RefreshCapabilitiesAsync(selectedKind, setInstalledPrinters, setStatusText)),
                     defaultCopies,
                     setDefaultCopies,
                     selectedSnapshot.CanModifyUserDefaultPrintTicket == true,
-                    () => StartUiManagementOperation(() => SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText)),
+                    () => StartManagementOperation(() => SetUserDefaultCopiesAsync(selectedKind, defaultCopies, setDefaultCopies, setInstalledPrinters, setStatusText)),
                     jobUiOptions.LaunchJobUi,
                     () => StartManagementOperation(() => SaveJobUiOptionsAsync(true, setJobUiOptions, setStatusText)),
                     () => StartManagementOperation(() => SaveJobUiOptionsAsync(false, setJobUiOptions, setStatusText))),
@@ -537,9 +532,9 @@ internal sealed class ManagementScreen : Component
         Action<IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot>> setInstalledPrinters,
         Action<string> setStatusText)
     {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(selectedKind);
         try
         {
-            VirtualEndpoint endpoint = EndpointCatalog.GetByKind(selectedKind);
             string status = InstalledVirtualPrinterReader.RefreshCapabilities(selectedKind);
             await AppendDiagnosticAsync(
                     "Management UI capabilities refreshed",
@@ -557,6 +552,12 @@ internal sealed class ManagementScreen : Component
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
+            await TryAppendDiagnosticAsync(
+                    "Management UI capabilities refresh failed",
+                    endpoint.QueueName,
+                    ex.ToString(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             UiDispatch.Post(() => setStatusText($"Capability refresh failed: {ex.Message}"));
         }
     }
@@ -661,6 +662,22 @@ internal sealed class ManagementScreen : Component
                     detail),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static async Task TryAppendDiagnosticAsync(
+        string message,
+        string? endpoint,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await AppendDiagnosticAsync(message, endpoint, detail, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
+        {
+            System.Diagnostics.Debug.WriteLine($"PrintSink diagnostic append failed: {ex}");
+        }
     }
 
     private static async Task SaveJobUiOptionsAsync(
