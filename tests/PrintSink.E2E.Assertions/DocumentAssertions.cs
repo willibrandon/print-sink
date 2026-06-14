@@ -135,7 +135,7 @@ internal static partial class DocumentAssertions
     {
         foreach (Page page in document.GetPages())
         {
-            if (page.NumberOfImages > 0 || page.GetImages().Any())
+            if (PageContainsPdfImage(page))
             {
                 return true;
             }
@@ -157,6 +157,11 @@ internal static partial class DocumentAssertions
         }
 
         return false;
+    }
+
+    private static bool PageContainsPdfImage(Page page)
+    {
+        return page.NumberOfImages > 0 || page.GetImages().Any();
     }
 
     private static string RemovePdfComments(string source)
@@ -198,7 +203,20 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"PCLm output is missing the PDF/PCLm header markers: {path}");
         }
 
-        AssertPdf(path, null, forbiddenText, false, true);
+        AssertPdf(path, null, forbiddenText, false, false);
+        AssertPclmPagesHaveImages(path);
+    }
+
+    private static void AssertPclmPagesHaveImages(string path)
+    {
+        using PdfDocument document = PdfDocument.Open(path);
+        foreach (Page page in document.GetPages())
+        {
+            if (!PageContainsPdfImage(page))
+            {
+                throw new InvalidDataException($"PCLm page {page.Number} did not contain image content: {path}");
+            }
+        }
     }
 
     private static void AssertXps(string path, string? expectedText, string? forbiddenText)

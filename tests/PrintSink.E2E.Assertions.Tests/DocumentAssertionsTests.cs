@@ -461,7 +461,34 @@ internal sealed class DocumentAssertionsTests
             int exitCode = RunAssertion(["--format", "pclm", "--path", path], out string error);
 
             Assert.AreEqual(1, exitCode);
-            Assert.Contains("PDF did not contain image content", error);
+            Assert.Contains("PCLm page 1 did not contain image content", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies a PCLm document is rejected when any page has no raster image.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsPclmWithBlankPage()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "blank-page.pclm");
+            WriteMinimalImagePdf(
+                path,
+                includePclmMarker: true,
+                includeSecondPage: true,
+                includeSecondPageImage: false);
+
+            int exitCode = RunAssertion(["--format", "pclm", "--path", path], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("PCLm page 2 did not contain image content", error);
         }
         finally
         {
@@ -506,7 +533,9 @@ internal sealed class DocumentAssertionsTests
         string path,
         bool includePclmMarker,
         bool includeImage = true,
-        bool includeCommentOnlyImageMarker = false)
+        bool includeCommentOnlyImageMarker = false,
+        bool includeSecondPage = false,
+        bool includeSecondPageImage = true)
     {
         StringBuilder builder = new();
         List<int> offsets = [];
@@ -521,8 +550,24 @@ internal sealed class DocumentAssertionsTests
             builder.Append("%/Subtype/Image\n");
         }
 
+        if (includeSecondPage && includeSecondPageImage && !includeImage)
+        {
+            throw new ArgumentException("Second-page image fixtures require the shared image object.", nameof(includeSecondPageImage));
+        }
+
+        int secondPageObjectNumber = includeImage ? 6 : 4;
+        int secondPageContentObjectNumber = includeImage ? 7 : 5;
+        string pageKids = includeSecondPage
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"3 0 R {secondPageObjectNumber} 0 R")
+            : "3 0 R";
+        int pageCount = includeSecondPage ? 2 : 1;
         AppendPdfObject(builder, offsets, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-        AppendPdfObject(builder, offsets, "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n");
+        AppendPdfObject(
+            builder,
+            offsets,
+            string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"2 0 obj\n<< /Type /Pages /Count {pageCount} /Kids [{pageKids}] >>\nendobj\n"));
         if (includeImage)
         {
             AppendPdfObject(
@@ -544,6 +589,35 @@ internal sealed class DocumentAssertionsTests
         else
         {
             AppendPdfObject(builder, offsets, "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n");
+        }
+
+        if (includeSecondPage)
+        {
+            if (includeSecondPageImage)
+            {
+                AppendPdfObject(
+                    builder,
+                    offsets,
+                    string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"{secondPageObjectNumber} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 4 0 R >> >> /Contents {secondPageContentObjectNumber} 0 R >>\nendobj\n"));
+                const string secondPageContentStream = "q\n1 0 0 1 144 720 cm\n/Im0 Do\nQ\n";
+                AppendPdfObject(
+                    builder,
+                    offsets,
+                    string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"{secondPageContentObjectNumber} 0 obj\n<< /Length {Encoding.Latin1.GetByteCount(secondPageContentStream)} >>\nstream\n{secondPageContentStream}endstream\nendobj\n"));
+            }
+            else
+            {
+                AppendPdfObject(
+                    builder,
+                    offsets,
+                    string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"{secondPageObjectNumber} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n"));
+            }
         }
 
         int xrefOffset = builder.Length;
