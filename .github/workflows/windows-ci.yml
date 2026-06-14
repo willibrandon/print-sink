@@ -130,7 +130,7 @@ jobs:
 
       - name: Real print-stack E2E
         shell: pwsh
-        run: .\test-e2e.ps1 -BuildPackage -Platform ${{ matrix.platform }}
+        run: .\test-e2e.ps1 -BuildPackage -Configuration Release -Platform ${{ matrix.platform }}
 
       - name: Assert clean PrintSink state
         if: always()

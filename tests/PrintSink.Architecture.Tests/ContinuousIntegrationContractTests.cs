@@ -26,9 +26,12 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains(".\\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}", workflow);
         Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
         Assert.Contains("Visual Studio Test Platform for packaged WinUI app tests", design);
+        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release", design);
+        Assert.Contains("signed Release MSIX", design);
         Assert.DoesNotContain("MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E", design);
         Assert.Contains(".\\test-e2e.ps1", workflow);
         Assert.Contains("-BuildPackage", workflow);
+        Assert.Contains("-Configuration Release", workflow);
         Assert.Contains("-Platform ${{ matrix.platform }}", workflow);
         Assert.DoesNotContain("tests\\e2e\\Invoke-PrintSinkE2E.ps1", workflow);
         Assert.DoesNotContain("New-SelfSignedCertificate", workflow);
@@ -99,7 +102,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.IsGreaterThanOrEqualTo(0, msixUploadIndex, "Could not find the MSIX upload step.");
         string msixUploadStep = workflow[msixUploadIndex..];
 
-        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Platform ${{ matrix.platform }}", e2eStep);
+        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform ${{ matrix.platform }}", e2eStep);
         Assert.DoesNotContain("-SkipPackageInstall", e2eStep);
         Assert.DoesNotContain("-KeepQueues", e2eStep);
 
