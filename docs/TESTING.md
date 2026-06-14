@@ -57,6 +57,9 @@ dotnet run --project src\PrintSink.Cli -- sink test --endpoint pdf --content-typ
 dotnet run --project src\PrintSink.Cli -- tui
 ```
 
+The TUI exposes the same queue lifecycle and fixture sink checks as focusable actions. Hex1b headless
+tests assert the rendered screen and keyboard activation path.
+
 ## App Startup Check
 
 ```powershell

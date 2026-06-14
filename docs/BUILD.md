@@ -107,9 +107,12 @@ dotnet run --project src\PrintSink.Cli -- --help
 dotnet run --project src\PrintSink.Cli -- queues
 dotnet run --project src\PrintSink.Cli -- queues install
 dotnet run --project src\PrintSink.Cli -- manifest lint --manifest src\PrintSink.App\Package.appxmanifest
+dotnet run --project src\PrintSink.Cli -- tui
 ```
 
 The CLI is not a print activation entry point. It is for validation, diagnostics, and fixture-driven checks.
+Inside the TUI, use the focusable actions to refresh diagnostics, install or remove queues, and run the
+fixture sink tests shown in the route list.
 
 ## Release Build
 
