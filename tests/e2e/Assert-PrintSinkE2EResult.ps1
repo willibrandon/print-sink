@@ -17,6 +17,13 @@ $expectedQueues = @(
     'PrintSink - PWG Raster',
     'PrintSink - PCLm'
 )
+$expectedFileBackedOutputs = @(
+    [pscustomobject]@{ queue = 'PrintSink - PDF'; format = 'pdf'; route = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'; contains = 'foo' },
+    [pscustomobject]@{ queue = 'PrintSink - XPS'; format = 'oxps'; route = 'application/oxps -> Oxps; Copy; Endpoint supports passthrough.'; contains = 'foo' },
+    [pscustomobject]@{ queue = 'PrintSink - PostScript'; format = 'postscript'; route = 'application/postscript -> PostScript; Copy; Endpoint supports passthrough.'; contains = '' },
+    [pscustomobject]@{ queue = 'PrintSink - PWG Raster'; format = 'pwg'; route = 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.'; contains = '' },
+    [pscustomobject]@{ queue = 'PrintSink - PCLm'; format = 'pclm'; route = 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.'; contains = '' }
+)
 
 $requiredSnapshotContexts = @(
     'after provisioning',
@@ -304,6 +311,55 @@ function Assert-PassthroughFormatEvidence {
     Assert-Document -Format 'postscript' -Path $postScript.outputPath -ExpectedBytes $postScript.bytes
 }
 
+function Assert-FileResultSummary {
+    param(
+        [object] $Result,
+        [object] $Expected,
+        [string] $Description
+    )
+
+    Assert-Condition ($null -ne $Result) "$Description omitted $($Expected.queue)."
+    Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'queue') -eq $Expected.queue) "$Description reported the wrong queue for $($Expected.queue)."
+    Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'format') -eq $Expected.format) "$Description reported the wrong format for $($Expected.queue)."
+    Assert-Condition ([string](Get-ResultProperty -Object $Result -Name 'route') -eq $Expected.route) "$Description reported the wrong route for $($Expected.queue)."
+
+    $outputPath = [string](Get-ResultProperty -Object $Result -Name 'outputPath')
+    $bytes = [long](Get-ResultProperty -Object $Result -Name 'bytes')
+    if ([string]::IsNullOrWhiteSpace([string]$Expected.contains)) {
+        Assert-Document -Format $Expected.format -Path $outputPath -ExpectedBytes $bytes
+    }
+    else {
+        Assert-Document -Format $Expected.format -Path $outputPath -ExpectedBytes $bytes -Contains ([string]$Expected.contains)
+    }
+}
+
+function Assert-FilePrinterSaveAsEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'File-printer Save As evidence did not include an artifact.'
+
+    $harness = @(Get-ResultProperty -Object $Artifact -Name 'harness')
+    Assert-SetEqual `
+        -Actual @($harness | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected @($expectedFileBackedOutputs | ForEach-Object { $_.queue }) `
+        -Description 'File-printer Save As harness queue names'
+
+    foreach ($expectedOutput in $expectedFileBackedOutputs) {
+        $result = Get-ResultByQueue -Results $harness -Queue $expectedOutput.queue
+        Assert-FileResultSummary -Result $result -Expected $expectedOutput -Description 'File-printer Save As harness output'
+    }
+
+    $notepad = Get-ResultProperty -Object $Artifact -Name 'notepad'
+    Assert-Condition ([string](Get-ResultProperty -Object $notepad -Name 'mode') -eq 'notepad-command-line-print') 'File-printer Save As evidence did not use the Notepad command-line print path.'
+    Assert-CompletedJob -Result $notepad -Queue 'Notepad Save As feature evidence'
+    Assert-SourceApplication -Result $notepad -ExpectedSourceApplication 'notepad.exe' -Description 'Notepad Save As feature evidence'
+    Assert-Route -Result $notepad -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Notepad Save As feature evidence'
+    Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $notepad -Name 'sourcePath'))
+    Assert-Document -Format 'pdf' -Path $notepad.outputPath -ExpectedBytes $notepad.bytes -Contains 'foo'
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -516,6 +572,10 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 4) {
             Assert-PassthroughFormatEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 5) {
+            Assert-FilePrinterSaveAsEvidence -Artifact $artifact
         }
 
         if ($number -eq 19) {

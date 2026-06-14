@@ -139,6 +139,8 @@ The required E2E suite proves the current installed-package behavior:
 2. Print to the cloud queue and confirm no Save As target is requested.
 3. Print a real Notepad `/p` text document to `PrintSink - PDF`, then assert the selected PDF is
    non-empty, opens with PDFPig, contains `foo`, and all queues remain installed.
+   Save-As evidence must include exact file-backed queue names, selected output paths, byte counts,
+   document validation, and a validated Notepad `/p` PDF.
 4. Submit two real Win32 jobs to different file-backed queues while the first job is still active,
    then assert both outputs and overlapping route/completion diagnostics.
 5. Install, list, and remove queues through `PrintSink.Cli`, and assert the reported state against

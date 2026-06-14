@@ -190,7 +190,7 @@ association and activation evidence; document output is a virtual-printer featur
 | 2 | Receive spooled PDL + content type | `PrintWorkflowVirtualPrinterSession.VirtualPrinterDataAvailable`, `args.SourceContent` | `VirtualPrinterBackgroundTask` | |
 | 3 | Preferred input format negotiation | `PreferredInputFormat` (`application/oxps` \| `application/postscript`) | Manifest + E2E | Per-queue; E2E requires the signed manifest preference and real-job source content type |
 | 4 | Passthrough formats (no OS re-render) | `SupportedFormats/SupportedFormat Type=… MaxVersion=…` | Manifest + router + E2E | E2E requires exact `SupportedFormat` declarations, byte-for-byte PDF passthrough, and observed XPS/PostScript copy routes |
-| 5 | File-printer "Save As" target | `OutputFileTypes`, `args.GetTargetFileAsync()` → `StorageFile` | `VirtualPrinterBackgroundTask` | Omit attribute for cloud/app sinks |
+| 5 | File-printer "Save As" target | `OutputFileTypes`, `args.GetTargetFileAsync()` → `StorageFile` | `VirtualPrinterBackgroundTask + E2E` | Omit attribute for cloud/app sinks; E2E requires exact file-backed queues, real Save-As output files, byte counts, and Notepad `/p` PDF output |
 | 6 | Non-file sinks (cloud / OneNote-style) | (no `OutputFileTypes`); custom write in handler | `VirtualPrinterBackgroundTask` + `PrintSink.Core` sinks | E2E validates package-local sink artifact, not Save-As output |
 | 7 | OXPS → PDF / PWG-Raster / PCLm conversion | `args.GetPdlConverter(PrintWorkflowPdlConversionType.*)`, `ConvertPdlAsync` | `VirtualPrinterBackgroundTask` | |
 | 8 | XPS/OXPS passthrough (copy) | `RandomAccessStream.CopyAndCloseAsync` | `VirtualPrinterBackgroundTask` | |

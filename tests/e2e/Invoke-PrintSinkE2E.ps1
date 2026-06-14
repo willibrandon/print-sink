@@ -4736,6 +4736,59 @@ function Test-PassthroughFormatEvidence {
         -and (Test-FileBytesEqual -ExpectedPath $PdfPassthrough.sourcePath -ActualPath $PdfPassthrough.outputPath)
 }
 
+function Test-FileOutputResult {
+    param(
+        [object] $Result
+    )
+
+    if ($null -eq $Result) {
+        return $false
+    }
+
+    $outputPath = [string](Get-ObjectPropertyValue -Object $Result -Name 'outputPath')
+    if ([string]::IsNullOrWhiteSpace($outputPath) -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
+        return $false
+    }
+
+    $bytes = [long](Get-ObjectPropertyValue -Object $Result -Name 'bytes')
+    if ($bytes -le 0) {
+        return $false
+    }
+
+    return (Get-Item -LiteralPath $outputPath).Length -eq $bytes
+}
+
+function Test-FileBackedOutputEvidence {
+    param(
+        [object[]] $FileBackedPrints,
+        [object] $NotepadPrint
+    )
+
+    $expectedFileBackedQueues = @(
+        'PrintSink - PDF',
+        'PrintSink - XPS',
+        'PrintSink - PostScript',
+        'PrintSink - PWG Raster',
+        'PrintSink - PCLm'
+    )
+
+    if ($FileBackedPrints.Count -ne $expectedFileBackedQueues.Count) {
+        return $false
+    }
+
+    foreach ($expectedQueue in $expectedFileBackedQueues) {
+        $result = Get-ResultByQueue -Results $FileBackedPrints -Queue $expectedQueue
+        if (-not (Test-FileOutputResult -Result $result)) {
+            return $false
+        }
+    }
+
+    return (Test-FileOutputResult -Result $NotepadPrint) `
+        -and [string](Get-ObjectPropertyValue -Object $NotepadPrint -Name 'mode') -eq 'notepad-command-line-print' `
+        -and [string](Get-ObjectPropertyValue -Object $NotepadPrint -Name 'sourceApplication') -eq 'notepad.exe' `
+        -and (Test-RouteEquals -Result $NotepadPrint -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.')
+}
+
 function Test-PreferredInputFormatEvidence {
     param(
         [object[]] $VirtualPrinters,
@@ -5161,17 +5214,10 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 5 `
         -Feature 'File-printer "Save As" target' `
-        -Passed (
-                $fileBackedPrints.Count -eq 5 `
-                -and $NotepadPrint.bytes -gt 0 `
-                -and [string]$NotepadPrint.mode -eq 'notepad-command-line-print' `
-                -and (@($fileBackedPrints | Where-Object {
-                    [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $_ -Name 'outputPath')) `
-                        -or (Get-ObjectPropertyValue -Object $_ -Name 'bytes') -le 0
-                }).Count -eq 0)) `
-        -Evidence 'The live Save-As broker produced non-empty files for every file-backed queue, including a real Notepad /p text-document print to PDF.' `
+        -Passed (Test-FileBackedOutputEvidence -FileBackedPrints $fileBackedPrints -NotepadPrint $NotepadPrint) `
+        -Evidence 'The live Save-As broker produced validated files for every file-backed queue, including a real Notepad /p text-document print to PDF.' `
         -Artifact ([ordered]@{
-            harness = New-PrintResultSummary -Results $fileBackedPrints
+            harness = New-PrintResultSummary -Results $fileBackedPrints -IncludeRoute
             notepad = $NotepadPrint
         })
 

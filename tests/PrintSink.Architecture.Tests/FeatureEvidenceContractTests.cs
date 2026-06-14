@@ -137,6 +137,34 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies Save-As evidence records exact file-backed queues and real output files.
+    /// </summary>
+    [TestMethod]
+    public void FilePrinterSaveAsEvidenceRequiresRealOutputFiles()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-FileBackedOutputEvidence", e2eScript);
+        Assert.Contains("Test-FileOutputResult", e2eScript);
+        Assert.Contains("notepad-command-line-print", e2eScript);
+        Assert.Contains("validated files for every file-backed queue", e2eScript);
+
+        Assert.Contains("Assert-FilePrinterSaveAsEvidence", validatorScript);
+        Assert.Contains("expectedFileBackedOutputs", validatorScript);
+        Assert.Contains("File-printer Save As harness queue names", validatorScript);
+        Assert.Contains("Notepad Save As feature evidence", validatorScript);
+        Assert.Contains("notepad-command-line-print", validatorScript);
+
+        Assert.Contains("VirtualPrinterBackgroundTask + E2E", design);
+        Assert.Contains("real Save-As output files", design);
+        Assert.Contains("exact file-backed queue names", testing);
+        Assert.Contains("validated Notepad `/p` PDF", testing);
+    }
+
+    /// <summary>
     /// Verifies MXDC feature evidence records each configured output-quality value.
     /// </summary>
     [TestMethod]
