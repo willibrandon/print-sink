@@ -16,6 +16,25 @@ internal sealed class CliApplicationTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Verifies that root help lists the documented command surface.
+    /// </summary>
+    [TestMethod]
+    public async Task RootHelpListsDocumentedCommands()
+    {
+        (int exitCode, string output, string error) = await InvokeAsync("--help").ConfigureAwait(false);
+
+        Assert.AreEqual(CliExitCodes.Success, exitCode);
+        Assert.AreEqual(string.Empty, error);
+        Assert.Contains("PrintSink developer and operator tooling.", output);
+        Assert.Contains("queues    List the PrintSink virtual queues.", output);
+        Assert.Contains("manifest  Inspect the MSIX package manifest.", output);
+        Assert.Contains("pdc       Inspect print device capability XML.", output);
+        Assert.Contains("ticket    Inspect print-ticket fixtures.", output);
+        Assert.Contains("sink      Exercise sink routing without print activation.", output);
+        Assert.Contains("tui       Start the Hex1b diagnostics dashboard.", output);
+    }
+
+    /// <summary>
     /// Verifies that the queue command prints the built-in endpoint list.
     /// </summary>
     [TestMethod]
