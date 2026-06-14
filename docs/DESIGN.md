@@ -795,7 +795,8 @@ the generated `.appxrecipe` when tests must run inside a packaged WinUI app iden
   matters); Tasks/App excluded from the hard gate (thin adapters / require live stack).
 - CI runs unit + Xps + packaged-app tests on Windows runners (MSBuild, x64 and ARM64), then calls
   `.\test-e2e.ps1 -BuildPackage -Configuration Release` to build a signed Release MSIX and run the
-  scripted real print-stack E2E suite against the installed package.
+  scripted real print-stack E2E suite against the installed package. The wrapper runs CLI lifecycle
+  checks from the same product configuration and records that configuration in the E2E result.
 
 ---
 

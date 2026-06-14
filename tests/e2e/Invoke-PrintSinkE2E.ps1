@@ -3,6 +3,8 @@ param(
     [string] $PackagePath,
     [string] $PackageBuildConfiguration,
     [string] $PackageBuildPlatform,
+    [ValidateSet('Debug', 'Release')]
+    [string] $ProductConfiguration = 'Debug',
     [switch] $SkipPackageInstall,
     [string] $OutputDirectory = (Join-Path $env:TEMP "PrintSink.E2E.$([Guid]::NewGuid())"),
     [switch] $Cleanup
@@ -815,7 +817,7 @@ function Invoke-PrintSinkCliCommand {
     )
 
     $projectPath = Join-Path $PSScriptRoot '..\..\src\PrintSink.Cli\PrintSink.Cli.csproj'
-    $output = & dotnet run --project $projectPath --configuration Debug -- @Arguments 2>&1
+    $output = & dotnet run --project $projectPath --configuration $ProductConfiguration -- @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "$Description failed with exit code $LASTEXITCODE. $($output -join [Environment]::NewLine)"
     }
@@ -6288,6 +6290,7 @@ try {
     $result = [ordered]@{
         windowsVersion = [Environment]::OSVersion.Version.ToString()
         architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+        productConfiguration = $ProductConfiguration
         package = [ordered]@{
             name = $package.Name
             fullName = $package.PackageFullName

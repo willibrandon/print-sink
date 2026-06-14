@@ -230,6 +230,7 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
         Assert.Contains("$e2eParameters.PackageBuildConfiguration = $Configuration", e2eWrapper);
         Assert.Contains("$e2eParameters.PackageBuildPlatform = $Platform", e2eWrapper);
+        Assert.Contains("ProductConfiguration = $Configuration", e2eWrapper);
         Assert.Contains("Remove-PrintSinkPackage -ResultPath $resultPath", e2eWrapper);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
         AssertBefore(e2eWrapper, "& $resultAssertionScript @resultAssertionParameters", "if ($shouldRemovePackageAfterRun) {");
@@ -402,6 +403,8 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("sourcePath", validatorScript);
         Assert.Contains("buildConfiguration", validatorScript);
         Assert.Contains("buildPlatform", validatorScript);
+        Assert.Contains("productConfiguration", validatorScript);
+        Assert.Contains("productConfiguration -eq [string]$result.package.buildConfiguration", validatorScript);
         Assert.Contains("Assert-PackageEvidence -Package $result.package", validatorScript);
         Assert.Contains("function Assert-Route", validatorScript);
         Assert.Contains("route was '$route'; expected '$ExpectedRoute'.", validatorScript);

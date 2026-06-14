@@ -24,7 +24,7 @@ also contains the native `PrintSink.Xps` project.
 
 ## Continuous Integration
 
-`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage -Configuration Release` to build a signed Release MSIX and run the real print-stack E2E suite:
+`.github\workflows\windows-ci.yml` runs the same MSBuild/test/coverage gate on GitHub-hosted Windows runners, then calls `.\test-e2e.ps1 -BuildPackage -Configuration Release` to build a signed Release MSIX and run the real print-stack E2E suite. The wrapper runs the CLI lifecycle checks with the same product configuration and records that in `e2e-result.json`:
 
 - `x64` on `windows-2025-vs2026`
 - `ARM64` on `windows-11-vs2026-arm`

@@ -268,6 +268,7 @@ $e2eScript = Join-Path $PSScriptRoot 'tests\e2e\Invoke-PrintSinkE2E.ps1'
 $resultPath = Join-Path $OutputDirectory 'e2e-result.json'
 $e2eParameters = @{
     OutputDirectory = $OutputDirectory
+    ProductConfiguration = $Configuration
 }
 
 if ($SkipPackageInstall) {

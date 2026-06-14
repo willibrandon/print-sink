@@ -1576,6 +1576,11 @@ Assert-Condition (Test-Path -LiteralPath $ResultPath -PathType Leaf) "E2E result
 $result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json
 Assert-Condition ($null -ne $result) "E2E result could not be parsed: $ResultPath"
 Assert-SupportedWindowsVersion -WindowsVersion ([string]$result.windowsVersion)
+Assert-Condition (-not [string]::IsNullOrWhiteSpace([string]$result.productConfiguration)) 'The E2E result did not include productConfiguration.'
+Assert-Condition ([string]$result.productConfiguration -in @('Debug', 'Release')) "The E2E result productConfiguration was invalid: $($result.productConfiguration)"
+if (-not [string]::IsNullOrWhiteSpace([string]$result.package.buildConfiguration)) {
+    Assert-Condition ([string]$result.productConfiguration -eq [string]$result.package.buildConfiguration) 'The E2E productConfiguration did not match the package buildConfiguration.'
+}
 Assert-PackageEvidence -Package $result.package
 Assert-SetEqual -Actual @($result.queues) -Expected $expectedQueues -Description 'E2E queue list'
 
