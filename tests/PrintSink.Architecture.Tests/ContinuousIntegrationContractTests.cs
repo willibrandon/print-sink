@@ -1,10 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace PrintSink.Architecture.Tests;
 
 /// <summary>
 /// Tests the repository CI contract for real print-stack validation.
 /// </summary>
 [TestClass]
-internal sealed class ContinuousIntegrationContractTests
+internal sealed partial class ContinuousIntegrationContractTests
 {
     /// <summary>
     /// Verifies CI builds, signs, installs, and exercises the packaged virtual printer.
@@ -119,6 +121,64 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.Contains("Assert-PrintSinkE2EResult.ps1", e2eWrapper);
         Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
+    }
+
+    /// <summary>
+    /// Verifies every packaged app command, except help, is exercised by the real E2E suite.
+    /// </summary>
+    [TestMethod]
+    public void PackagedAppCommandsAreCoveredByRealPrintStackE2e()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string commandLinePath = Path.Combine(repositoryRoot, "src", "PrintSink.App", "VirtualPrinterCommandLine.cs");
+        string routerPath = Path.Combine(repositoryRoot, "src", "PrintSink.App", "AppActivationRouter.cs");
+        string e2ePath = Path.Combine(repositoryRoot, "tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string commandLine = File.ReadAllText(commandLinePath);
+        string router = File.ReadAllText(routerPath);
+        string e2eScript = File.ReadAllText(e2ePath);
+
+        string[] actualCommandSwitches =
+        [
+            .. AppCommandSwitchRegex()
+                .Matches(commandLine)
+                .Select(static match => match.Groups["switch"].Value),
+            .. RouterCommandSwitchRegex()
+                .Matches(router)
+                .Select(static match => match.Groups["switch"].Value),
+        ];
+        actualCommandSwitches =
+        [
+            .. actualCommandSwitches
+                .Where(static commandSwitch => commandSwitch != "--help")
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(static commandSwitch => commandSwitch, StringComparer.Ordinal),
+        ];
+
+        string[] expectedCommandSwitches =
+        [
+            "--assert-virtual-attribute-read",
+            "--clear-watermark",
+            "--disable-job-ui",
+            "--enable-job-ui",
+            "--install-virtual-printers",
+            "--print-pdf-passthrough",
+            "--refresh-capabilities",
+            "--remove-virtual-printers",
+            "--set-default-copies",
+            "--set-image-watermark",
+            "--set-text-watermark",
+            "--winrt-source-print",
+        ];
+
+        CollectionAssert.AreEqual(
+            expectedCommandSwitches,
+            actualCommandSwitches,
+            "Every packaged app command switch must be explicitly classified for real E2E coverage.");
+
+        foreach (string commandSwitch in expectedCommandSwitches)
+        {
+            Assert.Contains(commandSwitch, e2eScript);
+        }
     }
 
     /// <summary>
@@ -400,4 +460,10 @@ internal sealed class ContinuousIntegrationContractTests
         Assert.IsGreaterThanOrEqualTo(0, laterIndex, $"Could not find '{later}'.");
         Assert.IsLessThan(laterIndex, earlierIndex, $"'{earlier}' must appear before '{later}'.");
     }
+
+    [GeneratedRegex(@"Contains\(commandArgs,\s*""(?<switch>--[a-z0-9-]+)""\)", RegexOptions.CultureInvariant)]
+    private static partial Regex AppCommandSwitchRegex();
+
+    [GeneratedRegex(@"WinRtPrintSourceSwitch\s*=\s*""(?<switch>--[a-z0-9-]+)""", RegexOptions.CultureInvariant)]
+    private static partial Regex RouterCommandSwitchRegex();
 }
