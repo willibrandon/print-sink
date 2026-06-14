@@ -693,6 +693,200 @@ function Assert-MxdcFeatureEvidence {
     Assert-Condition ($detail -like "*$expectedMxdcQualityDetail*") 'MXDC feature evidence did not report the full output-quality mapping.'
 }
 
+function Assert-IppAssociationEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'IPP association evidence did not include an artifact.'
+    $printer = [string](Get-ResultProperty -Object $Artifact -Name 'printer')
+    Assert-Condition ($printer.StartsWith('PrintSink-E2E-IPP-', [System.StringComparison]::Ordinal)) "IPP association evidence used an unexpected printer name: $printer"
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'hardwareId') -eq 'PSA_PrintSinkE2E_IPP_Pri21CF') 'IPP association evidence used the wrong hardware ID.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Artifact -Name 'ippHost'))) 'IPP association evidence omitted the IPP host.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'aumid') -like 'PrintSink_*!App') 'IPP association evidence omitted the packaged app AUMID.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Artifact -Name 'deviceInstanceId'))) 'IPP association evidence omitted the device instance ID.'
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Artifact -Name 'publishedDriver'))) 'IPP association evidence omitted the published driver name.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'certificateThumbprint') -match '^[0-9A-Fa-f]{40}$') 'IPP association evidence omitted the driver-signing certificate thumbprint.'
+    Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $Artifact -Name 'ippEvidencePath'))
+    Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'ippRequestCount') -gt 0) 'IPP association evidence did not record IPP requests.'
+    Assert-SetEqual `
+        -Actual @(Get-ResultProperty -Object $Artifact -Name 'ippOperations') `
+        -Expected @('GetPrinterAttributes') `
+        -Description 'IPP association operations'
+    Assert-Condition ([int](Get-ResultProperty -Object $Artifact -Name 'ippJobCount') -eq 0) 'IPP association evidence unexpectedly recorded IPP jobs for the association probe.'
+
+    $stateProbe = Get-ResultProperty -Object $Artifact -Name 'printerStateProbe'
+    Assert-Condition ($null -ne $stateProbe) 'IPP association evidence omitted printer-state probe evidence.'
+    Assert-Condition ([string](Get-ResultProperty -Object $stateProbe -Name 'printer') -like 'PrintSink-E2E-IPP-State-*') 'IPP state probe used the wrong printer name.'
+    Assert-NonEmptyFile -Path ([string](Get-ResultProperty -Object $stateProbe -Name 'ippEvidencePath'))
+    Assert-Condition ([int](Get-ResultProperty -Object $stateProbe -Name 'ippRequestCount') -gt 0) 'IPP state probe did not record IPP requests.'
+    Assert-SetEqual -Actual @(Get-ResultProperty -Object $stateProbe -Name 'state') -Expected @('5') -Description 'IPP state probe printer-state'
+    Assert-SetEqual -Actual @(Get-ResultProperty -Object $stateProbe -Name 'stateReasons') -Expected @('paused') -Description 'IPP state probe printer-state-reasons'
+    Assert-SetEqual -Actual @(Get-ResultProperty -Object $stateProbe -Name 'acceptingJobs') -Expected @('False') -Description 'IPP state probe printer-is-accepting-jobs'
+
+    $ticketValidation = Get-ResultProperty -Object $Artifact -Name 'ticketValidation'
+    Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'source') -eq 'PrintSupportExtensionBackgroundTask') 'IPP association ticket validation used the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'message') -eq 'Print ticket validated') 'IPP association did not validate a print ticket.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'endpoint') -eq $printer) 'IPP association ticket validation targeted the wrong endpoint.'
+    Assert-Condition ([string](Get-ResultProperty -Object $ticketValidation -Name 'detail') -eq 'status=Resolved') 'IPP association ticket validation did not resolve.'
+    Get-ResultTimestamp -Result $ticketValidation -Description 'IPP association ticket validation' | Out-Null
+
+    $workflowActivationPrint = Get-ResultProperty -Object $Artifact -Name 'workflowActivationPrint'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflowActivationPrint -Name 'printer') -eq $printer) 'IPP workflow activation used the wrong printer.'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflowActivationPrint -Name 'sourceApplication') -eq 'powershell.exe') 'IPP workflow activation used the wrong source application.'
+    Assert-Condition ([string](Get-ResultProperty -Object $workflowActivationPrint -Name 'documentName') -eq 'PrintSink E2E IPP Workflow') 'IPP workflow activation used the wrong document name.'
+    Assert-IppWorkflowStartEvidence -Artifact (Get-ResultProperty -Object $workflowActivationPrint -Name 'workflowStart')
+
+    $workflowStatus = [string](Get-ResultProperty -Object $workflowActivationPrint -Name 'workflowStatus')
+    Assert-Condition ($workflowStatus -in @('pdl-modification-delivered', 'pdl-modification-not-delivered')) "IPP workflow activation reported unexpected status: $workflowStatus"
+    $workflow = Get-ResultProperty -Object $workflowActivationPrint -Name 'workflow'
+    if ($workflowStatus -eq 'pdl-modification-delivered') {
+        Assert-Condition ($null -ne $workflow) 'IPP workflow activation reported delivered status without workflow evidence.'
+        Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'source') -eq 'PrintSupportWorkflowBackgroundTask') 'IPP workflow evidence used the wrong source.'
+        Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'message') -eq 'Workflow job passed through') 'IPP workflow evidence did not pass through the job.'
+        Assert-Condition ([string](Get-ResultProperty -Object $workflow -Name 'endpoint') -eq $printer) 'IPP workflow evidence targeted the wrong endpoint.'
+        Assert-DetailContainsParts `
+            -Detail ([string](Get-ResultProperty -Object $workflow -Name 'detail')) `
+            -ExpectedParts @('source=application/pdf', 'target=system', 'job-password=absent', 'passthroughWithAttributes=') `
+            -Description 'IPP workflow pass-through evidence'
+    }
+    else {
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $workflowActivationPrint -Name 'workflowDetail'))) 'IPP workflow non-delivery evidence omitted the failure detail.'
+    }
+
+    $printServiceEvents = @(Get-ResultProperty -Object $workflowActivationPrint -Name 'printServiceEvents')
+    Assert-Condition ($printServiceEvents.Count -gt 0) 'IPP workflow activation omitted PrintService events.'
+    Assert-Condition (@($printServiceEvents | Where-Object { [int](Get-ResultProperty -Object $_ -Name 'id') -eq 300 }).Count -gt 0) 'IPP workflow activation did not include the PrintService printer-created event.'
+}
+
+function Assert-VirtualPrinterAttributeReadEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Virtual-printer attribute-read evidence did not include an artifact.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'source') -eq 'VirtualPrinterCommandLine') 'Virtual-printer attribute-read evidence used the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'message') -eq 'Virtual printer attribute read matched platform behavior') 'Virtual-printer attribute-read evidence used the wrong message.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'endpoint') -eq 'PrintSink - PDF') 'Virtual-printer attribute-read evidence targeted the wrong endpoint.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $Artifact -Name 'detail')) `
+        -ExpectedParts @(
+            'Virtual printer attribute read matched platform behavior for PrintSink - PDF',
+            'document-format-default=<unsupported>',
+            'document-format-supported=<unsupported>') `
+        -Description 'Virtual-printer attribute-read evidence'
+    Get-ResultTimestamp -Result $Artifact -Description 'Virtual-printer attribute-read evidence' | Out-Null
+}
+
+function Assert-ConcurrentPrintEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Concurrent print evidence did not include an artifact.'
+    Get-ResultTimestamp -Result $Artifact -Description 'Concurrent print evidence' -Name 'startedUtc' | Out-Null
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'overlapped')) 'Concurrent print evidence did not report overlapping jobs.'
+    $jobs = @(Get-ResultProperty -Object $Artifact -Name 'jobs')
+    Assert-SetEqual `
+        -Actual @($jobs | ForEach-Object { Get-ResultProperty -Object $_ -Name 'queue' }) `
+        -Expected @('PrintSink - PCLm', 'PrintSink - Cloud') `
+        -Description 'Concurrent print queues'
+
+    $pclm = Get-ResultByQueue -Results $jobs -Queue 'PrintSink - PCLm'
+    Assert-CompletedJob -Result $pclm -Queue 'Concurrent PCLm feature evidence'
+    Assert-SourceApplication -Result $pclm -ExpectedSourceApplication 'powershell.exe' -Description 'Concurrent PCLm feature evidence'
+    Assert-Route -Result $pclm -ExpectedRoute 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.' -Description 'Concurrent PCLm feature evidence'
+    Assert-Condition ([int](Get-ResultProperty -Object $pclm -Name 'pageCount') -eq 48) 'Concurrent PCLm feature evidence reported the wrong page count.'
+    Assert-Document -Format 'pclm' -Path $pclm.outputPath -ExpectedBytes $pclm.bytes
+
+    $cloud = Get-ResultByQueue -Results $jobs -Queue 'PrintSink - Cloud'
+    Assert-CompletedJob -Result $cloud -Queue 'Concurrent cloud feature evidence'
+    Assert-SourceApplication -Result $cloud -ExpectedSourceApplication 'powershell.exe' -Description 'Concurrent cloud feature evidence'
+    Assert-Route -Result $cloud -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.' -Description 'Concurrent cloud feature evidence'
+    Assert-Condition ([int](Get-ResultProperty -Object $cloud -Name 'pageCount') -eq 96) 'Concurrent cloud feature evidence reported the wrong page count.'
+    Assert-Condition ([string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $cloud -Name 'outputPath'))) 'Concurrent cloud feature evidence unexpectedly reported a Save-As output path.'
+    Assert-Condition ([long](Get-ResultProperty -Object $cloud -Name 'bytes') -eq 0) 'Concurrent cloud feature evidence unexpectedly reported file-backed bytes.'
+    $sinkArtifact = Get-ResultProperty -Object $cloud -Name 'sinkArtifact'
+    Assert-Condition ([string](Get-ResultProperty -Object $sinkArtifact -Name 'contentType') -eq 'application/pdf') 'Concurrent cloud sink artifact reported the wrong content type.'
+    Assert-Document -Format 'pdf' -Path $sinkArtifact.artifactCopyPath -ExpectedBytes $sinkArtifact.bytes -Contains 'foo concurrent cloud'
+}
+
+function Assert-GracefulCancelAndFailEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Graceful cancel/fail evidence did not include an artifact.'
+
+    $failed = Get-ResultProperty -Object $Artifact -Name 'failed'
+    Assert-Condition ([string](Get-ResultProperty -Object $failed -Name 'queue') -eq 'PrintSink - PDF') 'Failed-job evidence targeted the wrong queue.'
+    Assert-Condition ([string](Get-ResultProperty -Object $failed -Name 'sourceApplication') -eq 'powershell.exe') 'Failed-job evidence used the wrong source application.'
+    Assert-Condition ([string](Get-ResultProperty -Object $failed -Name 'documentName') -eq 'PrintSink E2E Failed Image Watermark') 'Failed-job evidence used the wrong document name.'
+    Assert-Condition ([string](Get-ResultProperty -Object $failed -Name 'mode') -eq 'failed-image-watermark') 'Failed-job evidence used the wrong mode.'
+    Assert-Condition ([long](Get-ResultProperty -Object $failed -Name 'bytes') -eq 0) 'Failed-job evidence reported non-zero bytes.'
+    Assert-EmptyOrMissingFile -Path ([string](Get-ResultProperty -Object $failed -Name 'outputPath')) -Description 'Failed image watermark feature evidence'
+    $failedDiagnostic = Get-ResultProperty -Object $failed -Name 'diagnostic'
+    Assert-Condition ([string](Get-ResultProperty -Object $failedDiagnostic -Name 'message') -eq 'Job failed') 'Failed-job evidence did not report Job failed.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $failedDiagnostic -Name 'detail')) `
+        -ExpectedParts @('COMException', '0x88982F07', 'route=application/oxps -> Pdf; Convert; Convert XPS to PDF.') `
+        -Description 'Failed-job evidence'
+
+    $canceled = Get-ResultProperty -Object $Artifact -Name 'canceled'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceled -Name 'queue') -eq 'PrintSink - PDF') 'Canceled-job evidence targeted the wrong queue.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceled -Name 'sourceApplication') -eq 'powershell.exe') 'Canceled-job evidence used the wrong source application.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceled -Name 'documentName') -eq 'PrintSink E2E Job UI Cancel') 'Canceled-job evidence used the wrong document name.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceled -Name 'mode') -eq 'job-ui-cancel') 'Canceled-job evidence used the wrong mode.'
+    Assert-Condition ([long](Get-ResultProperty -Object $canceled -Name 'bytes') -eq 0) 'Canceled-job evidence reported non-zero bytes.'
+    Assert-EmptyOrMissingFile -Path ([string](Get-ResultProperty -Object $canceled -Name 'outputPath')) -Description 'Job UI cancel feature evidence'
+    $jobUiPdl = Get-ResultProperty -Object $canceled -Name 'jobUiPdl'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiPdl -Name 'source') -eq 'JobPreviewScreen') 'Canceled-job evidence did not come through JobPreviewScreen.'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiPdl -Name 'message') -eq 'Job UI PDL received') 'Canceled-job evidence omitted Job UI PDL receipt.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $jobUiPdl -Name 'detail')) `
+        -ExpectedParts @('kind=virtual-printer', 'jobTitle=PrintSink E2E Job UI Cancel', 'source=powershell.exe', 'contentType=application/oxps') `
+        -Description 'Canceled-job PDL evidence'
+    $canceledDiagnostic = Get-ResultProperty -Object $canceled -Name 'diagnostic'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceledDiagnostic -Name 'source') -eq 'VirtualPrinterBackgroundTask') 'Canceled-job evidence used the wrong diagnostic source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceledDiagnostic -Name 'message') -eq 'Job canceled') 'Canceled-job evidence did not report Job canceled.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceledDiagnostic -Name 'endpoint') -eq 'PrintSink - PDF') 'Canceled-job evidence used the wrong endpoint.'
+    Assert-Condition ([string](Get-ResultProperty -Object $canceledDiagnostic -Name 'detail') -eq 'User canceled from Job UI.') 'Canceled-job evidence used the wrong diagnostic detail.'
+}
+
+function Assert-JobPasswordEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Job-password evidence did not include an artifact.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'queue') -eq 'PrintSink - PDF') 'Job-password evidence targeted the wrong queue.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'mode') -eq 'job-ui-watermark') 'Job-password evidence used the wrong mode.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'jobPassword') -eq 'present-not-applicable') 'Job-password evidence did not record present-not-applicable.'
+    Assert-Condition (-not [bool](Get-ResultProperty -Object $Artifact -Name 'jobPasswordSecretExposed')) 'Job-password evidence exposed the secret.'
+    $diagnostic = Get-ResultProperty -Object $Artifact -Name 'diagnostic'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'message') -eq 'Job completed') 'Job-password evidence did not complete the job.'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'route') -eq 'application/oxps -> Pdf; Convert; Convert XPS to PDF.') 'Job-password evidence used the wrong route.'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'detail') -like '*job-password=present-not-applicable*') 'Job-password evidence did not prove metadata consumption.'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'detail') -notlike '*ci-password*') 'Job-password evidence leaked the password secret.'
+}
+
+function Assert-IppWorkflowStartEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'IPP workflow-start evidence did not include an artifact.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'source') -eq 'PrintSupportWorkflowBackgroundTask') 'IPP workflow-start evidence used the wrong source.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'message') -eq 'Workflow job starting') 'IPP workflow-start evidence used the wrong message.'
+    Assert-Condition ([string]::IsNullOrWhiteSpace([string](Get-ResultProperty -Object $Artifact -Name 'endpoint'))) 'IPP workflow-start evidence should not have a virtual-printer endpoint.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $Artifact -Name 'detail')) `
+        -ExpectedParts @('skipSystemRendering=default', 'ippCompression=') `
+        -Description 'IPP workflow-start evidence'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'detail') -notlike '*ippCompression=error*') 'IPP workflow-start evidence reported an IPP compression probe error.'
+    Get-ResultTimestamp -Result $Artifact -Description 'IPP workflow-start evidence' | Out-Null
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -955,6 +1149,10 @@ function Assert-FeatureEvidence {
             Assert-UserDefaultPrintTicketEvidence -Artifact $artifact
         }
 
+        if ($number -eq 17) {
+            Assert-IppAssociationEvidence -Artifact $artifact
+        }
+
         if ($number -eq 18) {
             Assert-MxdcFeatureEvidence -Artifact $artifact
         }
@@ -963,8 +1161,28 @@ function Assert-FeatureEvidence {
             Assert-PrinterSelectedDiagnostic -PrinterSelected $artifact -Description 'Feature evidence #19 artifact'
         }
 
+        if ($number -eq 20) {
+            Assert-VirtualPrinterAttributeReadEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 21) {
+            Assert-ConcurrentPrintEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 23) {
+            Assert-GracefulCancelAndFailEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 24) {
+            Assert-JobPasswordEvidence -Artifact $artifact
+        }
+
         if ($number -eq 25) {
             Assert-LocalizedQueueNameEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 27) {
+            Assert-IppWorkflowStartEvidence -Artifact $artifact
         }
     }
 

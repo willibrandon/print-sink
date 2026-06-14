@@ -446,6 +446,47 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies IPP, concurrency, cancel, password, and compression rows have explicit artifact validators.
+    /// </summary>
+    [TestMethod]
+    public void RemainingRuntimeFeatureEvidenceRequiresExplicitArtifactValidation()
+    {
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+
+        string[] expectedValidators =
+        [
+            "Assert-IppAssociationEvidence",
+            "Assert-VirtualPrinterAttributeReadEvidence",
+            "Assert-ConcurrentPrintEvidence",
+            "Assert-GracefulCancelAndFailEvidence",
+            "Assert-JobPasswordEvidence",
+            "Assert-IppWorkflowStartEvidence",
+        ];
+
+        foreach (string expectedValidator in expectedValidators)
+        {
+            Assert.Contains(expectedValidator, validatorScript);
+        }
+
+        Assert.Contains("IPP association operations", validatorScript);
+        Assert.Contains("PSA_PrintSinkE2E_IPP_Pri21CF", validatorScript);
+        Assert.Contains("Virtual-printer attribute-read evidence", validatorScript);
+        Assert.Contains("Concurrent print queues", validatorScript);
+        Assert.Contains("Failed-job evidence", validatorScript);
+        Assert.Contains("Canceled-job PDL evidence", validatorScript);
+        Assert.Contains("Job-password evidence leaked the password secret.", validatorScript);
+        Assert.Contains("IPP workflow-start evidence reported an IPP compression probe error.", validatorScript);
+
+        Assert.Contains("signed INF publication", design);
+        Assert.Contains("document-format-default", design);
+        Assert.Contains("exact PCLm and cloud queue outputs", design);
+        Assert.Contains("corrupt-image transform failure", design);
+        Assert.Contains("without exposing the secret", design);
+        Assert.Contains("no compression probe error", design);
+    }
+
+    /// <summary>
     /// Verifies localized queue-name evidence records the expected resource keys and installed names.
     /// </summary>
     [TestMethod]
