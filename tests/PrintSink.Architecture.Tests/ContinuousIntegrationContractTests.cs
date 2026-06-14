@@ -56,6 +56,32 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies the root E2E wrapper remains the signed-package cleanup-aware proof gate.
+    /// </summary>
+    [TestMethod]
+    public void E2eWrapperBuildsSignedPackageAndValidatesCleanup()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string e2eWrapperPath = Path.Combine(repositoryRoot, "test-e2e.ps1");
+        string e2eWrapper = File.ReadAllText(e2eWrapperPath);
+
+        Assert.Contains("Assert-Administrator", e2eWrapper);
+        Assert.Contains("New-SelfSignedCertificate", e2eWrapper);
+        Assert.Contains("Get-PrintSinkPackageCertificate", e2eWrapper);
+        Assert.Contains("Build-PrintSinkPackage", e2eWrapper);
+        Assert.Contains("/p:GenerateAppxPackageOnBuild=true", e2eWrapper);
+        Assert.Contains("/p:AppxPackageSigningEnabled=true", e2eWrapper);
+        Assert.Contains("/p:PackageCertificateThumbprint=$($Certificate.Thumbprint)", e2eWrapper);
+        Assert.Contains("Add-CertificateToStore", e2eWrapper);
+        Assert.Contains("StoreName]::TrustedPeople", e2eWrapper);
+        Assert.DoesNotContain("StoreName]::Root", e2eWrapper);
+        Assert.Contains("$e2eParameters.Cleanup = $true", e2eWrapper);
+        Assert.Contains("Assert-PrintSinkE2EResult.ps1", e2eWrapper);
+        Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
+        AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
+    }
+
+    /// <summary>
     /// Verifies E2E feature evidence must include concrete artifacts.
     /// </summary>
     [TestMethod]
