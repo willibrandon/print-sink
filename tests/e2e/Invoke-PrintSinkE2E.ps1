@@ -3978,6 +3978,7 @@ Add-Type -AssemblyName System.Drawing
                 'Job preview')) `
             -TimeoutSeconds 45 `
             -Description 'the PrintSink Job preview window'
+        $jobWindowTitle = $jobWindow.Current.Name
 
         $jobUiPdl = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
@@ -3994,6 +3995,7 @@ Add-Type -AssemblyName System.Drawing
         Set-TextBoxValue -Root $jobWindow -Name 'Watermark text' -Value 'CI WATERMARK'
         Set-TextBoxValue -Root $jobWindow -Name 'Job password' -Value 'ci-password'
         Invoke-Button -Root $jobWindow -Name 'Continue' -TimeoutSeconds 30
+        $continueInvoked = $true
 
         Wait-ForPrintSinkProcessSucceeded `
             -PrintProcess $printProcess `
@@ -4024,6 +4026,13 @@ Add-Type -AssemblyName System.Drawing
             outputPath = $outputPath
             bytes = $file.Length
             mode = 'job-ui-watermark'
+            jobUiWindowTitle = $jobWindowTitle
+            saveAsDialogObserved = $true
+            watermarkToggleSet = $true
+            watermarkText = 'CI WATERMARK'
+            jobPasswordFieldUsed = $true
+            continueInvoked = $continueInvoked
+            renderErrorAbsent = $true
             jobPassword = 'present-not-applicable'
             jobPasswordSecretExposed = $false
             jobUiPdl = $jobUiPdl
@@ -4895,6 +4904,42 @@ function Test-WatermarkEvidence {
         -and [string](Get-ObjectPropertyValue -Object (Get-ObjectPropertyValue -Object $JobUiText -Name 'jobUiPdl') -Name 'detail') -like '*contentType=application/oxps*'
 }
 
+function Test-JobUiPreviewEvidence {
+    param(
+        [object] $JobUiWatermark
+    )
+
+    $jobUiPdl = Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'jobUiPdl'
+    $diagnostic = Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'diagnostic'
+    $pdlDetail = [string](Get-ObjectPropertyValue -Object $jobUiPdl -Name 'detail')
+    $diagnosticDetail = [string](Get-ObjectPropertyValue -Object $diagnostic -Name 'detail')
+
+    return $null -ne $JobUiWatermark `
+        -and (Test-FileOutputResult -Result $JobUiWatermark) `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'queue') -eq 'PrintSink - PDF' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'format') -eq 'pdf' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'sourceApplication') -eq 'powershell.exe' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'documentName') -eq 'PrintSink E2E Job UI Watermark' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'mode') -eq 'job-ui-watermark' `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'jobUiWindowTitle') -eq 'Job preview' `
+        -and [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'saveAsDialogObserved') `
+        -and [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'watermarkToggleSet') `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'watermarkText') -eq 'CI WATERMARK' `
+        -and [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'jobPasswordFieldUsed') `
+        -and [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'continueInvoked') `
+        -and [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'renderErrorAbsent') `
+        -and [string](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'jobPassword') -eq 'present-not-applicable' `
+        -and -not [bool](Get-ObjectPropertyValue -Object $JobUiWatermark -Name 'jobPasswordSecretExposed') `
+        -and (Test-RouteEquals -Result $JobUiWatermark -ExpectedRoute 'application/oxps -> Pdf; Convert; Convert XPS to PDF.') `
+        -and [string](Get-ObjectPropertyValue -Object $jobUiPdl -Name 'message') -eq 'Job UI PDL received' `
+        -and $pdlDetail -like '*kind=virtual-printer*' `
+        -and $pdlDetail -like '*jobTitle=PrintSink E2E Job UI Watermark*' `
+        -and $pdlDetail -like '*source=powershell.exe*' `
+        -and $pdlDetail -like '*contentType=application/oxps*' `
+        -and $diagnosticDetail -like '*job-password=present-not-applicable*' `
+        -and $diagnosticDetail -notlike '*ci-password*'
+}
+
 function Test-SettingsUiOwnerEvidence {
     param(
         [object] $SettingsUiOwner
@@ -5395,14 +5440,8 @@ function New-PrintSinkFeatureEvidence {
         -FeatureEvidence $featureEvidence `
         -Number 10 `
         -Feature 'Per-job UI / preview launched from background' `
-        -Passed (
-            $JobUiWatermark.mode -eq 'job-ui-watermark' `
-                -and $JobUiWatermark.bytes -gt 0 `
-                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*kind=virtual-printer*' `
-                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*jobTitle=PrintSink E2E Job UI Watermark*' `
-                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*source=powershell.exe*' `
-                -and [string]$JobUiWatermark.jobUiPdl.detail -like '*contentType=application/oxps*') `
-        -Evidence 'The E2E run opened the packaged Job UI, proved it received virtual-printer PDL metadata, changed the watermark through UI Automation, continued the job, and validated the output.' `
+        -Passed (Test-JobUiPreviewEvidence -JobUiWatermark $JobUiWatermark) `
+        -Evidence 'The E2E run opened the packaged Job preview window, proved it received virtual-printer PDL metadata, changed the watermark and password fields through UI Automation, continued the job, and validated the output without exposing the password.' `
         -Artifact $JobUiWatermark
 
     Add-PrintSinkFeatureEvidence `

@@ -229,6 +229,39 @@ internal sealed partial class FeatureEvidenceContractTests
     }
 
     /// <summary>
+    /// Verifies Job UI preview evidence records the real window and UI Automation path.
+    /// </summary>
+    [TestMethod]
+    public void JobUiPreviewEvidenceRequiresRealWindowAndInteraction()
+    {
+        string e2eScript = ReadRepositoryFile("tests", "e2e", "Invoke-PrintSinkE2E.ps1");
+        string validatorScript = ReadRepositoryFile("tests", "e2e", "Assert-PrintSinkE2EResult.ps1");
+        string design = ReadRepositoryFile("docs", "DESIGN.md");
+        string testing = ReadRepositoryFile("docs", "TESTING.md");
+
+        Assert.Contains("Test-JobUiPreviewEvidence", e2eScript);
+        Assert.Contains("jobUiWindowTitle", e2eScript);
+        Assert.Contains("saveAsDialogObserved", e2eScript);
+        Assert.Contains("watermarkToggleSet", e2eScript);
+        Assert.Contains("jobPasswordFieldUsed", e2eScript);
+        Assert.Contains("continueInvoked", e2eScript);
+        Assert.Contains("renderErrorAbsent", e2eScript);
+        Assert.Contains("without exposing the password", e2eScript);
+
+        Assert.Contains("Assert-JobUiPreviewEvidence", validatorScript);
+        Assert.Contains("Job UI preview evidence reported the wrong window title.", validatorScript);
+        Assert.Contains("Job UI preview evidence did not prove the Save As dialog was observed.", validatorScript);
+        Assert.Contains("Job UI preview evidence did not prove Continue was invoked.", validatorScript);
+        Assert.Contains("Job UI preview evidence leaked the job-password secret in diagnostics.", validatorScript);
+
+        Assert.Contains("Job UI + E2E", design);
+        Assert.Contains("real packaged Job preview window", design);
+        Assert.Contains("no Reactor render error", design);
+        Assert.Contains("Save As dialog observation", testing);
+        Assert.Contains("UI Automation edits", testing);
+    }
+
+    /// <summary>
     /// Verifies Settings UI evidence records the real modal owner lifecycle.
     /// </summary>
     [TestMethod]

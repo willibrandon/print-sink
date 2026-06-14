@@ -200,10 +200,11 @@ The required E2E suite proves the current installed-package behavior:
 16. Configure a corrupt package-local image watermark, print a real PDF job with Job UI disabled, and
     assert the background task reports `Job failed` with exception/HRESULT detail, without producing
     output or removing queues.
-17. Launch Job UI, assert it receives virtual-printer PDL metadata for the real job, change watermark
-    options, fill the job-password field, complete the job, assert the output reflects the watermark
-    choice, assert the output does not contain the password, and assert diagnostics record the password
-    metadata as not applicable to virtual file output.
+17. Launch Job UI, assert the packaged Job preview window and Save As dialog appear, assert it receives
+    virtual-printer PDL metadata for the real job, change watermark options, fill the job-password field,
+    invoke Continue, assert the output reflects the watermark choice, assert the output does not contain
+    the password, assert diagnostics record the password metadata as not applicable to virtual file output,
+    and assert no Reactor render error was present.
 18. Launch Job UI, assert it receives virtual-printer PDL metadata, cancel the job, and assert the target
     remains empty while package-local diagnostics record `Job canceled`.
 19. Assert package shape, multiple-instance support, virtual-printer declarations, PDC/PDR assets,
@@ -272,8 +273,9 @@ Real output assertions:
   PDL metadata for the per-job path.
 - A corrupt image watermark causes a real background-task failure, records `Job failed` with an
   exception/HRESULT detail, and leaves the target file empty or absent.
-- Job UI activation must record virtual-printer PDL metadata for the real job title, source application,
-  and OXPS content type before the E2E continues or cancels the job.
+- Job UI activation must record the real packaged Job preview window, Save As dialog observation,
+  UI Automation edits, Continue action, and virtual-printer PDL metadata for the real job title,
+  source application, and OXPS content type before the E2E continues or cancels the job.
 - Watermark text appears on rendered pages when enabled.
 - Job UI password metadata is consumed by the virtual-printer processor without exposing the secret in
   diagnostics or applying it to virtual file output.

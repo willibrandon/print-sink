@@ -506,6 +506,47 @@ function Assert-WatermarkEvidence {
         -Description 'Watermark Job UI PDL evidence'
 }
 
+function Assert-JobUiPreviewEvidence {
+    param(
+        [object] $Artifact
+    )
+
+    Assert-Condition ($null -ne $Artifact) 'Job UI preview evidence did not include an artifact.'
+    Assert-PdfWatermarkResult `
+        -Result $Artifact `
+        -Description 'Job UI preview feature evidence' `
+        -Contains 'CI WATERMARK' `
+        -NotContains 'ci-password' `
+        -ExpectedMode 'job-ui-watermark'
+
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'documentName') -eq 'PrintSink E2E Job UI Watermark') 'Job UI preview evidence reported the wrong document name.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'jobUiWindowTitle') -eq 'Job preview') 'Job UI preview evidence reported the wrong window title.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'saveAsDialogObserved')) 'Job UI preview evidence did not prove the Save As dialog was observed.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'watermarkToggleSet')) 'Job UI preview evidence did not prove the watermark toggle was set.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'watermarkText') -eq 'CI WATERMARK') 'Job UI preview evidence reported the wrong watermark text.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'jobPasswordFieldUsed')) 'Job UI preview evidence did not prove the job-password field was used.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'continueInvoked')) 'Job UI preview evidence did not prove Continue was invoked.'
+    Assert-Condition ([bool](Get-ResultProperty -Object $Artifact -Name 'renderErrorAbsent')) 'Job UI preview evidence did not prove the Reactor surface rendered without error.'
+    Assert-Condition ([string](Get-ResultProperty -Object $Artifact -Name 'jobPassword') -eq 'present-not-applicable') 'Job UI preview evidence did not record non-applicable password metadata.'
+    Assert-Condition (-not [bool](Get-ResultProperty -Object $Artifact -Name 'jobPasswordSecretExposed')) 'Job UI preview evidence exposed the job-password secret.'
+
+    $jobUiPdl = Get-ResultProperty -Object $Artifact -Name 'jobUiPdl'
+    Assert-Condition ($null -ne $jobUiPdl) 'Job UI preview evidence omitted PDL metadata.'
+    Assert-Condition ([string](Get-ResultProperty -Object $jobUiPdl -Name 'message') -eq 'Job UI PDL received') 'Job UI preview evidence did not record PDL receipt.'
+    Assert-DetailContainsParts `
+        -Detail ([string](Get-ResultProperty -Object $jobUiPdl -Name 'detail')) `
+        -ExpectedParts @(
+            'kind=virtual-printer',
+            'jobTitle=PrintSink E2E Job UI Watermark',
+            'source=powershell.exe',
+            'contentType=application/oxps') `
+        -Description 'Job UI preview PDL evidence'
+
+    $diagnostic = Get-ResultProperty -Object $Artifact -Name 'diagnostic'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'detail') -like '*job-password=present-not-applicable*') 'Job UI preview evidence did not prove password metadata was consumed.'
+    Assert-Condition ([string](Get-ResultProperty -Object $diagnostic -Name 'detail') -notlike '*ci-password*') 'Job UI preview evidence leaked the job-password secret in diagnostics.'
+}
+
 function Get-ResultTimestamp {
     param(
         [object] $Result,
@@ -738,6 +779,10 @@ function Assert-FeatureEvidence {
 
         if ($number -eq 9) {
             Assert-WatermarkEvidence -Artifact $artifact
+        }
+
+        if ($number -eq 10) {
+            Assert-JobUiPreviewEvidence -Artifact $artifact
         }
 
         if ($number -eq 11) {
