@@ -118,9 +118,18 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("StoreName]::TrustedPeople", e2eWrapper);
         Assert.DoesNotContain("StoreName]::Root", e2eWrapper);
         Assert.Contains("$e2eParameters.Cleanup = $true", e2eWrapper);
+        Assert.Contains("[switch] $KeepPackage", e2eWrapper);
+        Assert.Contains("function Remove-PrintSinkPackage", e2eWrapper);
+        Assert.Contains("Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json", e2eWrapper);
+        Assert.Contains("Where-Object { $_.PackageFullName -eq $packageFullName }", e2eWrapper);
+        Assert.Contains("Get-AppxPackage -Name 'PrintSink'", e2eWrapper);
+        Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", e2eWrapper);
+        Assert.Contains("$shouldRemovePackageAfterRun = (-not $SkipPackageInstall) -and (-not $KeepPackage) -and (-not $KeepQueues)", e2eWrapper);
         Assert.Contains("Assert-PrintSinkE2EResult.ps1", e2eWrapper);
         Assert.Contains("$resultAssertionParameters.RequireCleanup = $true", e2eWrapper);
+        Assert.Contains("Remove-PrintSinkPackage -ResultPath $resultPath", e2eWrapper);
         AssertBefore(e2eWrapper, "& $e2eScript @e2eParameters", "& $resultAssertionScript @resultAssertionParameters");
+        AssertBefore(e2eWrapper, "& $resultAssertionScript @resultAssertionParameters", "if ($shouldRemovePackageAfterRun) {");
     }
 
     /// <summary>

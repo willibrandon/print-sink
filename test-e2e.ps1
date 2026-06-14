@@ -13,7 +13,9 @@ param(
 
     [string] $OutputDirectory = (Join-Path $PSScriptRoot "artifacts\e2e\$Platform"),
 
-    [switch] $KeepQueues
+    [switch] $KeepQueues,
+
+    [switch] $KeepPackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -191,6 +193,35 @@ function Build-PrintSinkPackage {
     return $package.FullName
 }
 
+function Remove-PrintSinkPackage {
+    param(
+        [string] $ResultPath
+    )
+
+    $packageFullName = $null
+    if (Test-Path -LiteralPath $ResultPath -PathType Leaf) {
+        try {
+            $result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json
+            $packageFullName = [string]$result.package.fullName
+        }
+        catch {
+            $packageFullName = $null
+        }
+    }
+
+    $packages = if ([string]::IsNullOrWhiteSpace($packageFullName)) {
+        @(Get-AppxPackage -Name 'PrintSink')
+    }
+    else {
+        @(Get-AppxPackage -Name 'PrintSink' | Where-Object { $_.PackageFullName -eq $packageFullName })
+    }
+
+    foreach ($package in $packages) {
+        Write-Host "Removing package $($package.PackageFullName)"
+        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+    }
+}
+
 Assert-Administrator
 
 if ($SkipPackageInstall -and (-not [string]::IsNullOrWhiteSpace($PackagePath))) {
@@ -234,6 +265,7 @@ if (-not $SkipPackageInstall) {
 }
 
 $e2eScript = Join-Path $PSScriptRoot 'tests\e2e\Invoke-PrintSinkE2E.ps1'
+$resultPath = Join-Path $OutputDirectory 'e2e-result.json'
 $e2eParameters = @{
     OutputDirectory = $OutputDirectory
 }
@@ -249,23 +281,31 @@ if (-not $KeepQueues) {
     $e2eParameters.Cleanup = $true
 }
 
-& $e2eScript @e2eParameters
+$shouldRemovePackageAfterRun = (-not $SkipPackageInstall) -and (-not $KeepPackage) -and (-not $KeepQueues)
+try {
+    & $e2eScript @e2eParameters
 
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    $resultAssertionScript = Join-Path $PSScriptRoot 'tests\e2e\Assert-PrintSinkE2EResult.ps1'
+    $resultAssertionParameters = @{
+        ResultPath = $resultPath
+    }
+
+    if (-not $KeepQueues) {
+        $resultAssertionParameters.RequireCleanup = $true
+    }
+
+    & $resultAssertionScript @resultAssertionParameters
+
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
 }
-
-$resultAssertionScript = Join-Path $PSScriptRoot 'tests\e2e\Assert-PrintSinkE2EResult.ps1'
-$resultAssertionParameters = @{
-    ResultPath = (Join-Path $OutputDirectory 'e2e-result.json')
-}
-
-if (-not $KeepQueues) {
-    $resultAssertionParameters.RequireCleanup = $true
-}
-
-& $resultAssertionScript @resultAssertionParameters
-
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+finally {
+    if ($shouldRemovePackageAfterRun) {
+        Remove-PrintSinkPackage -ResultPath $resultPath
+    }
 }

@@ -73,7 +73,7 @@ Verify that a PrintSink window opens and responds. Close it after the check if m
 Use a Windows 11 24H2 VM or a GitHub `windows-2025` runner. Run the E2E script from elevated PowerShell 7
 (`pwsh`): it installs a temporary signed extension INF for the local IPP association check. The root wrapper
 reuses or creates a local code-signing certificate, builds a signed MSIX, installs it, runs the real
-print-stack assertions, and removes the queues by default:
+print-stack assertions, then removes the queues and installed package by default:
 
 ```powershell
 .\test-e2e.ps1 -BuildPackage -Platform x64
@@ -85,7 +85,9 @@ When the signed package is already installed:
 .\test-e2e.ps1 -SkipPackageInstall
 ```
 
-Pass `-KeepQueues` only when you intentionally want to inspect the installed printers after a run.
+Pass `-KeepPackage` only when you intentionally want to inspect the installed MSIX after a run.
+Pass `-KeepQueues` only when you intentionally want to inspect the installed printers after a run;
+the wrapper leaves the package installed in that mode because the queues are package-backed.
 
 The lower-level harness accepts an explicit package path when the package was built elsewhere:
 
@@ -291,3 +293,5 @@ evidence, feature evidence, and output result for each run. The E2E script write
 documents. The validator rechecks the supported/deferred feature evidence, queue persistence snapshots,
 management UI evidence, cleanup state, output file byte counts, document validity, PDF passthrough byte
 equality, cloud sink artifacts, failed-job empty outputs, and Job UI cancel evidence.
+The root wrapper removes the installed PrintSink package after validation unless `-KeepPackage`,
+`-KeepQueues`, or `-SkipPackageInstall` is used.

@@ -126,7 +126,7 @@ Signing and deployment are package concerns. Lab installs should use a trusted t
 
 For local real print-stack validation, prefer the E2E wrapper. It builds a signed test MSIX when requested,
 reuses or creates a local code-signing certificate, trusts it in `TrustedPeople`, runs the installed package,
-and removes the queues unless `-KeepQueues` is passed:
+and removes the queues and installed package unless `-KeepPackage` or `-KeepQueues` is passed:
 
 ```powershell
 .\test-e2e.ps1 -BuildPackage -Platform x64
