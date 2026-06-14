@@ -94,13 +94,13 @@ the wrapper leaves the package installed in that mode because the queues are pac
 The lower-level harness accepts an explicit package path when the package was built elsewhere:
 
 ```powershell
-tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -OutputDirectory artifacts\e2e\x64
+tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -ProductConfiguration Release -OutputDirectory artifacts\e2e\x64
 ```
 
 When the package is already installed:
 
 ```powershell
-tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall
+tests\e2e\Invoke-PrintSinkE2E.ps1 -SkipPackageInstall -ProductConfiguration Release
 ```
 
 `-SkipPackageInstall` expects an installed MSIX package. Loose development-mode registration from `dotnet run` or F5 is rejected before provisioning because Windows can register the app while still failing virtual-printer installation.
@@ -110,7 +110,7 @@ The harness drives the Save-As broker by setting the native filename control and
 To remove the queues after assertion:
 
 ```powershell
-tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -Cleanup
+tests\e2e\Invoke-PrintSinkE2E.ps1 -PackagePath <PrintSink.msix> -ProductConfiguration Release -Cleanup
 ```
 
 The script validates the installed package before provisioning:
@@ -291,7 +291,7 @@ Real output assertions:
   that removes, loses, or unregisters a PrintSink queue fails CI.
 
 The CI job records the package version, package source path, package build configuration/platform,
-Windows build, architecture, source application, target queue, queue snapshots, queue-persistence evidence,
+product configuration, Windows build, architecture, source application, target queue, queue snapshots, queue-persistence evidence,
 management UI actions and queue snapshots, cleanup
 evidence, feature evidence, and output result for each run. The E2E script writes the full run record to
 `e2e-result.json` in the output directory, and the root wrapper runs

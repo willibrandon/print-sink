@@ -153,6 +153,8 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64", build);
         Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release -Platform x64", testing);
         Assert.Contains("signed Release MSIX", testing);
+        Assert.Contains("ProductConfiguration Release", testing);
+        Assert.Contains("product configuration", testing);
         Assert.DoesNotContain("_Debug_Test", build);
         Assert.DoesNotContain("_Debug_Test", testing);
         Assert.DoesNotContain("_x64_Debug", build);
