@@ -151,6 +151,52 @@ internal sealed class DocumentAssertionsTests
     }
 
     /// <summary>
+    /// Verifies an OXPS package without a fixed representation relationship is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsOxpsWithoutFixedRepresentationRelationship()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "missing-fixed-representation.oxps");
+            WriteXpsPackage(path, "foo", includeFixedRepresentationRelationship: false);
+
+            int exitCode = RunAssertion(["--format", "oxps", "--path", path, "--contains", "foo"], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("XPS package is missing a fixed representation relationship", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies an OXPS package with an unreachable fixed page is rejected.
+    /// </summary>
+    [TestMethod]
+    public void RunRejectsOxpsWithOrphanFixedPage()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "orphan-fixed-page.oxps");
+            WriteXpsPackage(path, "foo", pageReference: "Pages/missing.fpage");
+
+            int exitCode = RunAssertion(["--format", "oxps", "--path", path, "--contains", "foo"], out string error);
+
+            Assert.AreEqual(1, exitCode);
+            Assert.Contains("XPS fixed document references missing fixed page", error);
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies an OXPS package with missing expected text is rejected.
     /// </summary>
     [TestMethod]
@@ -524,23 +570,19 @@ internal sealed class DocumentAssertionsTests
         builder.Append(text);
     }
 
-    private static void WriteXpsPackage(string path, string fixedPageText, string? commentText = null)
+    private static void WriteXpsPackage(
+        string path,
+        string fixedPageText,
+        string? commentText = null,
+        bool includeFixedRepresentationRelationship = true,
+        string pageReference = "Pages/1.fpage")
     {
         string comment = string.IsNullOrWhiteSpace(commentText)
             ? string.Empty
             : $"  <!-- {commentText} -->";
         using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
-        WriteZipEntry(
-            archive,
-            "[Content_Types].xml",
-            """
-            <?xml version="1.0" encoding="utf-8"?>
-            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-              <Default Extension="fdseq" ContentType="application/vnd.ms-package.xps-fixeddocumentsequence+xml" />
-              <Default Extension="fdoc" ContentType="application/vnd.ms-package.xps-fixeddocument+xml" />
-              <Default Extension="fpage" ContentType="application/vnd.ms-package.xps-fixedpage+xml" />
-            </Types>
-            """);
+        WriteXpsContentTypes(archive);
+        WriteXpsPackageGraph(archive, includeFixedRepresentationRelationship, pageReference);
         WriteZipEntry(
             archive,
             "Documents/1/Pages/1.fpage",
@@ -568,20 +610,70 @@ internal sealed class DocumentAssertionsTests
             """;
 
         using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteXpsContentTypes(archive, includeInterleavedPiece: true);
+        WriteXpsPackageGraph(archive);
+        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[1].piece", fixedPageEnd, emitBom: false);
+        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[0].piece", fixedPageStart, emitBom: true);
+    }
+
+    private static void WriteXpsContentTypes(ZipArchive archive, bool includeInterleavedPiece = false)
+    {
+        string pieceContentType = includeInterleavedPiece
+            ? """
+                <Default Extension="piece" ContentType="application/vnd.ms-package.interleaved-part" />
+            """
+            : string.Empty;
         WriteZipEntry(
             archive,
             "[Content_Types].xml",
-            """
+            $$"""
             <?xml version="1.0" encoding="utf-8"?>
             <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
               <Default Extension="fdseq" ContentType="application/vnd.ms-package.xps-fixeddocumentsequence+xml" />
               <Default Extension="fdoc" ContentType="application/vnd.ms-package.xps-fixeddocument+xml" />
               <Default Extension="fpage" ContentType="application/vnd.ms-package.xps-fixedpage+xml" />
-              <Default Extension="piece" ContentType="application/vnd.ms-package.interleaved-part" />
-            </Types>
+            {{pieceContentType}}</Types>
             """);
-        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[1].piece", fixedPageEnd, emitBom: false);
-        WriteZipEntry(archive, "Documents/1/Pages/1.fpage/[0].piece", fixedPageStart, emitBom: true);
+    }
+
+    private static void WriteXpsPackageGraph(
+        ZipArchive archive,
+        bool includeFixedRepresentationRelationship = true,
+        string pageReference = "Pages/1.fpage")
+    {
+        string packageRelationship = includeFixedRepresentationRelationship
+            ? """
+                <Relationship Target="FixedDocumentSequence.fdseq" Id="R0" Type="http://schemas.openxps.org/oxps/v1.0/fixedrepresentation" />
+            """
+            : """
+                <Relationship Target="DiscardControl.xml" Id="R0" Type="http://schemas.openxps.org/oxps/v1.0/discard-control" />
+            """;
+        WriteZipEntry(
+            archive,
+            "_rels/.rels",
+            $$"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            {{packageRelationship}}</Relationships>
+            """);
+        WriteZipEntry(
+            archive,
+            "FixedDocumentSequence.fdseq",
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <FixedDocumentSequence xmlns="http://schemas.openxps.org/oxps/v1.0">
+              <DocumentReference Source="Documents/1/FixedDocument.fdoc" />
+            </FixedDocumentSequence>
+            """);
+        WriteZipEntry(
+            archive,
+            "Documents/1/FixedDocument.fdoc",
+            $$"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <FixedDocument xmlns="http://schemas.openxps.org/oxps/v1.0">
+              <PageContent Source="{{pageReference}}" />
+            </FixedDocument>
+            """);
     }
 
     private static void WriteZipEntry(ZipArchive archive, string name, string text, bool emitBom = true)

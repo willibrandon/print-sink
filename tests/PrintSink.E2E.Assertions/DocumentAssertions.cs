@@ -204,8 +204,7 @@ internal static partial class DocumentAssertions
     private static void AssertXps(string path, string? expectedText, string? forbiddenText)
     {
         using ZipArchive archive = ZipFile.OpenRead(path);
-        string contentTypesXml = ReadPackagePartText(archive, "[Content_Types].xml");
-        XDocument contentTypes = XDocument.Parse(contentTypesXml, LoadOptions.None);
+        XDocument contentTypes = ReadPackagePartXml(archive, "[Content_Types].xml", path);
         if (contentTypes.Root?.Name.LocalName != "Types")
         {
             throw new InvalidDataException($"XPS package has invalid [Content_Types].xml: {path}");
@@ -221,11 +220,13 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"XPS package contains no fixed pages: {path}");
         }
 
+        AssertXpsPackageGraph(archive, path, fixedPageNames);
+
         bool foundExpectedText = false;
         foreach (string fixedPageName in fixedPageNames)
         {
             string fixedPageXml = ReadPackagePartText(archive, fixedPageName);
-            XDocument fixedPage = XDocument.Parse(fixedPageXml, LoadOptions.None);
+            XDocument fixedPage = ParsePackagePartXml(fixedPageXml, fixedPageName, path);
             if (fixedPage.Root?.Name.LocalName != "FixedPage")
             {
                 throw new InvalidDataException($"XPS fixed page has invalid root element '{fixedPage.Root?.Name.LocalName}': {path}");
@@ -250,6 +251,100 @@ internal static partial class DocumentAssertions
         }
 
         throw new InvalidDataException($"XPS fixed pages did not contain '{expectedText}': {path}");
+    }
+
+    private static void AssertXpsPackageGraph(ZipArchive archive, string path, string[] fixedPageNames)
+    {
+        XDocument packageRelationships = ReadPackagePartXml(archive, "_rels/.rels", path);
+        if (packageRelationships.Root?.Name.LocalName != "Relationships")
+        {
+            throw new InvalidDataException($"XPS package has invalid package relationships: {path}");
+        }
+
+        XElement? fixedRepresentation = packageRelationships
+            .Root
+            .Elements()
+            .FirstOrDefault(static element =>
+                element.Name.LocalName == "Relationship"
+                && element.Attribute("Type")?.Value.Contains("fixedrepresentation", StringComparison.OrdinalIgnoreCase) == true
+                && !string.Equals(
+                    element.Attribute("TargetMode")?.Value,
+                    "External",
+                    StringComparison.OrdinalIgnoreCase));
+        if (fixedRepresentation is null)
+        {
+            throw new InvalidDataException($"XPS package is missing a fixed representation relationship: {path}");
+        }
+
+        string? sequenceTarget = (string?)fixedRepresentation.Attribute("Target");
+        if (string.IsNullOrWhiteSpace(sequenceTarget))
+        {
+            throw new InvalidDataException($"XPS fixed representation relationship has no target: {path}");
+        }
+
+        string sequencePartName = ResolvePackagePartName(string.Empty, sequenceTarget);
+        if (!PackagePartExists(archive, sequencePartName))
+        {
+            throw new InvalidDataException($"XPS fixed document sequence is missing: {sequencePartName}");
+        }
+
+        XDocument fixedDocumentSequence = ReadPackagePartXml(archive, sequencePartName, path);
+        if (fixedDocumentSequence.Root?.Name.LocalName != "FixedDocumentSequence")
+        {
+            throw new InvalidDataException($"XPS fixed document sequence has invalid root element '{fixedDocumentSequence.Root?.Name.LocalName}': {path}");
+        }
+
+        string[] documentPartNames = [.. fixedDocumentSequence
+            .Descendants()
+            .Where(static element => element.Name.LocalName == "DocumentReference")
+            .Select(element => (string?)element.Attribute("Source"))
+            .Where(static source => !string.IsNullOrWhiteSpace(source))
+            .Select(source => ResolvePackagePartName(sequencePartName, source!))];
+        if (documentPartNames.Length == 0)
+        {
+            throw new InvalidDataException($"XPS fixed document sequence references no fixed documents: {path}");
+        }
+
+        bool referencesFixedPage = false;
+        foreach (string documentPartName in documentPartNames)
+        {
+            if (!PackagePartExists(archive, documentPartName))
+            {
+                throw new InvalidDataException($"XPS fixed document is missing: {documentPartName}");
+            }
+
+            XDocument fixedDocument = ReadPackagePartXml(archive, documentPartName, path);
+            if (fixedDocument.Root?.Name.LocalName != "FixedDocument")
+            {
+                throw new InvalidDataException($"XPS fixed document has invalid root element '{fixedDocument.Root?.Name.LocalName}': {path}");
+            }
+
+            string[] referencedPageNames = [.. fixedDocument
+                .Descendants()
+                .Where(static element => element.Name.LocalName == "PageContent")
+                .Select(element => (string?)element.Attribute("Source"))
+                .Where(static source => !string.IsNullOrWhiteSpace(source))
+                .Select(source => ResolvePackagePartName(documentPartName, source!))];
+            if (referencedPageNames.Length == 0)
+            {
+                throw new InvalidDataException($"XPS fixed document references no fixed pages: {path}");
+            }
+
+            foreach (string referencedPageName in referencedPageNames)
+            {
+                if (!fixedPageNames.Contains(referencedPageName, StringComparer.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"XPS fixed document references missing fixed page: {referencedPageName}");
+                }
+
+                referencesFixedPage = true;
+            }
+        }
+
+        if (!referencesFixedPage)
+        {
+            throw new InvalidDataException($"XPS package graph does not reach a fixed page: {path}");
+        }
     }
 
     private static bool FixedPageContainsText(XDocument fixedPage, string expectedText)
@@ -303,6 +398,24 @@ internal static partial class DocumentAssertions
         return [.. partNames];
     }
 
+    private static XDocument ReadPackagePartXml(ZipArchive archive, string partName, string path)
+    {
+        string xml = ReadPackagePartText(archive, partName);
+        return ParsePackagePartXml(xml, partName, path);
+    }
+
+    private static XDocument ParsePackagePartXml(string xml, string partName, string path)
+    {
+        try
+        {
+            return XDocument.Parse(xml, LoadOptions.None);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            throw new InvalidDataException($"XPS package part has invalid XML '{partName}': {path}", ex);
+        }
+    }
+
     private static string ReadPackagePartText(ZipArchive archive, string partName)
     {
         ZipArchiveEntry? directEntry = archive.GetEntry(partName);
@@ -331,6 +444,57 @@ internal static partial class DocumentAssertions
         buffer.Position = 0;
         using StreamReader reader = new(buffer, Encoding.UTF8, true);
         return reader.ReadToEnd();
+    }
+
+    private static bool PackagePartExists(ZipArchive archive, string partName)
+    {
+        return archive.GetEntry(partName) is not null
+            || archive.Entries.Any(entry => entry.FullName.StartsWith($"{partName}/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolvePackagePartName(string sourcePartName, string target)
+    {
+        string targetPath = Uri.UnescapeDataString(target.Split('#', 2)[0])
+            .Replace('\\', '/')
+            .Trim();
+        if (targetPath.StartsWith('/'))
+        {
+            return NormalizePackagePartName(targetPath);
+        }
+
+        string sourcePath = NormalizePackagePartName(sourcePartName);
+        int slashIndex = sourcePath.LastIndexOf('/');
+        string sourceDirectory = slashIndex >= 0
+            ? sourcePath[..(slashIndex + 1)]
+            : string.Empty;
+        return NormalizePackagePartName(sourceDirectory + targetPath);
+    }
+
+    private static string NormalizePackagePartName(string partName)
+    {
+        List<string> segments = [];
+        foreach (string segment in partName.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".")
+            {
+                continue;
+            }
+
+            if (segment == "..")
+            {
+                if (segments.Count == 0)
+                {
+                    throw new InvalidDataException($"XPS package part path escapes the package root: {partName}");
+                }
+
+                segments.RemoveAt(segments.Count - 1);
+                continue;
+            }
+
+            segments.Add(segment);
+        }
+
+        return string.Join('/', segments);
     }
 
     private static int GetInterleavedPieceIndex(ZipArchiveEntry entry)
