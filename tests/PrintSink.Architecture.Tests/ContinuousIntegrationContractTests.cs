@@ -56,6 +56,46 @@ internal sealed class ContinuousIntegrationContractTests
     }
 
     /// <summary>
+    /// Verifies CI publishes the real E2E evidence and package artifacts as required outputs.
+    /// </summary>
+    [TestMethod]
+    public void WindowsCiRequiresRealPrintStackEvidenceArtifacts()
+    {
+        string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
+        string workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "windows-ci.yml");
+        string workflow = File.ReadAllText(workflowPath);
+        string e2eStep = ExtractScriptBlock(
+            workflow,
+            "- name: Real print-stack E2E",
+            "- name: Upload test results");
+        string e2eUploadStep = ExtractScriptBlock(
+            workflow,
+            "- name: Upload E2E outputs",
+            "- name: Upload MSIX package");
+        int msixUploadIndex = workflow.IndexOf("- name: Upload MSIX package", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, msixUploadIndex, "Could not find the MSIX upload step.");
+        string msixUploadStep = workflow[msixUploadIndex..];
+
+        Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Platform ${{ matrix.platform }}", e2eStep);
+        Assert.DoesNotContain("-SkipPackageInstall", e2eStep);
+        Assert.DoesNotContain("-KeepQueues", e2eStep);
+
+        Assert.Contains("if: always()", e2eUploadStep);
+        Assert.Contains("uses: actions/upload-artifact@v7", e2eUploadStep);
+        Assert.Contains("name: e2e-outputs-${{ matrix.platform }}", e2eUploadStep);
+        Assert.Contains("path: artifacts/e2e/${{ matrix.platform }}", e2eUploadStep);
+        Assert.Contains("if-no-files-found: error", e2eUploadStep);
+        Assert.DoesNotContain("if-no-files-found: ignore", e2eUploadStep);
+
+        Assert.Contains("if: always()", msixUploadStep);
+        Assert.Contains("uses: actions/upload-artifact@v7", msixUploadStep);
+        Assert.Contains("name: msix-${{ matrix.platform }}", msixUploadStep);
+        Assert.Contains("path: artifacts/appxpackages/${{ matrix.platform }}", msixUploadStep);
+        Assert.Contains("if-no-files-found: error", msixUploadStep);
+        Assert.DoesNotContain("if-no-files-found: ignore", msixUploadStep);
+    }
+
+    /// <summary>
     /// Verifies the root E2E wrapper remains the signed-package cleanup-aware proof gate.
     /// </summary>
     [TestMethod]

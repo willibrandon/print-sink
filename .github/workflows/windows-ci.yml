@@ -150,7 +150,7 @@ jobs:
         with:
           name: e2e-outputs-${{ matrix.platform }}
           path: artifacts/e2e/${{ matrix.platform }}
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload MSIX package
         if: always()
@@ -158,4 +158,4 @@ jobs:
         with:
           name: msix-${{ matrix.platform }}
           path: artifacts/appxpackages/${{ matrix.platform }}
-          if-no-files-found: ignore
+          if-no-files-found: error
