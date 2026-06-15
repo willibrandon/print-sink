@@ -464,14 +464,20 @@ function Close-SavePrintOutputDialogs {
         Add-Type -AssemblyName UIAutomationClient
         Add-DialogNativeMethods
 
+        foreach ($dialogHandle in Get-NativeSavePrintOutputDialogHandles) {
+            [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        }
+
         $dialogs = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
             [System.Windows.Automation.TreeScope]::Children,
-            [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As'))
+            [System.Windows.Automation.Condition]::TrueCondition)
 
         foreach ($dialog in $dialogs) {
             try {
+                if (-not (Test-SavePrintOutputDialog -Window $dialog)) {
+                    continue
+                }
+
                 [object] $windowPattern = $null
                 if ($dialog.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$windowPattern)) {
                     $windowPattern.Close()
@@ -1197,6 +1203,265 @@ function Wait-ForAutomationElement {
     throw "Timed out waiting for $Description."
 }
 
+function Wait-ForSavePrintOutputDialog {
+    param(
+        [int] $TimeoutSeconds,
+        [string] $Description,
+        [System.Collections.Specialized.OrderedDictionary] $PrintProcess = $null
+    )
+
+    Add-Type -AssemblyName UIAutomationClient
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $nativeDialogHandle = Get-NativeSavePrintOutputDialogHandles | Select-Object -First 1
+        if ($null -ne $nativeDialogHandle -and [IntPtr]$nativeDialogHandle -ne [IntPtr]::Zero) {
+            return [System.Windows.Automation.AutomationElement]::FromHandle($nativeDialogHandle)
+        }
+
+        $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($window in $windows) {
+            if (Test-SavePrintOutputDialog -Window $window) {
+                return $window
+            }
+        }
+
+        if ($null -ne $PrintProcess) {
+            $process = $PrintProcess.process
+            if ($process.HasExited) {
+                $process.Refresh()
+                throw "$Description did not appear because the print source process exited with $($process.ExitCode). $(Get-PrintSinkProcessOutput -PrintProcess $PrintProcess)"
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Timed out waiting for $Description. Top-level windows: $(Get-TopLevelWindowSummary). Native windows: $(Get-NativeTopLevelWindowSummary)"
+}
+
+function Test-SavePrintOutputDialog {
+    param(
+        [System.Windows.Automation.AutomationElement] $Window
+    )
+
+    try {
+        [string] $name = $Window.Current.Name
+        [string] $className = $Window.Current.ClassName
+        [bool] $nameMatches = $name -eq 'Save Print Output As' -or $name -eq 'Save As'
+        if (-not $nameMatches -and $className -ne '#32770') {
+            return $false
+        }
+
+        $fileNameEdit = $Window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.AndCondition]::new(
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                    [System.Windows.Automation.ControlType]::Edit),
+                [System.Windows.Automation.OrCondition]::new(
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+                        '1001'),
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::NameProperty,
+                        'File name:'))))
+        if ($null -eq $fileNameEdit) {
+            return $false
+        }
+
+        $saveButton = $Window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.AndCondition]::new(
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                    [System.Windows.Automation.ControlType]::Button),
+                [System.Windows.Automation.OrCondition]::new(
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+                        '1'),
+                    [System.Windows.Automation.PropertyCondition]::new(
+                        [System.Windows.Automation.AutomationElement]::NameProperty,
+                        'Save'))))
+        return $null -ne $saveButton
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-TopLevelWindowSummary {
+    $summary = [System.Collections.Generic.List[string]]::new()
+    $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+        [System.Windows.Automation.TreeScope]::Children,
+        [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($window in $windows) {
+        try {
+            $summary.Add("$($window.Current.Name)[$($window.Current.ProcessId)]/$($window.Current.ClassName)/$($window.Current.ControlType.ProgrammaticName)")
+            if ($summary.Count -ge 40) {
+                break
+            }
+        }
+        catch {
+        }
+    }
+
+    if ($summary.Count -eq 0) {
+        return '<none>'
+    }
+
+    return $summary -join '; '
+}
+
+function Get-NativeWindowText {
+    param(
+        [IntPtr] $Handle
+    )
+
+    Add-DialogNativeMethods
+    $builder = [System.Text.StringBuilder]::new(1024)
+    [PrintSinkE2E.DialogNativeMethods]::GetWindowText($Handle, $builder, $builder.Capacity) | Out-Null
+    return $builder.ToString()
+}
+
+function Get-NativeClassName {
+    param(
+        [IntPtr] $Handle
+    )
+
+    Add-DialogNativeMethods
+    $builder = [System.Text.StringBuilder]::new(256)
+    [PrintSinkE2E.DialogNativeMethods]::GetClassName($Handle, $builder, $builder.Capacity) | Out-Null
+    return $builder.ToString()
+}
+
+function Get-NativeTopLevelWindowHandles {
+    Add-DialogNativeMethods
+    $handles = [System.Collections.Generic.List[IntPtr]]::new()
+    $callback = [PrintSinkE2E.DialogNativeMethods+EnumWindowsProc]{
+        param(
+            [IntPtr] $handle,
+            [IntPtr] $parameter
+        )
+
+        $handles.Add($handle)
+        return $true
+    }
+
+    [PrintSinkE2E.DialogNativeMethods]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
+    return @($handles)
+}
+
+function Get-NativeChildWindowHandles {
+    param(
+        [IntPtr] $ParentHandle
+    )
+
+    Add-DialogNativeMethods
+    $handles = [System.Collections.Generic.List[IntPtr]]::new()
+    $callback = [PrintSinkE2E.DialogNativeMethods+EnumWindowsProc]{
+        param(
+            [IntPtr] $handle,
+            [IntPtr] $parameter
+        )
+
+        $handles.Add($handle)
+        return $true
+    }
+
+    [PrintSinkE2E.DialogNativeMethods]::EnumChildWindows($ParentHandle, $callback, [IntPtr]::Zero) | Out-Null
+    return @($handles)
+}
+
+function Get-NativeDialogControlHandle {
+    param(
+        [IntPtr] $DialogHandle,
+        [int[]] $ControlIds
+    )
+
+    foreach ($childHandle in Get-NativeChildWindowHandles -ParentHandle $DialogHandle) {
+        $controlId = [PrintSinkE2E.DialogNativeMethods]::GetDlgCtrlID($childHandle)
+        if ($ControlIds -contains $controlId) {
+            return $childHandle
+        }
+    }
+
+    return [IntPtr]::Zero
+}
+
+function Test-NativeSavePrintOutputDialog {
+    param(
+        [IntPtr] $DialogHandle
+    )
+
+    Add-DialogNativeMethods
+    if ($DialogHandle -eq [IntPtr]::Zero -or -not [PrintSinkE2E.DialogNativeMethods]::IsWindow($DialogHandle)) {
+        return $false
+    }
+
+    if (-not [PrintSinkE2E.DialogNativeMethods]::IsWindowVisible($DialogHandle)) {
+        return $false
+    }
+
+    $title = Get-NativeWindowText -Handle $DialogHandle
+    $className = Get-NativeClassName -Handle $DialogHandle
+    if ($className -ne '#32770') {
+        return $false
+    }
+
+    $titleLooksLikeSaveDialog = $title -eq 'Save Print Output As' `
+        -or $title -eq 'Save As' `
+        -or $title -like '*Save*'
+    if (-not $titleLooksLikeSaveDialog) {
+        return $false
+    }
+
+    $fileNameControl = Get-NativeDialogControlHandle -DialogHandle $DialogHandle -ControlIds @(1001, 0x0480, 0x047c)
+    $saveButton = Get-NativeDialogControlHandle -DialogHandle $DialogHandle -ControlIds @(1)
+    return $fileNameControl -ne [IntPtr]::Zero -and $saveButton -ne [IntPtr]::Zero
+}
+
+function Get-NativeSavePrintOutputDialogHandles {
+    Add-DialogNativeMethods
+    return @(
+        Get-NativeTopLevelWindowHandles |
+            Where-Object { Test-NativeSavePrintOutputDialog -DialogHandle $_ }
+    )
+}
+
+function Get-NativeTopLevelWindowSummary {
+    Add-DialogNativeMethods
+    $summary = [System.Collections.Generic.List[string]]::new()
+    foreach ($handle in Get-NativeTopLevelWindowHandles) {
+        if (-not [PrintSinkE2E.DialogNativeMethods]::IsWindowVisible($handle)) {
+            continue
+        }
+
+        $title = Get-NativeWindowText -Handle $handle
+        $className = Get-NativeClassName -Handle $handle
+        $children = [System.Collections.Generic.List[string]]::new()
+        foreach ($childHandle in Get-NativeChildWindowHandles -ParentHandle $handle | Select-Object -First 16) {
+            $childId = [PrintSinkE2E.DialogNativeMethods]::GetDlgCtrlID($childHandle)
+            $childClass = Get-NativeClassName -Handle $childHandle
+            $childText = Get-NativeWindowText -Handle $childHandle
+            $children.Add("$childId/$childClass/'$childText'")
+        }
+
+        $summary.Add("'$title'/$className children=$($children -join ',')")
+        if ($summary.Count -ge 40) {
+            break
+        }
+    }
+
+    if ($summary.Count -eq 0) {
+        return '<none>'
+    }
+
+    return $summary -join '; '
+}
+
 function Find-EnabledDescendant {
     param(
         [System.Windows.Automation.AutomationElement] $Root,
@@ -1339,9 +1604,29 @@ public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, Sys
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 public static extern int GetWindowText(System.IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int GetClassName(System.IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, System.IntPtr lParam);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool EnumChildWindows(System.IntPtr hWndParent, EnumWindowsProc lpEnumFunc, System.IntPtr lParam);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern int GetDlgCtrlID(System.IntPtr hWnd);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool IsWindowVisible(System.IntPtr hWnd);
+
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
 public static extern bool IsWindow(System.IntPtr hWnd);
+
+public delegate bool EnumWindowsProc(System.IntPtr hWnd, System.IntPtr lParam);
 '@
 }
 
@@ -1499,16 +1784,23 @@ function Wait-ForDialogClosed {
             return
         }
 
-        $currentDialog = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-            [System.Windows.Automation.TreeScope]::Children,
-            [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As'))
-        if ($null -eq $currentDialog) {
-            return
-        }
+        Start-Sleep -Milliseconds 250
+    }
+    while ([DateTime]::UtcNow -lt $deadline)
 
-        if ([IntPtr]$currentDialog.Current.NativeWindowHandle -ne $dialogHandle) {
+    throw 'The Save Print Output As dialog did not close after accepting the file path.'
+}
+
+function Wait-ForNativeWindowClosed {
+    param(
+        [IntPtr] $Handle,
+        [int] $TimeoutSeconds
+    )
+
+    Add-DialogNativeMethods
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (-not [PrintSinkE2E.DialogNativeMethods]::IsWindow($Handle)) {
             return
         }
 
@@ -1519,11 +1811,62 @@ function Wait-ForDialogClosed {
     throw 'The Save Print Output As dialog did not close after accepting the file path.'
 }
 
+function Set-NativeFileDialogPath {
+    param(
+        [IntPtr] $DialogHandle,
+        [string] $OutputPath
+    )
+
+    Add-DialogNativeMethods
+    if (-not (Test-NativeSavePrintOutputDialog -DialogHandle $DialogHandle)) {
+        return $false
+    }
+
+    $fileNameControl = Get-NativeDialogControlHandle -DialogHandle $DialogHandle -ControlIds @(1001, 0x0480, 0x047c)
+    if ($fileNameControl -eq [IntPtr]::Zero) {
+        throw 'The native Save As dialog did not expose a file name control.'
+    }
+
+    $saveButton = Get-NativeDialogControlHandle -DialogHandle $DialogHandle -ControlIds @(1)
+    if ($saveButton -eq [IntPtr]::Zero) {
+        throw 'The native Save As dialog did not expose an IDOK Save button.'
+    }
+
+    $cdmSetControlText = 0x0468
+    foreach ($controlId in @(1001, 0x0480, 0x047c)) {
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($DialogHandle, $cdmSetControlText, [IntPtr]$controlId, $OutputPath) | Out-Null
+    }
+
+    [PrintSinkE2E.DialogNativeMethods]::SetWindowText($fileNameControl, $OutputPath) | Out-Null
+    [PrintSinkE2E.DialogNativeMethods]::SendMessage($fileNameControl, 0x000C, [IntPtr]::Zero, $OutputPath) | Out-Null
+    Start-Sleep -Milliseconds 250
+
+    [PrintSinkE2E.DialogNativeMethods]::SendMessage($DialogHandle, 0x0111, [IntPtr]1, $saveButton) | Out-Null
+    Start-Sleep -Milliseconds 250
+    if ([PrintSinkE2E.DialogNativeMethods]::IsWindow($DialogHandle)) {
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($saveButton, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    }
+
+    Wait-ForNativeWindowClosed -Handle $DialogHandle -TimeoutSeconds 10
+    return $true
+}
+
 function Set-FileDialogPath {
     param(
         [System.Windows.Automation.AutomationElement] $Dialog,
         [string] $OutputPath
     )
+
+    $nativeError = ''
+    try {
+        $dialogHandle = [IntPtr]$Dialog.Current.NativeWindowHandle
+        if ($dialogHandle -ne [IntPtr]::Zero -and (Set-NativeFileDialogPath -DialogHandle $dialogHandle -OutputPath $OutputPath)) {
+            return
+        }
+    }
+    catch {
+        $nativeError = $_.Exception.Message
+    }
 
     try {
         $fileNameEdit = Find-EnabledDescendantByFilter `
@@ -1558,7 +1901,14 @@ function Set-FileDialogPath {
     catch [System.Exception] {
         $primaryError = $_.Exception.Message
         $snapshot = Format-AutomationSnapshot -Root $Dialog
-        throw "Unable to set Save Print Output As path. $primaryError`n$snapshot"
+        $nativeDetail = if ([string]::IsNullOrWhiteSpace($nativeError)) {
+            'Native common-dialog path was not available.'
+        }
+        else {
+            "Native common-dialog path failed: $nativeError"
+        }
+
+        throw "Unable to set Save Print Output As path. $nativeDetail $primaryError`n$snapshot"
     }
 }
 
@@ -1669,22 +2019,26 @@ function Start-PrintSinkWin32PrintProcess {
     $escapedText = $Text.Replace("'", "''")
     $printScript = @"
 `$ErrorActionPreference = 'Stop'
+[string] `$printerName = '$escapedPrinterName'
+[string] `$documentName = '$escapedDocumentName'
+[string] `$text = '$escapedText'
+[int] `$pageCount = $PageCount
+
 Add-Type -AssemblyName System.Drawing
 `$document = [System.Drawing.Printing.PrintDocument]::new()
-`$document.DocumentName = '$escapedDocumentName'
-`$document.PrinterSettings.PrinterName = '$escapedPrinterName'
+`$document.DocumentName = `$documentName
+`$document.PrinterSettings.PrinterName = `$printerName
 `$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
 if (-not `$document.PrinterSettings.IsValid) {
-    throw "Printer '$escapedPrinterName' is not valid."
+    throw "Printer '`$printerName' is not valid."
 }
 `$pageIndex = 0
-`$pageCount = $PageCount
 `$document.add_PrintPage({
     param(`$sender, `$eventArgs)
     `$font = [System.Drawing.Font]::new('Consolas', 16)
     try {
         `$pageNumber = `$script:pageIndex + 1
-        `$eventArgs.Graphics.DrawString('$escapedText page ' + `$pageNumber, `$font, [System.Drawing.Brushes]::Black, 96, 96)
+        `$eventArgs.Graphics.DrawString(`$text + ' page ' + `$pageNumber, `$font, [System.Drawing.Brushes]::Black, 96, 96)
         `$script:pageIndex++
         `$eventArgs.HasMorePages = `$script:pageIndex -lt `$pageCount
     }
@@ -2919,14 +3273,10 @@ function Invoke-PrintSinkRealPrint {
 
     try {
         if ($PrintCase.requiresSaveAs) {
-            $dialog = Wait-ForAutomationElement `
-                -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-                -Scope ([System.Windows.Automation.TreeScope]::Children) `
-                -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                    [System.Windows.Automation.AutomationElement]::NameProperty,
-                    'Save Print Output As')) `
-                -TimeoutSeconds 30 `
-                -Description "the Save Print Output As dialog for $printerName"
+            $dialog = Wait-ForSavePrintOutputDialog `
+                -TimeoutSeconds 60 `
+                -Description "the Save Print Output As dialog for $printerName" `
+                -PrintProcess $printProcess
 
             Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
         }
@@ -3061,13 +3411,8 @@ function Invoke-PrintSinkNotepadPrint {
             -FilePath $notepadPath `
             -ArgumentList @('/p', $sourcePath)
 
-        $saveDialog = Wait-ForAutomationElement `
-            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-            -Scope ([System.Windows.Automation.TreeScope]::Children) `
-            -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As')) `
-            -TimeoutSeconds 45 `
+        $saveDialog = Wait-ForSavePrintOutputDialog `
+            -TimeoutSeconds 60 `
             -Description 'the Save Print Output As dialog for the Notepad print'
 
         $notepadProcess = Get-Process -Id $saveDialog.Current.ProcessId -ErrorAction SilentlyContinue
@@ -3176,7 +3521,6 @@ function Invoke-PrintSinkConcurrentPrints {
             $outputPath = Join-Path $OutputDirectory "$($printCase.outputName)$($printCase.extension)"
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
             Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
-
             $printProcess = Start-PrintSinkWin32PrintProcess `
                 -PrinterName $printCase.queue `
                 -DocumentName "PrintSink E2E Concurrent $($printCase.format)" `
@@ -3196,14 +3540,10 @@ function Invoke-PrintSinkConcurrentPrints {
 
         foreach ($job in @($jobs | Where-Object { $_.printCase.requiresSaveAs })) {
             $printCase = $job.printCase
-            $dialog = Wait-ForAutomationElement `
-                -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-                -Scope ([System.Windows.Automation.TreeScope]::Children) `
-                -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                    [System.Windows.Automation.AutomationElement]::NameProperty,
-                    'Save Print Output As')) `
-                -TimeoutSeconds 30 `
-                -Description "the Save Print Output As dialog for $($printCase.queue)"
+            $dialog = Wait-ForSavePrintOutputDialog `
+                -TimeoutSeconds 60 `
+                -Description "the Save Print Output As dialog for $($printCase.queue)" `
+                -PrintProcess $job
 
             Set-FileDialogPath -Dialog $dialog -OutputPath $job.outputPath
         }
@@ -3361,13 +3701,8 @@ function Invoke-PrintSinkPdfPassthroughPrint {
         -PassThru
 
     try {
-        $dialog = Wait-ForAutomationElement `
-            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-            -Scope ([System.Windows.Automation.TreeScope]::Children) `
-            -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As')) `
-            -TimeoutSeconds 30 `
+        $dialog = Wait-ForSavePrintOutputDialog `
+            -TimeoutSeconds 60 `
             -Description 'the Save Print Output As dialog for PDF passthrough'
         Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
 
@@ -3468,13 +3803,8 @@ function Invoke-PrintSinkWinRtSourcePrint {
             -Name 'Print' `
             -TimeoutSeconds 30
 
-        $saveDialog = Wait-ForAutomationElement `
-            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-            -Scope ([System.Windows.Automation.TreeScope]::Children) `
-            -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As')) `
-            -TimeoutSeconds 30 `
+        $saveDialog = Wait-ForSavePrintOutputDialog `
+            -TimeoutSeconds 60 `
             -Description 'the Save Print Output As dialog for the WinRT source print'
         Set-FileDialogPath -Dialog $saveDialog -OutputPath $outputPath
 
@@ -3880,12 +4210,30 @@ function Invoke-PrintSinkManagementUi {
                 -Description "the $actionName management action" | Out-Null
         }
 
+        $queueRemoveRequestedUtc = [DateTimeOffset]::UtcNow
         Invoke-Button -Root $window -Name 'Remove queues' -TimeoutSeconds 30
+        $queuesRemovedDiagnostic = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Management UI queues removed' `
+            -StartedUtc $queueRemoveRequestedUtc `
+            -DetailContains @('Virtual printer queues removed:', '0 found.') `
+            -FailureMessages @('Management UI queue removal failed') `
+            -TimeoutSeconds 90
         $removedQueues = Wait-ForPrintSinkQueuesRemoved `
             -ExpectedQueues $ExpectedQueues `
             -Context 'after management UI remove'
 
+        $queueInstallRequestedUtc = [DateTimeOffset]::UtcNow
         Invoke-Button -Root $window -Name 'Install queues' -TimeoutSeconds 30
+        $queuesInstalledDiagnostic = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint '' `
+            -Message 'Management UI queues installed' `
+            -StartedUtc $queueInstallRequestedUtc `
+            -DetailContains @('Virtual printer queues installed:', '6 found.') `
+            -FailureMessages @('Management UI queue installation failed') `
+            -TimeoutSeconds 180
         $installedQueues = Wait-ForPrintSinkQueuesInstalled `
             -ExpectedQueues $ExpectedQueues `
             -Context 'after management UI install'
@@ -3907,7 +4255,6 @@ function Invoke-PrintSinkManagementUi {
             -Message 'Management UI capabilities refreshed' `
             -StartedUtc $capabilityRefreshRequestedUtc `
             -DetailContains @('Capabilities refreshed for PrintSink - PDF') `
-            -StartedSkewSeconds 0 `
             -FailureMessages @('Management UI capabilities refresh failed') `
             -TimeoutSeconds 180
         $extensionCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
@@ -3925,7 +4272,6 @@ function Invoke-PrintSinkManagementUi {
                 $expectedPdrResourceDetail,
                 'pdlPassthroughWithJobAttributes=enabled',
                 'pdrResources=') `
-            -StartedSkewSeconds 0 `
             -TimeoutSeconds 120
 
         Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 2
@@ -3971,7 +4317,9 @@ function Invoke-PrintSinkManagementUi {
             processId = $process.Id
             visibleActions = $expectedActions
             invokedActions = @('Remove queues', 'Install queues', 'Refresh queues', 'Refresh capabilities', 'Set default copies', 'Enable Job UI', 'Headless jobs')
+            queuesRemovedDiagnostic = $queuesRemovedDiagnostic
             removedQueues = $removedQueues
+            queuesInstalledDiagnostic = $queuesInstalledDiagnostic
             installedQueues = $installedQueues
             queuesRefreshed = $queuesRefreshed
             capabilityRefreshRequestedUtc = $capabilityRefreshRequestedUtc.ToString('O')
@@ -4126,50 +4474,17 @@ function Invoke-PrintSinkFailedImageWatermarkPrint {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
         Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
-        $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.FailedImageWatermark.$([Guid]::NewGuid()).ps1"
-        $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
-        $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
-        $printScript = @"
-Add-Type -AssemblyName System.Drawing
-`$document = [System.Drawing.Printing.PrintDocument]::new()
-`$document.DocumentName = 'PrintSink E2E Failed Image Watermark'
-`$document.PrinterSettings.PrinterName = 'PrintSink - PDF'
-`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
-`$document.add_PrintPage({
-    param(`$sender, `$eventArgs)
-    `$font = [System.Drawing.Font]::new('Consolas', 16)
-    try {
-        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
-        `$eventArgs.HasMorePages = `$false
-    }
-    finally {
-        `$font.Dispose()
-    }
-})
-`$document.Print()
-"@
-
-        Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-        $process = Start-PrintSinkPowerShellProcess `
-            -ScriptPath $scriptPath `
-            -StdOutPath $stdoutPath `
-            -StdErrPath $stderrPath
-        $printProcess = [ordered]@{
-            process = $process
-            scriptPath = $scriptPath
-            stdoutPath = $stdoutPath
-            stderrPath = $stderrPath
-        }
+        $printProcess = Start-PrintSinkWin32PrintProcess `
+            -PrinterName $printerName `
+            -DocumentName 'PrintSink E2E Failed Image Watermark' `
+            -Text 'foo'
+        $process = $printProcess.process
 
         try {
-            $dialog = Wait-ForAutomationElement `
-                -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-                -Scope ([System.Windows.Automation.TreeScope]::Children) `
-                -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                    [System.Windows.Automation.AutomationElement]::NameProperty,
-                    'Save Print Output As')) `
-                -TimeoutSeconds 30 `
-                -Description 'the Save Print Output As dialog for failed image watermark'
+            $dialog = Wait-ForSavePrintOutputDialog `
+                -TimeoutSeconds 60 `
+                -Description 'the Save Print Output As dialog for failed image watermark' `
+                -PrintProcess $printProcess
 
             Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
 
@@ -4214,9 +4529,9 @@ Add-Type -AssemblyName System.Drawing
             }
 
             Close-SavePrintOutputDialogs
-            Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
         }
     }
     finally {
@@ -4249,50 +4564,17 @@ function Invoke-PrintSinkJobUiWatermarkPrint {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
     Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
-    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.JobUI.$([Guid]::NewGuid()).ps1"
-    $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
-    $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
-    $printScript = @"
-Add-Type -AssemblyName System.Drawing
-`$document = [System.Drawing.Printing.PrintDocument]::new()
-`$document.DocumentName = 'PrintSink E2E Job UI Watermark'
-`$document.PrinterSettings.PrinterName = 'PrintSink - PDF'
-`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
-`$document.add_PrintPage({
-    param(`$sender, `$eventArgs)
-    `$font = [System.Drawing.Font]::new('Consolas', 16)
-    try {
-        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
-        `$eventArgs.HasMorePages = `$false
-    }
-    finally {
-        `$font.Dispose()
-    }
-})
-`$document.Print()
-"@
-
-    Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-PrintSinkPowerShellProcess `
-        -ScriptPath $scriptPath `
-        -StdOutPath $stdoutPath `
-        -StdErrPath $stderrPath
-    $printProcess = [ordered]@{
-        process = $process
-        scriptPath = $scriptPath
-        stdoutPath = $stdoutPath
-        stderrPath = $stderrPath
-    }
+    $printProcess = Start-PrintSinkWin32PrintProcess `
+        -PrinterName $printerName `
+        -DocumentName 'PrintSink E2E Job UI Watermark' `
+        -Text 'foo'
+    $process = $printProcess.process
 
     try {
-        $dialog = Wait-ForAutomationElement `
-            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-            -Scope ([System.Windows.Automation.TreeScope]::Children) `
-            -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As')) `
-            -TimeoutSeconds 30 `
-            -Description 'the Save Print Output As dialog for the Job UI watermark test'
+        $dialog = Wait-ForSavePrintOutputDialog `
+            -TimeoutSeconds 60 `
+            -Description 'the Save Print Output As dialog for the Job UI watermark test' `
+            -PrintProcess $printProcess
         Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
 
         $jobWindow = Wait-ForAutomationElement `
@@ -4371,9 +4653,9 @@ Add-Type -AssemblyName System.Drawing
 
         Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
-        Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
     }
 }
 
@@ -4391,50 +4673,17 @@ function Invoke-PrintSinkJobUiCancelPrint {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
     Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
 
-    $scriptPath = Join-Path $env:TEMP "PrintSink.E2E.JobUICancel.$([Guid]::NewGuid()).ps1"
-    $stdoutPath = [System.IO.Path]::ChangeExtension($scriptPath, '.out.log')
-    $stderrPath = [System.IO.Path]::ChangeExtension($scriptPath, '.err.log')
-    $printScript = @"
-Add-Type -AssemblyName System.Drawing
-`$document = [System.Drawing.Printing.PrintDocument]::new()
-`$document.DocumentName = 'PrintSink E2E Job UI Cancel'
-`$document.PrinterSettings.PrinterName = 'PrintSink - PDF'
-`$document.PrintController = [System.Drawing.Printing.StandardPrintController]::new()
-`$document.add_PrintPage({
-    param(`$sender, `$eventArgs)
-    `$font = [System.Drawing.Font]::new('Consolas', 16)
-    try {
-        `$eventArgs.Graphics.DrawString('foo', `$font, [System.Drawing.Brushes]::Black, 96, 96)
-        `$eventArgs.HasMorePages = `$false
-    }
-    finally {
-        `$font.Dispose()
-    }
-})
-`$document.Print()
-"@
-
-    Set-Content -LiteralPath $scriptPath -Value $printScript -Encoding UTF8
-    $process = Start-PrintSinkPowerShellProcess `
-        -ScriptPath $scriptPath `
-        -StdOutPath $stdoutPath `
-        -StdErrPath $stderrPath
-    $printProcess = [ordered]@{
-        process = $process
-        scriptPath = $scriptPath
-        stdoutPath = $stdoutPath
-        stderrPath = $stderrPath
-    }
+    $printProcess = Start-PrintSinkWin32PrintProcess `
+        -PrinterName $printerName `
+        -DocumentName 'PrintSink E2E Job UI Cancel' `
+        -Text 'foo'
+    $process = $printProcess.process
 
     try {
-        $dialog = Wait-ForAutomationElement `
-            -Root ([System.Windows.Automation.AutomationElement]::RootElement) `
-            -Scope ([System.Windows.Automation.TreeScope]::Children) `
-            -Condition ([System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                'Save Print Output As')) `
-            -TimeoutSeconds 30 `
-            -Description 'the Save Print Output As dialog for the Job UI cancel test'
+        $dialog = Wait-ForSavePrintOutputDialog `
+            -TimeoutSeconds 60 `
+            -Description 'the Save Print Output As dialog for the Job UI cancel test' `
+            -PrintProcess $printProcess
         Set-FileDialogPath -Dialog $dialog -OutputPath $outputPath
 
         $jobWindow = Wait-ForAutomationElement `
@@ -4510,9 +4759,9 @@ Add-Type -AssemblyName System.Drawing
 
         Close-SavePrintOutputDialogs
         Get-Process | Where-Object { $_.ProcessName -like 'PrintSink*' } | Stop-Process -Force
-        Remove-Item -LiteralPath $scriptPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $stdoutPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $stderrPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
     }
 }
 

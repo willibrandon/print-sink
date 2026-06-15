@@ -17,10 +17,12 @@ internal static partial class VirtualPrinterInstaller
     private const int ErrorInvalidPrinterName = 1801;
     private const int ErrorAccessDenied = 5;
     private const string EntryPoint = "PrintSink.Tasks.VirtualPrinterBackgroundTask";
+    private const int InstallationMaximumAttempts = 6;
     private const uint PrinterControlPurge = 3;
     private const uint PrinterInfoLevel = 4;
     private const PrinterEnumerationFlags EnumerationScope =
         PrinterEnumerationFlags.Local | PrinterEnumerationFlags.Connections;
+    private static readonly TimeSpan InstallationRetryDelay = TimeSpan.FromSeconds(2);
 
     internal static async Task InstallAllAsync(CancellationToken cancellationToken)
     {
@@ -33,19 +35,7 @@ internal static partial class VirtualPrinterInstaller
         foreach (VirtualEndpoint endpoint in EndpointCatalog.All)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            VirtualPrinterInstallationParameters parameters = CreateParameters(endpoint);
-            VirtualPrinterInstallationResult result = await VirtualPrinterManager
-                .InstallVirtualPrinterAsync(parameters)
-                .AsTask(cancellationToken)
-                .ConfigureAwait(false);
-
-            if (result.Status is not VirtualPrinterInstallationStatus.InstallationSucceeded
-                and not VirtualPrinterInstallationStatus.PrinterAlreadyInstalled)
-            {
-                string error = result.ExtendedError?.Message ?? "No extended error was reported.";
-                throw new InvalidOperationException(
-                    $"Failed to install virtual printer '{endpoint.QueueName}': {result.Status}. {error}");
-            }
+            await InstallEndpointAsync(endpoint, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -269,6 +259,44 @@ internal static partial class VirtualPrinterInstaller
         }
 
         return parameters;
+    }
+
+    private static async Task InstallEndpointAsync(VirtualEndpoint endpoint, CancellationToken cancellationToken)
+    {
+        VirtualPrinterInstallationParameters parameters = CreateParameters(endpoint);
+        for (int attempt = 1; ; attempt++)
+        {
+            VirtualPrinterInstallationResult result = await VirtualPrinterManager
+                .InstallVirtualPrinterAsync(parameters)
+                .AsTask(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (IsSuccessfulInstallation(result.Status))
+            {
+                return;
+            }
+
+            if (attempt < InstallationMaximumAttempts && IsRetriableInstallationFailure(result.Status))
+            {
+                await Task.Delay(InstallationRetryDelay, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            string error = result.ExtendedError?.Message ?? "No extended error was reported.";
+            throw new InvalidOperationException(
+                $"Failed to install virtual printer '{endpoint.QueueName}' after {attempt} attempt(s): {result.Status}. {error}");
+        }
+    }
+
+    private static bool IsSuccessfulInstallation(VirtualPrinterInstallationStatus status)
+    {
+        return status is VirtualPrinterInstallationStatus.InstallationSucceeded
+            or VirtualPrinterInstallationStatus.PrinterAlreadyInstalled;
+    }
+
+    private static bool IsRetriableInstallationFailure(VirtualPrinterInstallationStatus status)
+    {
+        return status is VirtualPrinterInstallationStatus.PrinterInstallationFailed;
     }
 
     private static VirtualPrinterSupportedFormat CreateSupportedInputFormat(PdlFormat format)

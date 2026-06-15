@@ -121,6 +121,9 @@ if ($Cleanup) {
     Clear-PrintSinkState -State $state
     $stateAfterCleanup = Get-PrintSinkState
     Write-PrintSinkState -Label 'PrintSink state after cleanup attempt.' -State $stateAfterCleanup
+    if (Test-PrintSinkStateClean -State $stateAfterCleanup) {
+        return
+    }
 }
 
 throw 'PrintSink package, queue, or process state was left behind.'

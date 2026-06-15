@@ -490,15 +490,28 @@ internal sealed class ManagementScreen : Component
                 .InstallAllAsync(CancellationToken.None)
                 .ConfigureAwait(false);
             IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+            string status = $"Virtual printer queues installed: {CountInstalled(snapshots)} found.";
+            await AppendDiagnosticAsync(
+                    "Management UI queues installed",
+                    null,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
 
             UiDispatch.Post(() =>
             {
                 setInstalledPrinters(snapshots);
-                setStatusText($"Virtual printer queues installed: {CountInstalled(snapshots)} found.");
+                setStatusText(status);
             });
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
+            await TryAppendDiagnosticAsync(
+                    "Management UI queue installation failed",
+                    null,
+                    ex.ToString(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             UiDispatch.Post(() => setStatusText($"Queue installation failed: {ex.Message}"));
         }
     }
@@ -514,15 +527,28 @@ internal sealed class ManagementScreen : Component
                 .RemoveAllAsync(CancellationToken.None)
                 .ConfigureAwait(false);
             IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> snapshots = InstalledVirtualPrinterReader.ReadAll();
+            string status = $"Virtual printer queues removed: {CountInstalled(snapshots)} found.";
+            await AppendDiagnosticAsync(
+                    "Management UI queues removed",
+                    null,
+                    status,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
 
             UiDispatch.Post(() =>
             {
                 setInstalledPrinters(snapshots);
-                setStatusText($"Virtual printer queues removed: {CountInstalled(snapshots)} found.");
+                setStatusText(status);
             });
         }
         catch (Exception ex) when (AppExceptionPolicy.IsRecoverable(ex))
         {
+            await TryAppendDiagnosticAsync(
+                    "Management UI queue removal failed",
+                    null,
+                    ex.ToString(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             UiDispatch.Post(() => setStatusText($"Queue removal failed: {ex.Message}"));
         }
     }
@@ -535,7 +561,8 @@ internal sealed class ManagementScreen : Component
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(selectedKind);
         try
         {
-            string status = InstalledVirtualPrinterReader.RefreshCapabilities(selectedKind);
+            string status = await RefreshCapabilitiesThroughHeadlessCommandAsync(selectedKind, CancellationToken.None)
+                .ConfigureAwait(false);
             await AppendDiagnosticAsync(
                     "Management UI capabilities refreshed",
                     endpoint.QueueName,
@@ -560,6 +587,62 @@ internal sealed class ManagementScreen : Component
                 .ConfigureAwait(false);
             UiDispatch.Post(() => setStatusText($"Capability refresh failed: {ex.Message}"));
         }
+    }
+
+    private static async Task<string> RefreshCapabilitiesThroughHeadlessCommandAsync(
+        EndpointKind endpointKind,
+        CancellationToken cancellationToken)
+    {
+        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
+        string executablePath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("The current PrintSink executable path is unavailable.");
+        string diagnosticLogPath = GetHeadlessDiagnosticLogPath();
+        File.Delete(diagnosticLogPath);
+
+        using System.Diagnostics.Process process = new()
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo(executablePath)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+            },
+        };
+        process.StartInfo.ArgumentList.Add("--refresh-capabilities");
+        process.StartInfo.ArgumentList.Add("--endpoint");
+        process.StartInfo.ArgumentList.Add(endpointKind.ToString());
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Unable to start the packaged PrintSink command process.");
+        }
+
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> standardError = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        string output = await standardOutput.ConfigureAwait(false);
+        string error = await standardError.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            string diagnosticLog = ReadHeadlessDiagnosticLog(diagnosticLogPath);
+            throw new InvalidOperationException(
+                $"Packaged capability refresh failed with exit code {process.ExitCode}. stdout={output}; stderr={error}; diagnosticLog={diagnosticLog}");
+        }
+
+        return $"Capabilities refreshed for {endpoint.QueueName}.";
+    }
+
+    private static string GetHeadlessDiagnosticLogPath()
+    {
+        return Path.Combine(Path.GetTempPath(), "PrintSink.App.headless.log");
+    }
+
+    private static string ReadHeadlessDiagnosticLog(string diagnosticLogPath)
+    {
+        return File.Exists(diagnosticLogPath)
+            ? File.ReadAllText(diagnosticLogPath)
+            : "<none>";
     }
 
     private static async Task LoadJobUiOptionsAsync(
