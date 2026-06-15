@@ -1144,6 +1144,145 @@ function Export-PrintSinkSystemEventLogs {
     }
 }
 
+function Enable-PrintSinkSystemEventLogs {
+    param(
+        [string] $OutputDirectory
+    )
+
+    $logs = @(
+        'Microsoft-Windows-AppModel-Runtime/Admin',
+        'Microsoft-Windows-AppXDeploymentServer/Operational',
+        'Microsoft-Windows-BackgroundTaskInfrastructure/Operational',
+        'Microsoft-Windows-PrintService/Admin',
+        'Microsoft-Windows-PrintService/Operational'
+    )
+
+    $results = foreach ($logName in $logs) {
+        $output = @(& wevtutil.exe sl $logName /e:true 2>&1)
+        [ordered]@{
+            logName = $logName
+            exitCode = $LASTEXITCODE
+            output = $output -join "`n"
+        }
+    }
+
+    $results |
+        ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath (Join-Path $OutputDirectory 'eventlog-enable.json') -Encoding UTF8
+}
+
+function Export-PrintSinkRunnerState {
+    param(
+        [string] $OutputDirectory,
+        [string] $Context,
+        [string] $PackageName,
+        [string] $PackageFamilyName
+    )
+
+    $safeContext = $Context -replace '[^A-Za-z0-9_.-]+', '-'
+    $path = Join-Path $OutputDirectory "runner-state-$safeContext.json"
+    try {
+        $services = @(
+            Get-Service -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Name -like '*Print*' `
+                        -or $_.DisplayName -like '*Print*' `
+                        -or $_.Name -like '*Spool*' `
+                        -or $_.DisplayName -like '*Spool*' `
+                        -or $_.Name -like '*AppX*' `
+                        -or $_.DisplayName -like '*AppX*' `
+                        -or $_.Name -like '*Background*' `
+                        -or $_.DisplayName -like '*Background*'
+                } |
+                Sort-Object Name |
+                Select-Object Name, DisplayName, Status, StartType
+        )
+
+        $logs = @(
+            'Microsoft-Windows-AppModel-Runtime/Admin',
+            'Microsoft-Windows-AppXDeploymentServer/Operational',
+            'Microsoft-Windows-BackgroundTaskInfrastructure/Operational',
+            'Microsoft-Windows-PrintService/Admin',
+            'Microsoft-Windows-PrintService/Operational'
+        ) |
+            ForEach-Object {
+                $logName = $_
+                try {
+                    $log = Get-WinEvent -ListLog $logName -ErrorAction Stop
+                    [ordered]@{
+                        logName = $logName
+                        isEnabled = $log.IsEnabled
+                        recordCount = $log.RecordCount
+                        logMode = $log.LogMode.ToString()
+                    }
+                }
+                catch {
+                    [ordered]@{
+                        logName = $logName
+                        error = $_.Exception.Message
+                    }
+                }
+            }
+
+        $printers = @(
+            Get-Printer -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'PrintSink*' } |
+                Sort-Object Name |
+                Select-Object Name, DriverName, PortName, PrinterStatus, Shared, Type
+        )
+
+        $cimPrinters = @(
+            Get-CimInstance -ClassName Win32_Printer -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'PrintSink*' } |
+                Sort-Object Name |
+                Select-Object Name, DriverName, PortName, WorkOffline, PrinterStatus, DetectedErrorState
+        )
+
+        $package = Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue |
+            Select-Object Name, PackageFullName, PackageFamilyName, Version, Architecture, InstallLocation
+
+        $alias = Get-Command printsink-app.exe -ErrorAction SilentlyContinue |
+            Select-Object Source, CommandType
+
+        [ordered]@{
+            context = $Context
+            timestamp = [DateTimeOffset]::UtcNow.ToString('O')
+            environment = [ordered]@{
+                osVersion = [Environment]::OSVersion.Version.ToString()
+                osDescription = [Runtime.InteropServices.RuntimeInformation]::OSDescription
+                osArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+                processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+                is64BitOperatingSystem = [Environment]::Is64BitOperatingSystem
+                is64BitProcess = [Environment]::Is64BitProcess
+                userName = [Environment]::UserName
+                userDomainName = [Environment]::UserDomainName
+                runnerOs = $env:RUNNER_OS
+                runnerArch = $env:RUNNER_ARCH
+                imageOs = $env:ImageOS
+                imageVersion = $env:ImageVersion
+            }
+            packageName = $PackageName
+            packageFamilyName = $PackageFamilyName
+            package = $package
+            appExecutionAlias = $alias
+            services = $services
+            eventLogs = $logs
+            printers = $printers
+            cimPrinters = $cimPrinters
+        } |
+            ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath $path -Encoding UTF8
+    }
+    catch {
+        [ordered]@{
+            context = $Context
+            error = $_.Exception.ToString()
+        } |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath $path -Encoding UTF8
+    }
+}
+
 function Wait-ForPrintSinkSpoolerIdle {
     param(
         [string[]] $ExpectedQueues,
@@ -4441,7 +4580,8 @@ function Invoke-PrintSinkManagementUi {
     param(
         [string[]] $ExpectedQueues,
         [string] $PackageFamilyName,
-        [DateTimeOffset] $StartedUtc
+        [DateTimeOffset] $StartedUtc,
+        [string] $OutputDirectory
     )
 
     Add-Type -AssemblyName UIAutomationClient
@@ -4579,6 +4719,11 @@ function Invoke-PrintSinkManagementUi {
             -TimeoutSeconds 60
 
         $capabilityRefreshRequestedUtc = [DateTimeOffset]::UtcNow
+        Export-PrintSinkRunnerState `
+            -OutputDirectory $OutputDirectory `
+            -Context 'before-management-capability-refresh' `
+            -PackageName 'PrintSink' `
+            -PackageFamilyName $PackageFamilyName
         Invoke-Button -Root $window -Name 'Refresh capabilities' -TimeoutSeconds 30
         $managementCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
@@ -7047,6 +7192,8 @@ function Wait-ForPrintSinkJobCanceled {
     throw "Timed out waiting for PrintSink job cancellation diagnostic for $Endpoint."
 }
 
+Enable-PrintSinkSystemEventLogs -OutputDirectory $OutputDirectory
+
 if (-not $SkipPackageInstall) {
     if ([string]::IsNullOrWhiteSpace($PackagePath)) {
         throw 'Pass -PackagePath or use -SkipPackageInstall when the package is already installed.'
@@ -7073,6 +7220,11 @@ $package = Get-InstalledPackage -Name $PackageName
 $packageShape = Assert-InstalledPackageShape -Package $package -ExpectedVirtualPrinters $expectedVirtualPrinters
 $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\Settings\diagnostic-events.json"
 Remove-Item -LiteralPath $diagnosticPath -ErrorAction SilentlyContinue
+Export-PrintSinkRunnerState `
+    -OutputDirectory $OutputDirectory `
+    -Context 'after-package-install' `
+    -PackageName $PackageName `
+    -PackageFamilyName $package.PackageFamilyName
 
 $alias = Get-Command printsink-app.exe -ErrorAction SilentlyContinue
 if ($null -eq $alias) {
@@ -7106,17 +7258,11 @@ try {
         -StartedUtc $headlessProvisionStartedUtc `
         -Context 'after headless provisioning'
 
-    Write-E2EProgress 'Verifying management UI queue actions'
-    $managementUiResult = Invoke-PrintSinkManagementUi `
-        -ExpectedQueues $expectedQueues `
-        -PackageFamilyName $package.PackageFamilyName `
-        -StartedUtc $e2eStartedUtc
-    $queueSnapshots.Add([ordered]@{
-        context = 'after management UI check'
-        queues = Assert-PrintSinkQueuesInstalled `
-            -ExpectedQueues $expectedQueues `
-            -Context 'after management UI check'
-    })
+    Export-PrintSinkRunnerState `
+        -OutputDirectory $OutputDirectory `
+        -Context 'after-headless-provisioning' `
+        -PackageName $PackageName `
+        -PackageFamilyName $package.PackageFamilyName
 
     Write-E2EProgress 'Verifying print support extension capabilities'
     $extensionCapabilitiesResult = Invoke-PrintSinkExtensionCapabilities `
@@ -7127,6 +7273,19 @@ try {
         queues = Assert-PrintSinkQueuesInstalled `
             -ExpectedQueues $expectedQueues `
             -Context 'after extension capability refresh'
+    })
+
+    Write-E2EProgress 'Verifying management UI queue actions'
+    $managementUiResult = Invoke-PrintSinkManagementUi `
+        -ExpectedQueues $expectedQueues `
+        -PackageFamilyName $package.PackageFamilyName `
+        -StartedUtc $e2eStartedUtc `
+        -OutputDirectory $OutputDirectory
+    $queueSnapshots.Add([ordered]@{
+        context = 'after management UI check'
+        queues = Assert-PrintSinkQueuesInstalled `
+            -ExpectedQueues $expectedQueues `
+            -Context 'after management UI check'
     })
 
     Write-E2EProgress 'Verifying user default print ticket activation'
