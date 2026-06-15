@@ -109,6 +109,9 @@
         <AppxPackagePayload Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd">
             <TargetPath>PrintSink.Tasks.winmd</TargetPath>
         </AppxPackagePayload>
+        <AppxPackagePayload Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.deps.json">
+            <TargetPath>PrintSink.Tasks.deps.json</TargetPath>
+        </AppxPackagePayload>
         <AppxPackagePayload Include="..\PrintSink.Xps\$(PrintSinkXpsPlatform)\$(Configuration)\PrintSink.Xps.dll">
             <TargetPath>PrintSink.Xps.dll</TargetPath>
         </AppxPackagePayload>
@@ -126,6 +129,7 @@
     <Target Name="IncludePrintSinkTasksActivationAssets" AfterTargets="Build">
         <ItemGroup>
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.dll" />
+            <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.deps.json" />
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\PrintSink.Tasks.winmd" />
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.dll" />
             <_PrintSinkTasksActivationAsset Include="..\PrintSink.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\WinRT.Host.dll.mui" />
