@@ -25,14 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Run capability refresh as a separate normal-admin user
+      - name: Run capability refresh as a normal user via interactive logon
         shell: pwsh
-        run: .\.github\probe-newuser.ps1 -OutDir probe-out
+        run: .\.github\probe-cplogon.ps1 -OutDir probe-out
 
-      - name: Upload newuser report
+      - name: Upload cplogon report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: arm64-newuser-report
-          path: probe-out/newuser-report.json
+          name: arm64-cplogon-report
+          path: probe-out/cplogon-report.json
           if-no-files-found: error
