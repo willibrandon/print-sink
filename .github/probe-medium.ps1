@@ -12,31 +12,38 @@ $ErrorActionPreference = 'Continue'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $report = [ordered]@{}
 
-Add-Type -Namespace PMed -Name Native -MemberDefinition @'
+Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-[StructLayout(LayoutKind.Sequential)] public struct SI { public uint cb; public string r1; public string desk; public string title; public uint x,y,xs,ys,xc,yc,fill,flags; public ushort show,r2; public IntPtr r3,i,o,e; }
-[StructLayout(LayoutKind.Sequential)] public struct PI { public IntPtr hProcess,hThread; public uint pid,tid; }
-[StructLayout(LayoutKind.Sequential)] public struct SIDATTR { public IntPtr Sid; public uint Attributes; }
-[StructLayout(LayoutKind.Sequential)] public struct TML { public SIDATTR Label; }
-[DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
-[DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
-[DllImport("advapi32.dll", SetLastError=true)] public static extern bool DuplicateTokenEx(IntPtr t, uint a, IntPtr sa, int imp, int type, out IntPtr nt);
-[DllImport("advapi32.dll", SetLastError=true)] public static extern bool SetTokenInformation(IntPtr t, int cls, ref TML info, uint len);
-[DllImport("advapi32.dll", SetLastError=true)] public static extern bool ConvertStringSidToSid(string s, out IntPtr sid);
-[DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessWithTokenW(IntPtr t, uint lf, string app, string cmd, uint cf, IntPtr env, string dir, ref SI si, out PI pi);
-public static int StartMedium(string app, string cmd, string dir) {
-    IntPtr tok, dup, sid;
-    if(!OpenProcessToken(GetCurrentProcess(), 0x0002|0x0008|0x0080|0x0001, out tok)) throw new Exception("OpenProcessToken "+Marshal.GetLastWin32Error());
-    if(!DuplicateTokenEx(tok, 0x0002|0x0008|0x0080|0x0001, IntPtr.Zero, 2, 1, out dup)) throw new Exception("DuplicateTokenEx "+Marshal.GetLastWin32Error());
-    if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
-    TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20; // SE_GROUP_INTEGRITY
-    if(!SetTokenInformation(dup, 25, ref tml, (uint)(Marshal.SizeOf(typeof(TML))+8))) throw new Exception("SetTokenInformation "+Marshal.GetLastWin32Error());
-    SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
-    if(!CreateProcessWithTokenW(dup, 0, app, cmd, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessWithTokenW "+Marshal.GetLastWin32Error());
-    return (int)pi.pid;
+namespace PMed {
+  [StructLayout(LayoutKind.Sequential)] public struct SI { public uint cb; public string r1; public string desk; public string title; public uint x,y,xs,ys,xc,yc,fill,flags; public ushort show,r2; public IntPtr r3,i,o,e; }
+  [StructLayout(LayoutKind.Sequential)] public struct PI { public IntPtr hProcess,hThread; public uint pid,tid; }
+  [StructLayout(LayoutKind.Sequential)] public struct SIDATTR { public IntPtr Sid; public uint Attributes; }
+  [StructLayout(LayoutKind.Sequential)] public struct TML { public SIDATTR Label; }
+  public static class Native {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool DuplicateTokenEx(IntPtr t, uint a, IntPtr sa, int imp, int type, out IntPtr nt);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SetTokenInformation(IntPtr t, int cls, ref TML info, uint len);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool ConvertStringSidToSid(string s, out IntPtr sid);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern uint GetLengthSid(IntPtr sid);
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessWithTokenW(IntPtr t, uint lf, string app, string cmd, uint cf, IntPtr env, string dir, ref SI si, out PI pi);
+    public static int StartMedium(string app, string cmd, string dir) {
+      IntPtr tok, dup, sid;
+      if(!OpenProcessToken(GetCurrentProcess(), 0x0002|0x0008|0x0080|0x0001, out tok)) throw new Exception("OpenProcessToken "+Marshal.GetLastWin32Error());
+      if(!DuplicateTokenEx(tok, 0x0002|0x0008|0x0080|0x0001, IntPtr.Zero, 2, 1, out dup)) throw new Exception("DuplicateTokenEx "+Marshal.GetLastWin32Error());
+      if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
+      TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20; // SE_GROUP_INTEGRITY
+      uint len = (uint)(Marshal.SizeOf(typeof(TML))) + GetLengthSid(sid);
+      if(!SetTokenInformation(dup, 25, ref tml, len)) throw new Exception("SetTokenInformation "+Marshal.GetLastWin32Error());
+      SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
+      if(!CreateProcessWithTokenW(dup, 0, app, cmd, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessWithTokenW "+Marshal.GetLastWin32Error());
+      return (int)pi.pid;
+    }
+  }
 }
 '@
+$ErrorActionPreference = 'Continue'
 
 # --- Install prebuilt ARM64 package ---
 $pkgDir = Join-Path $OutDir 'pkg'; New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
