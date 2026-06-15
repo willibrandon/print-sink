@@ -107,3 +107,25 @@ jobs:
           name: arm64-activation-report
           path: probe-out/activation-report.json
           if-no-files-found: error
+
+  integrity:
+    name: ARM64 elevated-vs-medium integrity comparison
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compare capability refresh at high vs medium integrity
+        shell: pwsh
+        run: .\.github\probe-integrity.ps1 -OutDir probe-out
+
+      - name: Upload integrity report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-integrity-report
+          path: probe-out/integrity-report.json
+          if-no-files-found: error
