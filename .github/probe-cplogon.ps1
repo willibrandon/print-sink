@@ -24,7 +24,7 @@ namespace PLogon {
     [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     public static extern bool CreateProcessWithLogonW(string user, string domain, string password, uint logonFlags, string app, string cmd, uint creationFlags, IntPtr env, string dir, ref SI si, out PI pi);
     public static int Start(string user, string domain, string password, string app, string cmd, string dir) {
-      SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
+      SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); PI pi; // lpDesktop=NULL: new logon gets its own (headless) window station
       // LOGON_WITH_PROFILE = 1 ; CREATE_UNICODE_ENVIRONMENT = 0x400
       if(!CreateProcessWithLogonW(user, domain, password, 1, app, cmd, 0x400, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessWithLogonW "+Marshal.GetLastWin32Error());
       return (int)pi.pid;
