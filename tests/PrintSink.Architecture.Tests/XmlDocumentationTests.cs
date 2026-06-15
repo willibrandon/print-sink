@@ -11,10 +11,15 @@ namespace PrintSink.Architecture.Tests;
 internal sealed class XmlDocumentationTests
 {
     /// <summary>
+    /// Gets or sets the current test context.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
     /// Verifies public authored API is documented, including public members on internal types.
     /// </summary>
     [TestMethod]
-    public void PublicAuthoredApiHasXmlDocumentation()
+    public async Task PublicAuthoredApiHasXmlDocumentation()
     {
         string repositoryRoot = SourceFileDiscovery.FindRepositoryRoot();
         string[] sourceFiles = SourceFileDiscovery.EnumerateRepositorySourceFiles(repositoryRoot);
@@ -22,8 +27,14 @@ internal sealed class XmlDocumentationTests
         List<string> failures = [];
         foreach (string sourceFile in sourceFiles)
         {
-            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(File.ReadAllText(sourceFile), path: sourceFile);
-            CompilationUnitSyntax root = syntaxTree.GetCompilationUnitRoot();
+            string sourceText = await File
+                .ReadAllTextAsync(sourceFile, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(
+                sourceText,
+                path: sourceFile,
+                cancellationToken: TestContext.CancellationToken);
+            CompilationUnitSyntax root = syntaxTree.GetCompilationUnitRoot(TestContext.CancellationToken);
 
             foreach (TypeDeclarationSyntax typeDeclaration in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
             {

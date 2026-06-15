@@ -21,9 +21,14 @@ app.Use(async (context, next) =>
 });
 
 app.MapGet("/", () => Results.Text("PrintSink E2E IPP printer"));
-app.MapGet("/{**path}", () => Results.Text("PrintSink E2E IPP printer"));
-app.MapPost("/{**path}", async context =>
+app.MapGet("/{**path}", (string path) =>
 {
+    _ = path;
+    return Results.Text("PrintSink E2E IPP printer");
+});
+app.MapPost("/{**path}", async (HttpContext context, string path) =>
+{
+    _ = path;
     context.Response.ContentType = "application/ipp";
     if (options.ResponseDelay > TimeSpan.Zero)
     {

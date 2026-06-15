@@ -170,7 +170,7 @@ internal sealed class ManagementScreen : Component
                 TextBlock("Endpoint")
                     .ApplyStyle("SubtitleTextBlockStyle")
                     .Bold(),
-                DetailGrid(detailRows.ToArray()),
+                DetailGrid([.. detailRows]),
                 Pipeline()));
     }
 

@@ -279,7 +279,7 @@ internal static partial class DocumentAssertions
             throw new InvalidDataException($"XPS package has invalid package relationships: {path}");
         }
 
-        XElement? fixedRepresentation = packageRelationships
+        XElement fixedRepresentation = packageRelationships
             .Root
             .Elements()
             .FirstOrDefault(static element =>
@@ -288,11 +288,8 @@ internal static partial class DocumentAssertions
                 && !string.Equals(
                     element.Attribute("TargetMode")?.Value,
                     "External",
-                    StringComparison.OrdinalIgnoreCase));
-        if (fixedRepresentation is null)
-        {
-            throw new InvalidDataException($"XPS package is missing a fixed representation relationship: {path}");
-        }
+                    StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidDataException($"XPS package is missing a fixed representation relationship: {path}");
 
         string? sequenceTarget = (string?)fixedRepresentation.Attribute("Target");
         if (string.IsNullOrWhiteSpace(sequenceTarget))

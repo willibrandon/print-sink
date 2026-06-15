@@ -10,7 +10,7 @@ namespace PrintSink.Tasks;
 /// <summary>
 /// Adapts a virtual-printer workflow activation to the core job contract.
 /// </summary>
-internal sealed class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
+internal sealed partial class WinRtVirtualPrinterJob : IVirtualPrinterJob, IDisposable
 {
     private static readonly TimeSpan CompleteJobTimeout = TimeSpan.FromSeconds(10);
 

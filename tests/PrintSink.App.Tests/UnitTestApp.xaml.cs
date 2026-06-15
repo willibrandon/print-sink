@@ -6,7 +6,7 @@ namespace PrintSink.App.Tests;
 /// <summary>
 /// Provides the packaged WinUI test application host.
 /// </summary>
-internal sealed class UnitTestApp : Application
+internal sealed partial class UnitTestApp : Application
 {
     private Window? window;
 
