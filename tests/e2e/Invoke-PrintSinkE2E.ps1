@@ -1027,6 +1027,105 @@ function Clear-PrintSinkQueueJobs {
     }
 }
 
+function Get-PrintSinkQueueJobs {
+    param(
+        [string[]] $ExpectedQueues
+    )
+
+    return @($ExpectedQueues | ForEach-Object {
+        $queue = $_
+        Get-PrintJob -PrinterName $queue -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                [ordered]@{
+                    queue = $queue
+                    id = $_.ID
+                    name = $_.Name
+                    jobStatus = $_.JobStatus
+                }
+            }
+    })
+}
+
+function Get-PrintSinkSpoolerErrorEvents {
+    param(
+        [DateTimeOffset] $StartedUtc
+    )
+
+    try {
+        return @(
+            Get-WinEvent `
+                -FilterHashtable @{
+                    LogName = 'Microsoft-Windows-PrintService/Operational'
+                    StartTime = $StartedUtc.LocalDateTime
+                    Level = 2
+                } `
+                -ErrorAction SilentlyContinue |
+                Where-Object {
+                    [string]$_.Message -like '*PrintSink*' `
+                        -or [string]$_.Message -like '*spool\PRINTERS*' `
+                        -or [string]$_.Message -like '*spool\V4Dirs*'
+                }
+        )
+    }
+    catch {
+        return @()
+    }
+}
+
+function Wait-ForPrintSinkSpoolerIdle {
+    param(
+        [string[]] $ExpectedQueues,
+        [DateTimeOffset] $StartedUtc,
+        [string] $Context,
+        [int] $QuietSeconds = 12,
+        [int] $TimeoutSeconds = 120
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastBusyUtc = $StartedUtc.UtcDateTime
+    $lastJobs = @()
+    $lastError = $null
+    do {
+        $lastJobs = @(Get-PrintSinkQueueJobs -ExpectedQueues $ExpectedQueues)
+        if ($lastJobs.Count -gt 0) {
+            $lastBusyUtc = [DateTime]::UtcNow
+        }
+
+        $errorEvents = @(Get-PrintSinkSpoolerErrorEvents -StartedUtc $StartedUtc)
+        if ($errorEvents.Count -gt 0) {
+            $lastError = $errorEvents |
+                Sort-Object TimeCreated |
+                Select-Object -Last 1
+            $eventUtc = $lastError.TimeCreated.ToUniversalTime()
+            if ($eventUtc -gt $lastBusyUtc) {
+                $lastBusyUtc = $eventUtc
+            }
+        }
+
+        if ((([DateTime]::UtcNow) - $lastBusyUtc).TotalSeconds -ge $QuietSeconds) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+    while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    $jobSummary = if ($lastJobs.Count -eq 0) {
+        '<none>'
+    }
+    else {
+        (@($lastJobs | ForEach-Object { "$($_.queue)/$($_.id)/$($_.jobStatus)" })) -join '; '
+    }
+    $errorSummary = if ($null -eq $lastError) {
+        '<none>'
+    }
+    else {
+        "$($lastError.TimeCreated.ToString('O')) [$($lastError.Id)] $($lastError.Message)"
+    }
+
+    throw "Timed out waiting for PrintSink spooler idle ${Context}. Jobs: $jobSummary. Last PrintService error: $errorSummary"
+}
+
 function Get-PrintSinkQueueSnapshot {
     param(
         [string[]] $ExpectedQueues
@@ -1161,6 +1260,7 @@ function Invoke-PrintSinkCliQueueLifecycle {
         -ExpectedQueues $ExpectedQueues `
         -ExpectedInstalled $true
 
+    $cliRemovalStartedUtc = [DateTimeOffset]::UtcNow
     $removeOutput = Invoke-PrintSinkCliCommand `
         -Arguments @('queues', 'remove') `
         -Description 'CLI queue removal'
@@ -1172,6 +1272,10 @@ function Invoke-PrintSinkCliQueueLifecycle {
         -ExpectedQueues $ExpectedQueues `
         -ExpectedInstalled $false `
         -TimeoutSeconds 90
+    Wait-ForPrintSinkSpoolerIdle `
+        -ExpectedQueues $ExpectedQueues `
+        -StartedUtc $cliRemovalStartedUtc `
+        -Context 'after CLI queue removal'
 
     return [ordered]@{
         install = $installOutput
@@ -1381,14 +1485,55 @@ function Get-NativeDialogControlHandle {
         [int[]] $ControlIds
     )
 
+    $handles = [System.Collections.Generic.List[IntPtr]]::new()
     foreach ($childHandle in Get-NativeChildWindowHandles -ParentHandle $DialogHandle) {
         $controlId = [PrintSinkE2E.DialogNativeMethods]::GetDlgCtrlID($childHandle)
         if ($ControlIds -contains $controlId) {
-            return $childHandle
+            $handles.Add($childHandle)
         }
     }
 
+    foreach ($handle in $handles) {
+        if ((Get-NativeClassName -Handle $handle) -eq 'Edit') {
+            return $handle
+        }
+    }
+
+    foreach ($handle in $handles) {
+        foreach ($childHandle in Get-NativeChildWindowHandles -ParentHandle $handle) {
+            if ((Get-NativeClassName -Handle $childHandle) -eq 'Edit') {
+                return $childHandle
+            }
+        }
+    }
+
+    if ($handles.Count -gt 0) {
+        return $handles[0]
+    }
+
     return [IntPtr]::Zero
+}
+
+function Get-NativeDialogTextTargetHandles {
+    param(
+        [IntPtr] $DialogHandle,
+        [int[]] $ControlIds
+    )
+
+    $targets = [System.Collections.Generic.List[IntPtr]]::new()
+    foreach ($childHandle in Get-NativeChildWindowHandles -ParentHandle $DialogHandle) {
+        $controlId = [PrintSinkE2E.DialogNativeMethods]::GetDlgCtrlID($childHandle)
+        if ($ControlIds -contains $controlId) {
+            $targets.Add($childHandle)
+            foreach ($descendantHandle in Get-NativeChildWindowHandles -ParentHandle $childHandle) {
+                if ((Get-NativeClassName -Handle $descendantHandle) -eq 'Edit') {
+                    $targets.Add($descendantHandle)
+                }
+            }
+        }
+    }
+
+    return @($targets | Select-Object -Unique)
 }
 
 function Test-NativeSavePrintOutputDialog {
@@ -1601,6 +1746,17 @@ public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, Sys
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
 public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, string lParam);
 
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, System.IntPtr lParam);
+
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+public static extern System.IntPtr SetFocus(System.IntPtr hWnd);
+
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool SetForegroundWindow(System.IntPtr hWnd);
+
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 public static extern int GetWindowText(System.IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
@@ -1739,9 +1895,12 @@ function Invoke-DialogButton {
     $buttonHandle = [IntPtr]$Element.Current.NativeWindowHandle
 
     if ($dialogHandle -ne [IntPtr]::Zero -and $buttonHandle -ne [IntPtr]::Zero) {
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0111, [IntPtr]1, $buttonHandle) | Out-Null
+        [PrintSinkE2E.DialogNativeMethods]::PostMessage($dialogHandle, 0x0111, [IntPtr]1, $buttonHandle) | Out-Null
         Start-Sleep -Milliseconds 250
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+        if ([PrintSinkE2E.DialogNativeMethods]::IsWindow($dialogHandle)) {
+            [PrintSinkE2E.DialogNativeMethods]::PostMessage($buttonHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        }
+
         return
     }
 
@@ -1759,7 +1918,7 @@ function Invoke-DialogButton {
             $invokePattern.DoDefaultAction()
         }
 
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($buttonHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        [PrintSinkE2E.DialogNativeMethods]::PostMessage($buttonHandle, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     }
     else {
         throw 'The dialog button does not expose InvokePattern or a native window handle.'
@@ -1837,14 +1996,20 @@ function Set-NativeFileDialogPath {
         [PrintSinkE2E.DialogNativeMethods]::SendMessage($DialogHandle, $cdmSetControlText, [IntPtr]$controlId, $OutputPath) | Out-Null
     }
 
-    [PrintSinkE2E.DialogNativeMethods]::SetWindowText($fileNameControl, $OutputPath) | Out-Null
-    [PrintSinkE2E.DialogNativeMethods]::SendMessage($fileNameControl, 0x000C, [IntPtr]::Zero, $OutputPath) | Out-Null
+    [PrintSinkE2E.DialogNativeMethods]::SetForegroundWindow($DialogHandle) | Out-Null
+    [PrintSinkE2E.DialogNativeMethods]::SetFocus($fileNameControl) | Out-Null
+
+    foreach ($targetHandle in Get-NativeDialogTextTargetHandles -DialogHandle $DialogHandle -ControlIds @(1001, 0x0480, 0x047c)) {
+        [PrintSinkE2E.DialogNativeMethods]::SetWindowText($targetHandle, $OutputPath) | Out-Null
+        [PrintSinkE2E.DialogNativeMethods]::SendMessage($targetHandle, 0x000C, [IntPtr]::Zero, $OutputPath) | Out-Null
+    }
+
     Start-Sleep -Milliseconds 250
 
-    [PrintSinkE2E.DialogNativeMethods]::SendMessage($DialogHandle, 0x0111, [IntPtr]1, $saveButton) | Out-Null
+    [PrintSinkE2E.DialogNativeMethods]::PostMessage($DialogHandle, 0x0111, [IntPtr]1, $saveButton) | Out-Null
     Start-Sleep -Milliseconds 250
     if ([PrintSinkE2E.DialogNativeMethods]::IsWindow($DialogHandle)) {
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($saveButton, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        [PrintSinkE2E.DialogNativeMethods]::PostMessage($saveButton, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     }
 
     Wait-ForNativeWindowClosed -Handle $DialogHandle -TimeoutSeconds 10
@@ -2049,6 +2214,10 @@ if (-not `$document.PrinterSettings.IsValid) {
 try {
     `$document.Print()
 }
+catch {
+    `$_ | Format-List * -Force | Out-String | Write-Error
+    throw
+}
 finally {
     `$document.Dispose()
 }
@@ -2138,6 +2307,29 @@ function Get-PrintSinkProcessOutput {
     return $parts -join [Environment]::NewLine
 }
 
+function Copy-PrintSinkProcessArtifacts {
+    param(
+        [System.Collections.Specialized.OrderedDictionary] $PrintProcess,
+        [string] $OutputDirectory,
+        [string] $Name
+    )
+
+    $safeName = ($Name -replace '[^A-Za-z0-9_.-]+', '-').Trim('-')
+    foreach ($entry in @(
+        [ordered]@{ suffix = 'script.ps1'; path = $PrintProcess.scriptPath },
+        [ordered]@{ suffix = 'stdout.log'; path = $PrintProcess.stdoutPath },
+        [ordered]@{ suffix = 'stderr.log'; path = $PrintProcess.stderrPath })) {
+        if ([string]::IsNullOrWhiteSpace([string]$entry.path) -or -not (Test-Path -LiteralPath $entry.path)) {
+            continue
+        }
+
+        Copy-Item `
+            -LiteralPath $entry.path `
+            -Destination (Join-Path $OutputDirectory "$safeName.$($entry.suffix)") `
+            -Force
+    }
+}
+
 function Wait-ForPrintSinkProcessSucceeded {
     param(
         [System.Collections.Specialized.OrderedDictionary] $PrintProcess,
@@ -2163,11 +2355,17 @@ function Wait-ForPrintSinkProcessSucceeded {
     }
 
     if ($process.StartInfo.RedirectStandardOutput) {
-        $process.StandardOutput.ReadToEnd() | Out-Null
+        $standardOutput = $process.StandardOutput.ReadToEnd()
+        if (-not [string]::IsNullOrWhiteSpace($standardOutput) -and -not [string]::IsNullOrWhiteSpace($PrintProcess.stdoutPath)) {
+            Add-Content -LiteralPath $PrintProcess.stdoutPath -Value $standardOutput -Encoding UTF8
+        }
     }
 
     if ($process.StartInfo.RedirectStandardError) {
-        $process.StandardError.ReadToEnd() | Out-Null
+        $standardError = $process.StandardError.ReadToEnd()
+        if (-not [string]::IsNullOrWhiteSpace($standardError) -and -not [string]::IsNullOrWhiteSpace($PrintProcess.stderrPath)) {
+            Add-Content -LiteralPath $PrintProcess.stderrPath -Value $standardError -Encoding UTF8
+        }
     }
 
     if ($exitCode -ne 0) {
@@ -3270,6 +3468,7 @@ function Invoke-PrintSinkRealPrint {
         -DocumentName 'PrintSink E2E Real Print' `
         -Text 'foo'
     $process = $printProcess.process
+    $printProcessSucceeded = $false
 
     try {
         if ($PrintCase.requiresSaveAs) {
@@ -3285,6 +3484,7 @@ function Invoke-PrintSinkRealPrint {
             -PrintProcess $printProcess `
             -TimeoutMilliseconds 30000 `
             -Description "Print process for $printerName"
+        $printProcessSucceeded = $true
 
         if ($PrintCase.requiresSaveAs) {
             $diagnostic = Wait-ForPrintSinkJobCompleted `
@@ -3364,9 +3564,17 @@ function Invoke-PrintSinkRealPrint {
         }
 
         Close-SavePrintOutputDialogs
-        Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
+        if ($printProcessSucceeded) {
+            Remove-Item -LiteralPath $printProcess.scriptPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $printProcess.stdoutPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $printProcess.stderrPath -ErrorAction SilentlyContinue
+        }
+        else {
+            Copy-PrintSinkProcessArtifacts `
+                -PrintProcess $printProcess `
+                -OutputDirectory $OutputDirectory `
+                -Name $printerName
+        }
     }
 }
 
@@ -4212,31 +4420,37 @@ function Invoke-PrintSinkManagementUi {
 
         $queueRemoveRequestedUtc = [DateTimeOffset]::UtcNow
         Invoke-Button -Root $window -Name 'Remove queues' -TimeoutSeconds 30
-        $queuesRemovedDiagnostic = Wait-ForPrintSinkDiagnostic `
+        $removedQueues = Wait-ForPrintSinkQueuesRemoved `
+            -ExpectedQueues $ExpectedQueues `
+            -Context 'after management UI remove'
+        Wait-ForPrintSinkSpoolerIdle `
+            -ExpectedQueues $ExpectedQueues `
+            -StartedUtc $queueRemoveRequestedUtc `
+            -Context 'after management UI remove'
+        $queuesRemovedDiagnostic = Get-PrintSinkDiagnosticOrNull `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint '' `
             -Message 'Management UI queues removed' `
             -StartedUtc $queueRemoveRequestedUtc `
             -DetailContains @('Virtual printer queues removed:', '0 found.') `
-            -FailureMessages @('Management UI queue removal failed') `
-            -TimeoutSeconds 90
-        $removedQueues = Wait-ForPrintSinkQueuesRemoved `
-            -ExpectedQueues $ExpectedQueues `
-            -Context 'after management UI remove'
+            -FailureMessages @('Management UI queue removal failed')
 
         $queueInstallRequestedUtc = [DateTimeOffset]::UtcNow
         Invoke-Button -Root $window -Name 'Install queues' -TimeoutSeconds 30
-        $queuesInstalledDiagnostic = Wait-ForPrintSinkDiagnostic `
+        $installedQueues = Wait-ForPrintSinkQueuesInstalled `
+            -ExpectedQueues $ExpectedQueues `
+            -Context 'after management UI install'
+        Wait-ForPrintSinkSpoolerIdle `
+            -ExpectedQueues $ExpectedQueues `
+            -StartedUtc $queueInstallRequestedUtc `
+            -Context 'after management UI install'
+        $queuesInstalledDiagnostic = Get-PrintSinkDiagnosticOrNull `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint '' `
             -Message 'Management UI queues installed' `
             -StartedUtc $queueInstallRequestedUtc `
             -DetailContains @('Virtual printer queues installed:', '6 found.') `
-            -FailureMessages @('Management UI queue installation failed') `
-            -TimeoutSeconds 180
-        $installedQueues = Wait-ForPrintSinkQueuesInstalled `
-            -ExpectedQueues $ExpectedQueues `
-            -Context 'after management UI install'
+            -FailureMessages @('Management UI queue installation failed')
 
         Invoke-Button -Root $window -Name 'Refresh queues' -TimeoutSeconds 30
         $queuesRefreshed = Wait-ForPrintSinkDiagnostic `
@@ -6080,7 +6294,7 @@ function New-PrintSinkFeatureEvidence {
                     -StartedUtc (Get-PrintSinkTimestamp `
                         -Value ([string]$ManagementUi.capabilityRefreshRequestedUtc) `
                         -Description 'the management UI capability-refresh request') `
-                    -SkewSeconds 0)) `
+                    -SkewSeconds 5)) `
         -Evidence 'The packaged management UI and packaged app command both invoked RefreshPrintDeviceCapabilities, and the extension recorded a later Capabilities updated event.' `
         -Artifact ([ordered]@{
             command = $ExtensionCapabilities
@@ -6578,6 +6792,67 @@ function Wait-ForPrintSinkDiagnostic {
     throw "Timed out waiting for diagnostic '$Message' on '$Endpoint'. Recent diagnostics: $recentSummary"
 }
 
+function Get-PrintSinkDiagnosticOrNull {
+    param(
+        [string] $PackageFamilyName,
+        [string] $Endpoint,
+        [string] $Message,
+        [DateTimeOffset] $StartedUtc,
+        [string[]] $DetailContains = @(),
+        [string[]] $FailureMessages = @(),
+        [double] $StartedSkewSeconds = 5
+    )
+
+    $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName\LocalState\Settings\diagnostic-events.json"
+    if (-not (Test-Path -LiteralPath $diagnosticPath)) {
+        return $null
+    }
+
+    try {
+        $events = Read-PrintSinkDiagnosticEvents -DiagnosticPath $diagnosticPath
+    }
+    catch [System.IO.IOException] {
+        return $null
+    }
+    catch [System.UnauthorizedAccessException] {
+        return $null
+    }
+
+    $failures = @($events |
+        Where-Object {
+            ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
+                -and $_.message -in $FailureMessages `
+                -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds $StartedSkewSeconds)
+        })
+    if ($failures.Count -gt 0) {
+        $failure = $failures[-1]
+        throw "Observed failure diagnostic '$($failure.message)' on '$($failure.endpoint)': $($failure.detail)"
+    }
+
+    $candidates = @($events |
+        Where-Object {
+            ($_.endpoint -eq $Endpoint -or [string]::IsNullOrWhiteSpace($Endpoint)) `
+                -and $_.message -eq $Message `
+                -and (Test-PrintSinkDiagnosticStartedAfter -Event $_ -StartedUtc $StartedUtc -SkewSeconds $StartedSkewSeconds)
+        })
+
+    foreach ($candidate in $candidates) {
+        $detail = [string]$candidate.detail
+        $missingDetail = @($DetailContains | Where-Object { $detail -notlike "*$_*" })
+        if ($missingDetail.Count -eq 0) {
+            return [ordered]@{
+                timestamp = $candidate.timestamp
+                source = $candidate.source
+                message = $candidate.message
+                endpoint = $candidate.endpoint
+                detail = $candidate.detail
+            }
+        }
+    }
+
+    return $null
+}
+
 function Wait-ForPrintSinkJobCanceled {
     param(
         [string] $PackageFamilyName,
@@ -6692,6 +6967,7 @@ try {
     $cliQueueLifecycle = Invoke-PrintSinkCliQueueLifecycle -ExpectedQueues $expectedQueues
 
     Write-E2EProgress 'Provisioning virtual printer queues'
+    $headlessProvisionStartedUtc = [DateTimeOffset]::UtcNow
     Invoke-PrintSinkAppCommand -Arguments @('--install-virtual-printers') -Description 'Headless virtual-printer provisioning'
 
     $queueSnapshots = [System.Collections.Generic.List[object]]::new()
@@ -6701,6 +6977,10 @@ try {
             -ExpectedQueues $expectedQueues `
             -Context 'after provisioning'
     })
+    Wait-ForPrintSinkSpoolerIdle `
+        -ExpectedQueues $expectedQueues `
+        -StartedUtc $headlessProvisionStartedUtc `
+        -Context 'after headless provisioning'
 
     Write-E2EProgress 'Verifying management UI queue actions'
     $managementUiResult = Invoke-PrintSinkManagementUi `
@@ -6746,6 +7026,10 @@ try {
             -ExpectedQueues $expectedQueues `
             -Context 'after virtual-printer attribute-read assertion'
     })
+    Wait-ForPrintSinkSpoolerIdle `
+        -ExpectedQueues $expectedQueues `
+        -StartedUtc $headlessProvisionStartedUtc `
+        -Context 'before real print submissions'
 
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {

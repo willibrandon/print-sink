@@ -1209,7 +1209,8 @@ function Assert-ResultTimestampIsNotBefore {
         [object] $Later,
         [object] $Earlier,
         [string] $Description,
-        [string] $EarlierTimestampName = 'timestamp'
+        [string] $EarlierTimestampName = 'timestamp',
+        [double] $SkewSeconds = 5
     )
 
     $laterTimestamp = Get-ResultTimestamp -Result $Later -Description $Description
@@ -1217,7 +1218,7 @@ function Assert-ResultTimestampIsNotBefore {
         -Result $Earlier `
         -Description "$Description lower bound" `
         -Name $EarlierTimestampName
-    Assert-Condition ($laterTimestamp -ge $earlierTimestamp) "$Description was stale. Later timestamp: $laterTimestamp; lower bound: $earlierTimestamp."
+    Assert-Condition ($laterTimestamp -ge $earlierTimestamp.AddSeconds(-$SkewSeconds)) "$Description was stale. Later timestamp: $laterTimestamp; lower bound: $earlierTimestamp; skew seconds: $SkewSeconds."
 }
 
 function Assert-NonEmptyFile {
