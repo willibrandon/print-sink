@@ -90,13 +90,27 @@ Mark "refresh done exit=`$(`$p.ExitCode)"
 Mark 'result written'
 "@ | Set-Content -LiteralPath $wrapper -Encoding utf8
 
+# Diagnostic: can CreateProcessWithLogonW run ANYTHING for this user, and at what integrity?
+$whoFile = Join-Path $pub 'cpl-who.txt'
+Remove-Item $whoFile -ErrorAction SilentlyContinue
 try {
-    $wpid = [PLogon.Native]::Start($user, $env:COMPUTERNAME, $pw, 'C:\Program Files\PowerShell\7\pwsh.exe', "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapper`"", $pub)
+    [PLogon.Native]::Start($user, $env:COMPUTERNAME, $pw, 'C:\Windows\System32\cmd.exe', "cmd.exe /c whoami /groups > `"$whoFile`" 2>&1", $pub) | Out-Null
+    Start-Sleep -Seconds 8
+    $report.cmdDiag = if (Test-Path $whoFile) { ((Get-Content $whoFile | Select-String 'Mandatory Level') | Out-String).Trim() } else { '<cmd produced no file>' }
+} catch { $report.cmdDiag = "cmd launch err: $($_.Exception.Message)" }
+
+# Diagnostic: capture pwsh stdout/stderr via cmd redirection.
+$pwshOut = Join-Path $pub 'cpl-pwsh.txt'
+Remove-Item $pwshOut -ErrorAction SilentlyContinue
+$cmdLine = "cmd.exe /c `"pwsh.exe -NoProfile -ExecutionPolicy Bypass -File $wrapper > $pwshOut 2>&1`""
+try {
+    $wpid = [PLogon.Native]::Start($user, $env:COMPUTERNAME, $pw, 'C:\Windows\System32\cmd.exe', $cmdLine, $pub)
     $report.launchedPid = $wpid
     $deadline = (Get-Date).AddSeconds(280)
     while (-not (Test-Path $resultFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 3 }
     $report.result = if (Test-Path $resultFile) { Get-Content $resultFile -Raw | ConvertFrom-Json } else { '<no result>' }
     $report.progress = if (Test-Path $progressFile) { (Get-Content $progressFile -Raw) } else { '<no progress>' }
+    $report.pwshOutput = if (Test-Path $pwshOut) { (Get-Content $pwshOut -Raw) } else { '<no pwsh output>' }
 } catch { $report.launchError = $_.Exception.Message }
 
 try { net user $user /delete 2>&1 | Out-Null } catch {}
