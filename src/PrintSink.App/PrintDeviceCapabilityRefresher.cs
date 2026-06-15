@@ -4,7 +4,7 @@ using Windows.Devices.Printers;
 namespace PrintSink.App;
 
 /// <summary>
-/// Refreshes printer capabilities through a bounded STA call.
+/// Refreshes printer capabilities through a bounded worker call.
 /// </summary>
 internal static class PrintDeviceCapabilityRefresher
 {
@@ -35,7 +35,7 @@ internal static class PrintDeviceCapabilityRefresher
             Name = $"PrintSink capabilities: {printerName}",
         };
 
-        thread.SetApartmentState(ApartmentState.STA);
+        thread.SetApartmentState(ApartmentState.MTA);
         thread.Start();
 
         if (!completed.Wait(timeout))
