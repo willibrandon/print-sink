@@ -465,8 +465,10 @@ internal sealed partial class FeatureEvidenceContractTests
 
         Assert.Contains("Get-PrintSinkDiagnosticTimestamp", e2eScript);
         Assert.Contains("capabilityRefreshRequestedUtc", e2eScript);
+        Assert.Contains("-Message 'Management UI capabilities refreshed'", e2eScript);
+        Assert.Contains("-Message 'Capabilities updated'", e2eScript);
         Assert.Contains("-StartedUtc $capabilityRefreshRequestedUtc", e2eScript);
-        Assert.Contains("-StartedSkewSeconds 0", e2eScript);
+        Assert.Contains("-FailureMessages @('Management UI capabilities refresh failed')", e2eScript);
         Assert.Contains("-Event $ManagementUi.extensionCapabilityRefresh", e2eScript);
         Assert.Contains("-Value ([string]$ManagementUi.capabilityRefreshRequestedUtc)", e2eScript);
         Assert.Contains("recorded a later Capabilities updated event", e2eScript);
