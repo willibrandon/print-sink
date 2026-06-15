@@ -13,6 +13,8 @@ namespace PrintSink.Tasks;
 /// </summary>
 public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
 {
+    private static readonly TimeSpan DiagnosticWriteTimeout = TimeSpan.FromSeconds(2);
+
     private readonly BackgroundTaskHandlerState state = new();
 
     /// <inheritdoc />
@@ -283,6 +285,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
     {
         try
         {
+            using CancellationTokenSource cancellation = new(DiagnosticWriteTimeout);
             using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
             diagnosticEventStore
                 .AppendAsync(
@@ -292,7 +295,8 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                         nameof(VirtualPrinterBackgroundTask),
                         message,
                         endpoint,
-                        detail))
+                        detail),
+                    cancellation.Token)
                 .GetAwaiter()
                 .GetResult();
         }

@@ -13,6 +13,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
 {
     private const string PrintWorkflowJobBackgroundSessionType =
         "Windows.Graphics.Printing.Workflow.PrintWorkflowJobBackgroundSession";
+    private static readonly TimeSpan DiagnosticWriteTimeout = TimeSpan.FromSeconds(2);
 
     private readonly BackgroundTaskHandlerState state = new();
 
@@ -225,6 +226,7 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
     {
         try
         {
+            using CancellationTokenSource cancellation = new(DiagnosticWriteTimeout);
             using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
             diagnosticEventStore
                 .AppendAsync(
@@ -234,7 +236,8 @@ public sealed class PrintSupportWorkflowBackgroundTask : IBackgroundTask
                         nameof(PrintSupportWorkflowBackgroundTask),
                         message,
                         endpoint,
-                        detail))
+                        detail),
+                    cancellation.Token)
                 .GetAwaiter()
                 .GetResult();
         }

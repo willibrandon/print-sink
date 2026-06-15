@@ -24,6 +24,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         "Windows.Graphics.Printing.PrintSupport.PrintSupportPrintDeviceCapabilitiesChangedEventArgs";
     private const string PrintSinkFeatureResourceSubtree = "PrintSinkFeatures";
     private static readonly TimeSpan AttributeCommunicationTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DiagnosticWriteTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan JobCommunicationTimeout = TimeSpan.FromSeconds(120);
 
     private static readonly PrintDeviceCapabilitiesEditor CapabilitiesEditor = new();
@@ -45,17 +46,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         }
 
         PrintSupportExtensionSession session = extensionDetails.Session;
-        string printerName = GetPrinterName(session);
         bool hasPrinterSelected = ApiInformation.IsEventPresent(PrintSupportExtensionSessionType, "PrinterSelected");
         bool hasCommunicationErrorDetected = ApiInformation.IsEventPresent(PrintSupportExtensionSessionType, "CommunicationErrorDetected");
-        AppendDiagnostic(
-            "Extension session starting",
-            printerName,
-            string.Join(
-                "; ",
-                "handlers=PrintTicketValidationRequested,PrintDeviceCapabilitiesChanged",
-                $"printerSelected={(hasPrinterSelected ? "registered" : "unavailable")}",
-                $"communicationErrorDetected={(hasCommunicationErrorDetected ? "registered" : "unavailable")}"));
         session.PrintTicketValidationRequested += OnPrintTicketValidationRequested;
         session.PrintDeviceCapabilitiesChanged += OnPrintDeviceCapabilitiesChanged;
 
@@ -70,6 +62,14 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         }
 
         session.Start();
+        AppendDiagnostic(
+            "Extension session started",
+            string.Empty,
+            string.Join(
+                "; ",
+                "handlers=PrintTicketValidationRequested,PrintDeviceCapabilitiesChanged",
+                $"printerSelected={(hasPrinterSelected ? "registered" : "unavailable")}",
+                $"communicationErrorDetected={(hasCommunicationErrorDetected ? "registered" : "unavailable")}"));
     }
 
     private void OnPrintTicketValidationRequested(
@@ -77,21 +77,26 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         PrintSupportPrintTicketValidationRequestedEventArgs args)
     {
         var deferral = args.GetDeferral();
+        WorkflowPrintTicketValidationStatus? status = null;
         try
         {
             state.Run(() =>
             {
-                WorkflowPrintTicketValidationStatus status = ValidatePrintTicket(args.PrintTicket);
-                args.SetPrintTicketValidationStatus(status);
-                AppendDiagnostic(
-                    "Print ticket validated",
-                    sender.Printer.PrinterName,
-                    $"status={status}");
+                status = ValidatePrintTicket(args.PrintTicket);
+                args.SetPrintTicketValidationStatus(status.Value);
             });
         }
         finally
         {
             deferral.Complete();
+        }
+
+        if (status.HasValue)
+        {
+            AppendDiagnostic(
+                "Print ticket validated",
+                GetPrinterName(sender),
+                $"status={status.Value}");
         }
     }
 
@@ -122,29 +127,37 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         PrintSupportPrintDeviceCapabilitiesChangedEventArgs args)
     {
         var deferral = args.GetDeferral();
-        string printerName = GetPrinterName(sender);
-        AppendDiagnostic(
-            "Capabilities change received",
-            printerName,
-            "event=PrintDeviceCapabilitiesChanged");
+        string? updateDetail = null;
+        Exception? updateException = null;
         try
         {
             state.Run(
-                () => UpdatePrintDeviceCapabilities(printerName, args),
-                exception => AppendDiagnostic(
-                    "Capabilities update failed",
-                    printerName,
-                    exception.ToString()));
+                () => updateDetail = UpdatePrintDeviceCapabilities(args),
+                exception => updateException = exception);
         }
         finally
         {
             deferral.Complete();
         }
+
+        if (updateDetail is not null)
+        {
+            AppendDiagnostic(
+                "Capabilities updated",
+                string.Empty,
+                updateDetail);
+        }
+
+        if (updateException is not null)
+        {
+            AppendDiagnostic(
+                "Capabilities update failed",
+                string.Empty,
+                updateException.ToString());
+        }
     }
 
-    private static void UpdatePrintDeviceCapabilities(
-        string printerName,
-        PrintSupportPrintDeviceCapabilitiesChangedEventArgs args)
+    private static string UpdatePrintDeviceCapabilities(PrintSupportPrintDeviceCapabilitiesChangedEventArgs args)
     {
         bool mxdcConfigured = false;
         bool pdrUpdated = false;
@@ -188,21 +201,18 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
             ippTimeoutsConfigured = ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration);
         }
 
-        AppendDiagnostic(
-            "Capabilities updated",
-            printerName,
-            string.Join(
-                "; ",
-                $"features={FormatBuiltInFeatureNames()}",
-                pdcFeatureDetail,
-                pdcOptionDetail,
-                $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
-                mxdcQualityDetail,
-                $"pdr={(pdrUpdated ? "updated" : "skipped")}",
-                pdrResourceNamesDetail,
-                $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
-                pdlPassthroughWithAttributesDetail,
-                $"pdrResources={resourceCount}"));
+        return string.Join(
+            "; ",
+            $"features={FormatBuiltInFeatureNames()}",
+            pdcFeatureDetail,
+            pdcOptionDetail,
+            $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
+            mxdcQualityDetail,
+            $"pdr={(pdrUpdated ? "updated" : "skipped")}",
+            pdrResourceNamesDetail,
+            $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
+            pdlPassthroughWithAttributesDetail,
+            $"pdrResources={resourceCount}");
     }
 
     private static string GetPrinterName(PrintSupportExtensionSession session)
@@ -536,6 +546,7 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
     {
         try
         {
+            using CancellationTokenSource cancellation = new(DiagnosticWriteTimeout);
             using LocalDiagnosticEventStore diagnosticEventStore = PackagedSettingsStoreFactory.CreateDiagnosticEventStore();
             diagnosticEventStore
                 .AppendAsync(
@@ -545,7 +556,8 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
                         nameof(PrintSupportExtensionBackgroundTask),
                         message,
                         endpoint,
-                        detail))
+                        detail),
+                    cancellation.Token)
                 .GetAwaiter()
                 .GetResult();
         }

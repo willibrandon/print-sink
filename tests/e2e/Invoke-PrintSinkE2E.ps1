@@ -4368,7 +4368,7 @@ function Invoke-PrintSinkExtensionCapabilities {
 
     return Wait-ForPrintSinkDiagnostic `
         -PackageFamilyName $PackageFamilyName `
-        -Endpoint 'PrintSink - PDF' `
+        -Endpoint '' `
         -Message 'Capabilities updated' `
         -StartedUtc $refreshRequestedUtc `
         -DetailContains @(
@@ -4590,7 +4590,7 @@ function Invoke-PrintSinkManagementUi {
             -TimeoutSeconds 360
         $extensionCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
-            -Endpoint 'PrintSink - PDF' `
+            -Endpoint '' `
             -Message 'Capabilities updated' `
             -StartedUtc $capabilityRefreshRequestedUtc `
             -DetailContains @(
