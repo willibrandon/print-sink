@@ -10,6 +10,9 @@ namespace PrintSink.App;
 /// </summary>
 internal static class InstalledVirtualPrinterReader
 {
+    private const int RefreshCapabilitiesMaximumAttempts = 6;
+    private static readonly TimeSpan RefreshCapabilitiesRetryDelay = TimeSpan.FromSeconds(3);
+
     internal static IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> ReadAll()
     {
         try
@@ -57,9 +60,21 @@ internal static class InstalledVirtualPrinterReader
     internal static string RefreshCapabilities(EndpointKind endpointKind)
     {
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
-        IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
-        printDevice.RefreshPrintDeviceCapabilities();
-        return $"Capabilities refreshed for {endpoint.QueueName}.";
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
+                printDevice.RefreshPrintDeviceCapabilities();
+                return attempt == 1
+                    ? $"Capabilities refreshed for {endpoint.QueueName}."
+                    : $"Capabilities refreshed for {endpoint.QueueName} after {attempt} attempts.";
+            }
+            catch (TimeoutException) when (attempt < RefreshCapabilitiesMaximumAttempts)
+            {
+                Thread.Sleep(RefreshCapabilitiesRetryDelay);
+            }
+        }
     }
 
     internal static string AssertAttributeReadMatchesPlatformBehavior(EndpointKind endpointKind)
