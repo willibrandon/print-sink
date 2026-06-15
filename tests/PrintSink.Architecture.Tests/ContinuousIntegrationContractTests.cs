@@ -22,19 +22,31 @@ internal sealed partial class ContinuousIntegrationContractTests
 
         Assert.Contains("platform: x64", workflow);
         Assert.Contains("platform: ARM64", workflow);
-        Assert.Contains("runner: windows-2025-vs2026", workflow);
-        Assert.Contains("runner: windows-11-vs2026-arm", workflow);
-        Assert.DoesNotContain("run_e2e: false", workflow);
+        string x64MatrixEntry = ExtractScriptBlock(
+            workflow,
+            "- platform: x64",
+            "- platform: ARM64");
+        string arm64MatrixEntry = ExtractScriptBlock(
+            workflow,
+            "- platform: ARM64",
+            "steps:");
+
+        Assert.Contains("runner: windows-2025-vs2026", x64MatrixEntry);
+        Assert.Contains("run_e2e: false", x64MatrixEntry);
+        Assert.Contains("runner: windows-11-vs2026-arm", arm64MatrixEntry);
+        Assert.Contains("run_e2e: true", arm64MatrixEntry);
         Assert.IsGreaterThanOrEqualTo(
-            2,
-            Regex.Count(workflow, "run_e2e: true", RegexOptions.CultureInvariant),
-            "Both CI matrix platforms must run the real print-stack E2E suite.");
+            1,
+            RunE2eTrueRegex().Count(workflow),
+            "At least one GitHub-hosted Windows client runner must run the real print-stack E2E suite.");
         Assert.Contains("Real print-stack E2E", workflow);
         Assert.Contains(".\\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}", workflow);
         Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
         Assert.Contains("Visual Studio Test Platform for packaged WinUI app tests", design);
         Assert.Contains(".\\test-e2e.ps1 -BuildPackage -Configuration Release", design);
         Assert.Contains("signed Release MSIX", design);
+        Assert.Contains("GitHub's x64 VS 2026 hosted image is Windows Server 2025", design);
+        Assert.Contains("GitHub's Windows 11 ARM64 image", design);
         Assert.DoesNotContain("MSTest on Microsoft.Testing.Platform, .NET 10, plus scripted Windows E2E", design);
         Assert.Contains(".\\test-e2e.ps1", workflow);
         Assert.Contains("-BuildPackage", workflow);
@@ -711,4 +723,7 @@ internal sealed partial class ContinuousIntegrationContractTests
 
     [GeneratedRegex(@"WinRtPrintSourceSwitch\s*=\s*""(?<switch>--[a-z0-9-]+)""", RegexOptions.CultureInvariant)]
     private static partial Regex RouterCommandSwitchRegex();
+
+    [GeneratedRegex("run_e2e: true", RegexOptions.CultureInvariant)]
+    private static partial Regex RunE2eTrueRegex();
 }

@@ -27,7 +27,7 @@ jobs:
         include:
           - platform: x64
             runner: windows-2025-vs2026
-            run_e2e: true
+            run_e2e: false
           - platform: ARM64
             runner: windows-11-vs2026-arm
             run_e2e: true

@@ -1207,6 +1207,73 @@ function Initialize-PrintSinkUserPrintRegistry {
         Set-Content -LiteralPath (Join-Path $OutputDirectory 'user-print-registry.json') -Encoding UTF8
 }
 
+function Start-PrintSinkPrintSupportServices {
+    param(
+        [string] $OutputDirectory,
+        [string] $Context
+    )
+
+    $safeContext = $Context -replace '[^A-Za-z0-9_.-]+', '-'
+    $exactNames = @(
+        'Spooler',
+        'BrokerInfrastructure',
+        'PrintScanBrokerService',
+        'PrintDeviceConfigurationService',
+        'PrintNotify'
+    )
+
+    $services = [System.Collections.Generic.List[object]]::new()
+    foreach ($name in $exactNames) {
+        $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if ($null -ne $service) {
+            $services.Add($service)
+        }
+    }
+
+    Get-Service -Name 'PrintWorkflowUserSvc_*' -ErrorAction SilentlyContinue |
+        ForEach-Object { $services.Add($_) }
+
+    $seenNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $results = foreach ($service in $services) {
+        if (-not $seenNames.Add($service.Name)) {
+            continue
+        }
+
+        $before = $service.Status.ToString()
+        $errorMessage = $null
+        try {
+            if ($service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+                Start-Service -Name $service.Name -ErrorAction Stop
+                $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(15))
+            }
+
+            $service.Refresh()
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            try {
+                $service.Refresh()
+            }
+            catch {
+                $errorMessage = "$errorMessage; refresh failed: $($_.Exception.Message)"
+            }
+        }
+
+        [ordered]@{
+            name = $service.Name
+            displayName = $service.DisplayName
+            before = $before
+            after = $service.Status.ToString()
+            startType = $service.StartType.ToString()
+            error = $errorMessage
+        }
+    }
+
+    $results |
+        ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath (Join-Path $OutputDirectory "service-start-$safeContext.json") -Encoding UTF8
+}
+
 function Export-PrintSinkRunnerState {
     param(
         [string] $OutputDirectory,
@@ -7271,6 +7338,9 @@ $package = Get-InstalledPackage -Name $PackageName
 $packageShape = Assert-InstalledPackageShape -Package $package -ExpectedVirtualPrinters $expectedVirtualPrinters
 $diagnosticPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\Settings\diagnostic-events.json"
 Remove-Item -LiteralPath $diagnosticPath -ErrorAction SilentlyContinue
+Start-PrintSinkPrintSupportServices `
+    -OutputDirectory $OutputDirectory `
+    -Context 'after-package-install'
 Export-PrintSinkRunnerState `
     -OutputDirectory $OutputDirectory `
     -Context 'after-package-install' `
@@ -7309,6 +7379,9 @@ try {
         -StartedUtc $headlessProvisionStartedUtc `
         -Context 'after headless provisioning'
 
+    Start-PrintSinkPrintSupportServices `
+        -OutputDirectory $OutputDirectory `
+        -Context 'after-headless-provisioning'
     Export-PrintSinkRunnerState `
         -OutputDirectory $OutputDirectory `
         -Context 'after-headless-provisioning' `
