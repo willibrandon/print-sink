@@ -625,7 +625,13 @@ function Assert-ConvertedOutputEvidence {
     foreach ($expectedOutput in $expectedConvertedOutputs) {
         $result = Get-ResultByQueue -Results $outputs -Queue $expectedOutput.queue
         Assert-FileResultSummary -Result $result -Expected $expectedOutput -Description 'Conversion feature output'
-        Assert-Condition ([string](Get-ResultProperty -Object $result -Name 'sourceApplication') -eq 'powershell.exe') "Conversion feature evidence reported the wrong source application for $($expectedOutput.queue)."
+        $expectedSourceApplication = if ($expectedOutput.queue -eq 'PrintSink - PDF') {
+            'powershell.exe'
+        }
+        else {
+            'printsink-app.exe'
+        }
+        Assert-Condition ([string](Get-ResultProperty -Object $result -Name 'sourceApplication') -eq $expectedSourceApplication) "Conversion feature evidence reported the wrong source application for $($expectedOutput.queue)."
     }
 }
 
@@ -1769,13 +1775,13 @@ function Assert-RealPrintOutputs {
 
     $pwg = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PWG Raster'
     Assert-CompletedJob -Result $pwg -Queue 'PrintSink - PWG Raster'
-    Assert-SourceApplication -Result $pwg -ExpectedSourceApplication 'powershell.exe' -Description 'PWG Raster real print'
+    Assert-SourceApplication -Result $pwg -ExpectedSourceApplication 'printsink-app.exe' -Description 'PWG Raster real print'
     Assert-Route -Result $pwg -ExpectedRoute 'application/oxps -> PwgRaster; Convert; Convert XPS to PWG Raster.' -Description 'PWG Raster real print'
     Assert-Document -Format 'pwg' -Path $pwg.outputPath -ExpectedBytes $pwg.bytes
 
     $pclm = Get-ResultByQueue -Results $RealPrints -Queue 'PrintSink - PCLm'
     Assert-CompletedJob -Result $pclm -Queue 'PrintSink - PCLm'
-    Assert-SourceApplication -Result $pclm -ExpectedSourceApplication 'powershell.exe' -Description 'PCLm real print'
+    Assert-SourceApplication -Result $pclm -ExpectedSourceApplication 'printsink-app.exe' -Description 'PCLm real print'
     Assert-Route -Result $pclm -ExpectedRoute 'application/oxps -> Pclm; Convert; Convert XPS to PCLm.' -Description 'PCLm real print'
     Assert-Document -Format 'pclm' -Path $pclm.outputPath -ExpectedBytes $pclm.bytes
 

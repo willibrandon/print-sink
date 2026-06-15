@@ -465,7 +465,7 @@ function Close-SavePrintOutputDialogs {
         Add-DialogNativeMethods
 
         foreach ($dialogHandle in Get-NativeSavePrintOutputDialogHandles) {
-            [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+            [PrintSinkE2E.DialogNativeMethods]::PostMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         }
 
         $dialogs = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -486,7 +486,7 @@ function Close-SavePrintOutputDialogs {
 
                 $dialogHandle = [IntPtr]$dialog.Current.NativeWindowHandle
                 if ($dialogHandle -ne [IntPtr]::Zero) {
-                    [PrintSinkE2E.DialogNativeMethods]::SendMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+                    [PrintSinkE2E.DialogNativeMethods]::PostMessage($dialogHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
                 }
             }
             catch {
@@ -1746,6 +1746,10 @@ public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, Sys
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
 public static extern System.IntPtr SendMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, string lParam);
 
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+[return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+public static extern bool SendMessageTimeout(System.IntPtr hWnd, uint msg, System.IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.IntPtr lpdwResult);
+
 [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
 [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
 public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, System.IntPtr lParam);
@@ -1784,6 +1788,28 @@ public static extern bool IsWindow(System.IntPtr hWnd);
 
 public delegate bool EnumWindowsProc(System.IntPtr hWnd, System.IntPtr lParam);
 '@
+}
+
+function Send-NativeTextMessageWithTimeout {
+    param(
+        [IntPtr] $Handle,
+        [uint32] $Message,
+        [IntPtr] $WParam,
+        [string] $Text,
+        [int] $TimeoutMilliseconds = 1000
+    )
+
+    Add-DialogNativeMethods
+    $abortIfHung = 0x0002
+    $result = [IntPtr]::Zero
+    return [PrintSinkE2E.DialogNativeMethods]::SendMessageTimeout(
+        $Handle,
+        $Message,
+        $WParam,
+        $Text,
+        $abortIfHung,
+        [uint32]$TimeoutMilliseconds,
+        [ref]$result)
 }
 
 function Get-DefaultWindowsPrinterName {
@@ -1872,15 +1898,8 @@ function Set-DialogEditText {
         throw 'The dialog edit control does not expose ValuePattern or a native window handle.'
     }
 
-    if (-not [PrintSinkE2E.DialogNativeMethods]::SetWindowText($windowHandle, $Text)) {
-        throw "SetWindowText failed for the dialog edit control. Win32 error: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
-    }
-
-    [PrintSinkE2E.DialogNativeMethods]::SendMessage($windowHandle, 0x000C, [IntPtr]::Zero, $Text) | Out-Null
-    $actualText = [System.Text.StringBuilder]::new([Math]::Max(1024, $Text.Length + 1))
-    [PrintSinkE2E.DialogNativeMethods]::GetWindowText($windowHandle, $actualText, $actualText.Capacity) | Out-Null
-    if ($actualText.ToString() -ne $Text) {
-        throw "The dialog edit control did not accept the output path. Current value: '$($actualText.ToString())'"
+    if (-not (Send-NativeTextMessageWithTimeout -Handle $windowHandle -Message 0x000C -WParam ([IntPtr]::Zero) -Text $Text)) {
+        throw "Timed out setting the Save As edit control text. Win32 error: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
     }
 }
 
@@ -1992,16 +2011,28 @@ function Set-NativeFileDialogPath {
     }
 
     $cdmSetControlText = 0x0468
+    $textAccepted = $false
     foreach ($controlId in @(1001, 0x0480, 0x047c)) {
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($DialogHandle, $cdmSetControlText, [IntPtr]$controlId, $OutputPath) | Out-Null
+        $textAccepted = (Send-NativeTextMessageWithTimeout `
+                -Handle $DialogHandle `
+                -Message $cdmSetControlText `
+                -WParam ([IntPtr]$controlId) `
+                -Text $OutputPath) -or $textAccepted
     }
 
     [PrintSinkE2E.DialogNativeMethods]::SetForegroundWindow($DialogHandle) | Out-Null
     [PrintSinkE2E.DialogNativeMethods]::SetFocus($fileNameControl) | Out-Null
 
     foreach ($targetHandle in Get-NativeDialogTextTargetHandles -DialogHandle $DialogHandle -ControlIds @(1001, 0x0480, 0x047c)) {
-        [PrintSinkE2E.DialogNativeMethods]::SetWindowText($targetHandle, $OutputPath) | Out-Null
-        [PrintSinkE2E.DialogNativeMethods]::SendMessage($targetHandle, 0x000C, [IntPtr]::Zero, $OutputPath) | Out-Null
+        $textAccepted = (Send-NativeTextMessageWithTimeout `
+                -Handle $targetHandle `
+                -Message 0x000C `
+                -WParam ([IntPtr]::Zero) `
+                -Text $OutputPath) -or $textAccepted
+    }
+
+    if (-not $textAccepted) {
+        throw 'Timed out setting the native Save As file name control.'
     }
 
     Start-Sleep -Milliseconds 250
@@ -3966,31 +3997,38 @@ function Invoke-PrintSinkPdfPassthroughPrint {
 function Invoke-PrintSinkWinRtSourcePrint {
     param(
         [string] $OutputDirectory,
-        [string] $PackageFamilyName
+        [string] $PackageFamilyName,
+        [System.Collections.Specialized.OrderedDictionary] $PrintCase = $null,
+        [string] $SourceText = 'foo winrt source e2e',
+        [string] $OutputName = 'PrintSink-WinRT-Source',
+        [string] $Mode = 'winrt-source'
     )
 
     Add-Type -AssemblyName UIAutomationClient
 
-    $sourceText = 'foo winrt source e2e'
-    $outputPath = Join-Path $OutputDirectory 'PrintSink-WinRT-Source.pdf'
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
-    Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
-
-    $printCase = [ordered]@{
-        queue = 'PrintSink - PDF'
-        format = 'pdf'
-        extension = '.pdf'
-        requiresSaveAs = $true
-        expectedText = $sourceText
-        expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+    if ($null -eq $PrintCase) {
+        $PrintCase = [ordered]@{
+            queue = 'PrintSink - PDF'
+            format = 'pdf'
+            extension = '.pdf'
+            requiresSaveAs = $true
+            expectedText = $SourceText
+            expectedRoute = 'application/oxps -> Pdf; Convert; Convert XPS to PDF.'
+        }
     }
+
+    $outputPath = Join-Path $OutputDirectory "$OutputName$($PrintCase.extension)"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputPath) | Out-Null
+    Get-ChildItem -LiteralPath (Split-Path -Parent $outputPath) -Filter "$OutputName*" -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
     $startedUtc = [DateTimeOffset]::UtcNow
     $alias = Get-Command printsink-app.exe -ErrorAction Stop
     $headlessLog = Join-Path $env:TEMP 'PrintSink.App.headless.log'
     Remove-Item $headlessLog -ErrorAction SilentlyContinue
     $process = Start-MediumIntegrityProcess `
         -FilePath $alias.Source `
-        -ArgumentList @('--winrt-source-print', '--text', $sourceText)
+        -ArgumentList @('--winrt-source-print', '--text', $SourceText)
 
     try {
         $printDialog = Wait-ForAutomationElement `
@@ -4004,7 +4042,7 @@ function Invoke-PrintSinkWinRtSourcePrint {
 
         Select-WindowsPrintPrinter `
             -PrintDialog $printDialog `
-            -PrinterName $printCase.queue
+            -PrinterName $PrintCase.queue
 
         Invoke-Button `
             -Root $printDialog `
@@ -4013,7 +4051,7 @@ function Invoke-PrintSinkWinRtSourcePrint {
 
         $saveDialog = Wait-ForSavePrintOutputDialog `
             -TimeoutSeconds 60 `
-            -Description 'the Save Print Output As dialog for the WinRT source print'
+            -Description "the Save Print Output As dialog for the WinRT source print to $($PrintCase.queue)"
         Set-FileDialogPath -Dialog $saveDialog -OutputPath $outputPath
 
         if (-not $process.WaitForExit(60000)) {
@@ -4042,23 +4080,30 @@ function Invoke-PrintSinkWinRtSourcePrint {
 
         $diagnostic = Wait-ForPrintSinkJobCompleted `
             -PackageFamilyName $PackageFamilyName `
-            -Endpoint $printCase.queue `
+            -Endpoint $PrintCase.queue `
             -StartedUtc $startedUtc `
-            -ExpectedRouteDetail $printCase.expectedRoute
+            -ExpectedRouteDetail $PrintCase.expectedRoute
+        $ticketValidation = Wait-ForPrintSinkDiagnostic `
+            -PackageFamilyName $PackageFamilyName `
+            -Endpoint $PrintCase.queue `
+            -Message 'Print ticket validated' `
+            -StartedUtc $startedUtc `
+            -DetailContains @('status=Resolved')
 
         Wait-ForNonEmptyFile -Path $outputPath -TimeoutSeconds 45
-        Assert-DocumentOutput -PrintCase $printCase -OutputPath $outputPath
+        Assert-DocumentOutput -PrintCase $PrintCase -OutputPath $outputPath
 
         $file = Get-Item -LiteralPath $outputPath
         return [ordered]@{
-            queue = $printCase.queue
-            format = $printCase.format
+            queue = $PrintCase.queue
+            format = $PrintCase.format
             sourceApplication = 'printsink-app.exe'
             documentName = 'PrintSink WinRT E2E Source'
             outputPath = $outputPath
             bytes = $file.Length
-            mode = 'winrt-source'
+            mode = $Mode
             diagnostic = $diagnostic
+            ticketValidation = $ticketValidation
         }
     }
     finally {
@@ -5644,7 +5689,14 @@ function Test-ConvertedOutputEvidence {
             return $false
         }
 
-        if ([string](Get-ObjectPropertyValue -Object $result -Name 'sourceApplication') -ne 'powershell.exe') {
+        $expectedSourceApplication = if ($expectedConversion.queue -eq 'PrintSink - PDF') {
+            'powershell.exe'
+        }
+        else {
+            'printsink-app.exe'
+        }
+
+        if ([string](Get-ObjectPropertyValue -Object $result -Name 'sourceApplication') -ne $expectedSourceApplication) {
             return $false
         }
 
@@ -7034,10 +7086,22 @@ try {
     $realPrintResults = @()
     foreach ($printCase in $realPrintCases) {
         Write-E2EProgress "Printing real document to $($printCase.queue)"
-        $realPrintResults += Invoke-PrintSinkRealPrint `
-            -PrintCase $printCase `
-            -OutputDirectory $OutputDirectory `
-            -PackageFamilyName $package.PackageFamilyName
+        $realPrintResults += if ($printCase.queue -in @('PrintSink - PWG Raster', 'PrintSink - PCLm')) {
+            $outputName = ($printCase.queue -replace '[^A-Za-z0-9]+', '-').Trim('-')
+            Invoke-PrintSinkWinRtSourcePrint `
+                -PrintCase $printCase `
+                -OutputDirectory $OutputDirectory `
+                -PackageFamilyName $package.PackageFamilyName `
+                -SourceText 'foo' `
+                -OutputName $outputName `
+                -Mode 'winrt-conversion-source'
+        }
+        else {
+            Invoke-PrintSinkRealPrint `
+                -PrintCase $printCase `
+                -OutputDirectory $OutputDirectory `
+                -PackageFamilyName $package.PackageFamilyName
+        }
         $queueSnapshots.Add([ordered]@{
             context = "after printing $($printCase.queue)"
             queues = Assert-PrintSinkQueuesInstalled `

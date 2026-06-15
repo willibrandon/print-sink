@@ -10,7 +10,7 @@ namespace PrintSink.App;
 /// </summary>
 internal static class InstalledVirtualPrinterReader
 {
-    private const int RefreshCapabilitiesMaximumAttempts = 6;
+    private const int RefreshCapabilitiesMaximumAttempts = 30;
     private static readonly TimeSpan RefreshCapabilitiesRetryDelay = TimeSpan.FromSeconds(3);
 
     internal static IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> ReadAll()
