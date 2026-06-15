@@ -25,14 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Run capability refresh at genuine medium integrity
+      - name: Run capability refresh as a separate normal-admin user
         shell: pwsh
-        run: .\.github\probe-medium.ps1 -OutDir probe-out
+        run: .\.github\probe-newuser.ps1 -OutDir probe-out
 
-      - name: Upload medium report
+      - name: Upload newuser report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: arm64-medium-report
-          path: probe-out/medium-report.json
+          name: arm64-newuser-report
+          path: probe-out/newuser-report.json
           if-no-files-found: error
