@@ -12,6 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$scriptStartedUtc = [DateTimeOffset]::UtcNow
 
 . (Join-Path $PSScriptRoot 'PrintSinkFeatureMatrix.ps1')
 
@@ -49,7 +50,7 @@ Get-ChildItem -LiteralPath $OutputDirectory -File -ErrorAction SilentlyContinue 
     Where-Object { $_.Name -ne 'e2e-run.json' } |
     Remove-Item -Force
 [ordered]@{
-    startedUtc = [DateTimeOffset]::UtcNow.ToString('O')
+    startedUtc = $scriptStartedUtc.ToString('O')
     packageName = $PackageName
     packagePath = if ([string]::IsNullOrWhiteSpace($PackagePath)) { $null } else { $PackagePath }
     packageBuildConfiguration = if ([string]::IsNullOrWhiteSpace($PackageBuildConfiguration)) { $null } else { $PackageBuildConfiguration }
@@ -1069,6 +1070,77 @@ function Get-PrintSinkSpoolerErrorEvents {
     }
     catch {
         return @()
+    }
+}
+
+function Export-PrintSinkSystemEventLogs {
+    param(
+        [DateTimeOffset] $StartedUtc,
+        [string] $OutputDirectory,
+        [string] $PackageName,
+        [string] $PackageFamilyName
+    )
+
+    $logs = @(
+        'Microsoft-Windows-AppModel-Runtime/Admin',
+        'Microsoft-Windows-AppXDeploymentServer/Operational',
+        'Microsoft-Windows-BackgroundTaskInfrastructure/Operational',
+        'Microsoft-Windows-PrintService/Admin',
+        'Microsoft-Windows-PrintService/Operational',
+        'Application',
+        'System'
+    )
+
+    foreach ($logName in $logs) {
+        $safeLogName = $logName.Replace('/', '-')
+        $path = Join-Path $OutputDirectory "eventlog-$safeLogName.json"
+        try {
+            $events = @(
+                Get-WinEvent `
+                    -FilterHashtable @{
+                        LogName = $logName
+                        StartTime = $StartedUtc.LocalDateTime.AddSeconds(-10)
+                    } `
+                    -ErrorAction Stop |
+                    Where-Object {
+                        $message = [string]$_.Message
+                        $provider = [string]$_.ProviderName
+                        $message -like "*$PackageName*" `
+                            -or $message -like "*$PackageFamilyName*" `
+                            -or $message -like '*PrintSupport*' `
+                            -or $message -like '*VirtualPrinter*' `
+                            -or $message -like '*WinRT.Host*' `
+                            -or $provider -like '*AppModel*' `
+                            -or $provider -like '*BackgroundTask*' `
+                            -or $provider -like '*PrintService*'
+                    } |
+                    Select-Object -First 200 |
+                    ForEach-Object {
+                        [ordered]@{
+                            timeCreated = if ($_.TimeCreated) { $_.TimeCreated.ToString('O') } else { $null }
+                            id = $_.Id
+                            level = $_.LevelDisplayName
+                            provider = $_.ProviderName
+                            logName = $_.LogName
+                            processId = $_.ProcessId
+                            threadId = $_.ThreadId
+                            message = $_.Message
+                        }
+                    }
+            )
+
+            $events |
+                ConvertTo-Json -Depth 5 |
+                Set-Content -LiteralPath $path -Encoding UTF8
+        }
+        catch {
+            [ordered]@{
+                logName = $logName
+                error = $_.Exception.Message
+            } |
+                ConvertTo-Json -Depth 3 |
+                Set-Content -LiteralPath $path -Encoding UTF8
+        }
     }
 }
 
@@ -7310,6 +7382,18 @@ try {
     $completedSuccessfully = $true
 }
 finally {
+    $packageFamilyNameForLogs = if ($null -ne $package -and -not [string]::IsNullOrWhiteSpace([string]$package.PackageFamilyName)) {
+        [string]$package.PackageFamilyName
+    }
+    else {
+        $PackageName
+    }
+    Export-PrintSinkSystemEventLogs `
+        -StartedUtc $scriptStartedUtc `
+        -OutputDirectory $OutputDirectory `
+        -PackageName $PackageName `
+        -PackageFamilyName $packageFamilyNameForLogs
+
     try {
         $diagnosticSnapshotPath = Join-Path $OutputDirectory 'diagnostic-events.final.json'
         Copy-Item -LiteralPath $diagnosticPath -Destination $diagnosticSnapshotPath -Force -ErrorAction Stop
