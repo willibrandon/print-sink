@@ -10,8 +10,9 @@ namespace PrintSink.App;
 /// </summary>
 internal static class InstalledVirtualPrinterReader
 {
-    private const int RefreshCapabilitiesMaximumAttempts = 30;
+    private const int RefreshCapabilitiesMaximumAttempts = 6;
     private static readonly TimeSpan RefreshCapabilitiesRetryDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan RefreshCapabilitiesAttemptTimeout = TimeSpan.FromSeconds(30);
 
     internal static IReadOnlyDictionary<EndpointKind, InstalledVirtualPrinterSnapshot> ReadAll()
     {
@@ -64,8 +65,7 @@ internal static class InstalledVirtualPrinterReader
         {
             try
             {
-                IppPrintDevice printDevice = IppPrintDevice.FromPrinterName(endpoint.QueueName);
-                printDevice.RefreshPrintDeviceCapabilities();
+                PrintDeviceCapabilityRefresher.Refresh(endpoint.QueueName, RefreshCapabilitiesAttemptTimeout);
                 return attempt == 1
                     ? $"Capabilities refreshed for {endpoint.QueueName}."
                     : $"Capabilities refreshed for {endpoint.QueueName} after {attempt} attempts.";

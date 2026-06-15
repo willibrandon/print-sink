@@ -18,6 +18,7 @@ namespace PrintSink.App;
 internal static class PdlPassthroughPrintCommand
 {
     private const int BufferSize = 81920;
+    private static readonly TimeSpan CapabilityRefreshTimeout = TimeSpan.FromSeconds(30);
 
     internal static async Task<(int PrintJobId, string ProviderDetail)> PrintPdfAsync(
         EndpointKind endpointKind,
@@ -60,7 +61,8 @@ internal static class PdlPassthroughPrintCommand
         bool pdlPassthroughSupported = printDevice.IsPdlPassthroughSupported(PdlFormatInfo.PdfContentType);
         if (!pdlPassthroughSupported)
         {
-            TryRefreshPrintDeviceCapabilities(printDevice);
+            TryRefreshPrintDeviceCapabilities(printerName);
+            printDevice = IppPrintDevice.FromPrinterName(printerName);
             pdlPassthroughSupported = printDevice.IsPdlPassthroughSupported(PdlFormatInfo.PdfContentType);
         }
 
@@ -380,13 +382,13 @@ internal static class PdlPassthroughPrintCommand
         target?.Dispose();
     }
 
-    private static void TryRefreshPrintDeviceCapabilities(IppPrintDevice printDevice)
+    private static void TryRefreshPrintDeviceCapabilities(string printerName)
     {
         try
         {
-            printDevice.RefreshPrintDeviceCapabilities();
+            PrintDeviceCapabilityRefresher.Refresh(printerName, CapabilityRefreshTimeout);
         }
-        catch (Exception ex) when (CanFallbackFromProvider2(ex))
+        catch (Exception ex) when (ex is TimeoutException || CanFallbackFromProvider2(ex))
         {
         }
     }
