@@ -28,7 +28,7 @@ namespace PMed {
     [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SetTokenInformation(IntPtr t, int cls, ref TML info, uint len);
     [DllImport("advapi32.dll", SetLastError=true)] public static extern bool ConvertStringSidToSid(string s, out IntPtr sid);
     [DllImport("advapi32.dll", SetLastError=true)] public static extern uint GetLengthSid(IntPtr sid);
-    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessAsUserW(IntPtr token, string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref SI si, out PI pi);
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessWithTokenW(IntPtr t, uint lf, string app, string cmd, uint cf, IntPtr env, string dir, ref SI si, out PI pi);
     public static int StartMedium(string app, string cmd, string dir) {
       IntPtr level, saferToken, sid;
       // SAFER_SCOPEID_USER=2, SAFER_LEVELID_NORMALUSER=0x20000, SAFER_LEVEL_OPEN=1
@@ -38,9 +38,10 @@ namespace PMed {
         if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
         TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20; // SE_GROUP_INTEGRITY
         uint len = (uint)(Marshal.SizeOf(typeof(TML))) + GetLengthSid(sid);
-        SetTokenInformation(saferToken, 25, ref tml, len); // best-effort: pin to Medium
+        SetTokenInformation(saferToken, 25, ref tml, len); // pin to Medium
         SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
-        if(!CreateProcessAsUserW(saferToken, app, cmd, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessAsUser "+Marshal.GetLastWin32Error());
+        // LOGON_WITH_PROFILE=1 loads the user profile/env; CreateProcessWithTokenW propagates to packaged-app activation.
+        if(!CreateProcessWithTokenW(saferToken, 1, app, cmd, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessWithTokenW "+Marshal.GetLastWin32Error());
         return (int)pi.pid;
       } finally { SaferCloseLevel(level); }
     }
