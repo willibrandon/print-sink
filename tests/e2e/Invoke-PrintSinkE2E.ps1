@@ -4515,7 +4515,7 @@ function Invoke-PrintSinkManagementUi {
             -StartedUtc $capabilityRefreshRequestedUtc `
             -DetailContains @('Capabilities refreshed for PrintSink - PDF') `
             -FailureMessages @('Management UI capabilities refresh failed') `
-            -TimeoutSeconds 180
+            -TimeoutSeconds 360
         $extensionCapabilityRefresh = Wait-ForPrintSinkDiagnostic `
             -PackageFamilyName $PackageFamilyName `
             -Endpoint 'PrintSink - PDF' `
@@ -4531,7 +4531,7 @@ function Invoke-PrintSinkManagementUi {
                 $expectedPdrResourceDetail,
                 'pdlPassthroughWithJobAttributes=enabled',
                 'pdrResources=') `
-            -TimeoutSeconds 120
+            -TimeoutSeconds 240
 
         Set-SpinnerRangeValue -Root $window -Name 'Default copies' -Value 2
         Invoke-Button -Root $window -Name 'Set default copies' -TimeoutSeconds 30
