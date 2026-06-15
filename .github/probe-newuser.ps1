@@ -27,11 +27,13 @@ foreach ($svc in 'Spooler', 'BrokerInfrastructure', 'PrintScanBrokerService', 'P
 $user = 'psinkci'
 $pw = 'Pr1ntS!nk-' + ([guid]::NewGuid().ToString('N').Substring(0, 10)) + 'Zz9'
 $report.user = $user
+$fullUser = "$env:COMPUTERNAME\$user"
 try {
     net user $user $pw /add 2>&1 | Out-String | Write-Host
     net localgroup Administrators $user /add 2>&1 | Out-String | Write-Host
-    # Allow batch logon (scheduled task with password)
+    Start-Sleep -Seconds 3
     $report.userCreated = $true
+    $report.fullUser = $fullUser
 } catch { $report.userCreated = "err: $($_.Exception.Message)" }
 
 function Run-AsUser([string]$runLevel, [string]$wrapperBody, [string]$resultPath) {
@@ -40,10 +42,10 @@ function Run-AsUser([string]$runLevel, [string]$wrapperBody, [string]$resultPath
     Set-Content -LiteralPath $wrapper -Value $wrapperBody -Encoding utf8
     $taskName = "PSinkNu_$runLevel"
     $action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`""
-    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Password -RunLevel $runLevel
+    $principal = New-ScheduledTaskPrincipal -UserId $fullUser -LogonType Password -RunLevel $runLevel
     $task = New-ScheduledTask -Action $action -Principal $principal
     try {
-        Register-ScheduledTask -TaskName $taskName -InputObject $task -User $user -Password $pw -Force -ErrorAction Stop | Out-Null
+        Register-ScheduledTask -TaskName $taskName -InputObject $task -User $fullUser -Password $pw -Force -ErrorAction Stop | Out-Null
         Start-ScheduledTask -TaskName $taskName
         $deadline = (Get-Date).AddSeconds(260)
         do { Start-Sleep -Seconds 3 } while (-not (Test-Path $resultPath) -and (Get-Date) -lt $deadline)
