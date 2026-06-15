@@ -69,6 +69,34 @@ Remove-Item -LiteralPath $diagFile -ErrorAction SilentlyContinue
 & printsink-app.exe --install-virtual-printers  2>&1 | Out-String | Write-Host
 Start-Sleep -Seconds 3
 
+# --- Does BASIC IppPrintDevice comms work? (GetPrinterAttributes via --assert-virtual-attribute-read) ---
+$attrStart = Get-Date
+& printsink-app.exe --assert-virtual-attribute-read --endpoint $Endpoint 2>&1 | Out-String | Write-Host
+$report.attrReadExitCode = $LASTEXITCODE
+$report.attrReadDurationSec = [math]::Round(((Get-Date) - $attrStart).TotalSeconds, 1)
+$attrHeadless = Join-Path $env:TEMP 'PrintSink.App.headless.log'
+$report.attrReadLog = if (Test-Path $attrHeadless) { Get-Content $attrHeadless -Raw } else { '<none>' }
+Remove-Item -LiteralPath $attrHeadless -ErrorAction SilentlyContinue
+
+# --- PSA association / registration state on the PDF queue ---
+$queueName = 'PrintSink - PDF'
+try { $report.getPrinter = Get-Printer -Name $queueName -ErrorAction Stop | Select-Object Name, DriverName, PortName, PrinterStatus, Shared, DeviceType, RenderingMode } catch { $report.getPrinter = "err: $($_.Exception.Message)" }
+try { $report.printerProperties = @(Get-PrinterProperty -PrinterName $queueName -ErrorAction SilentlyContinue | Select-Object PropertyName, Value) } catch { $report.printerProperties = "err: $($_.Exception.Message)" }
+$printerRegRoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers'
+try {
+    $key = Join-Path $printerRegRoot $queueName
+    $report.printerRegistryValues = if (Test-Path $key) { (Get-ItemProperty -LiteralPath $key | Select-Object * -ExcludeProperty PS*) } else { '<missing>' }
+    $report.printerRegistrySubkeys = if (Test-Path $key) { @(Get-ChildItem -LiteralPath $key -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
+} catch { $report.printerRegistryValues = "err: $($_.Exception.Message)" }
+# Spooler's record of registered Print Support Apps / print extensions
+foreach ($psaKey in @(
+        'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Components',
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows ARM64\PrintSupportApps',
+        'HKLM:\SYSTEM\CurrentControlSet\Control\Print\PackageInstallation')) {
+    $name = 'reg_' + ($psaKey -replace '[^A-Za-z0-9]+', '_')
+    try { $report[$name] = if (Test-Path $psaKey) { @(Get-ChildItem -LiteralPath $psaKey -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { '<missing>' } } catch { $report[$name] = "err: $($_.Exception.Message)" }
+}
+
 # --- Snapshot processes before the refresh ---
 $before = @{}
 Get-Process -ErrorAction SilentlyContinue | ForEach-Object { $before[$_.Id] = $true }
