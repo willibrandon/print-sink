@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   probe:
@@ -83,4 +84,26 @@ jobs:
         with:
           name: arm64-activation-probe
           path: probe.json
+          if-no-files-found: error
+
+  repro:
+    name: ARM64 capability-refresh reproduction
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Reproduce capability refresh and capture activation evidence
+        shell: pwsh
+        run: .\.github\probe-activation.ps1 -OutDir probe-out
+
+      - name: Upload activation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-activation-report
+          path: probe-out/activation-report.json
           if-no-files-found: error
