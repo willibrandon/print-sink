@@ -28,32 +28,31 @@ $user = 'psinkci'
 $pw = 'Pr1ntS!nk-' + ([guid]::NewGuid().ToString('N').Substring(0, 10)) + 'Zz9'
 $report.user = $user
 $fullUser = "$env:COMPUTERNAME\$user"
-try {
-    net user $user $pw /add 2>&1 | Out-String | Write-Host
-    net localgroup Administrators $user /add 2>&1 | Out-String | Write-Host
-    Start-Sleep -Seconds 3
-    $report.userCreated = $true
-    $report.fullUser = $fullUser
-} catch { $report.userCreated = "err: $($_.Exception.Message)" }
+$report.fullUser = $fullUser
+$report.netUserAdd = (net user $user $pw /add /y 2>&1 | Out-String).Trim()
+$report.netUserAddExit = $LASTEXITCODE
+$report.netGroupAdd = (net localgroup Administrators $user /add 2>&1 | Out-String).Trim()
+Start-Sleep -Seconds 3
+$report.localUserExists = $null -ne (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)
+$report.resolvedSid = try { (New-Object System.Security.Principal.NTAccount($env:COMPUTERNAME, $user)).Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { "err: $($_.Exception.Message)" }
 
 function Run-AsUser([string]$runLevel, [string]$wrapperBody, [string]$resultPath) {
     Remove-Item $resultPath -ErrorAction SilentlyContinue
     $wrapper = Join-Path $pub "nu-$runLevel.ps1"
     Set-Content -LiteralPath $wrapper -Value $wrapperBody -Encoding utf8
     $taskName = "PSinkNu_$runLevel"
-    $action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`""
-    $principal = New-ScheduledTaskPrincipal -UserId $fullUser -LogonType Password -RunLevel $runLevel
-    $task = New-ScheduledTask -Action $action -Principal $principal
-    try {
-        Register-ScheduledTask -TaskName $taskName -InputObject $task -User $fullUser -Password $pw -Force -ErrorAction Stop | Out-Null
-        Start-ScheduledTask -TaskName $taskName
-        $deadline = (Get-Date).AddSeconds(260)
-        do { Start-Sleep -Seconds 3 } while (-not (Test-Path $resultPath) -and (Get-Date) -lt $deadline)
-        if (Test-Path $resultPath) { return (Get-Content $resultPath -Raw | ConvertFrom-Json) }
-        $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
-        return [ordered]@{ error = 'no result'; lastTaskResult = $info.LastTaskResult }
-    } catch { return [ordered]@{ error = $_.Exception.Message } }
-    finally { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }
+    $tr = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapper`""
+    $createOut = (schtasks.exe /create /tn $taskName /tr $tr /sc ONCE /st 00:00 /ru $fullUser /rp $pw /rl $runLevel /f 2>&1 | Out-String).Trim()
+    $createExit = $LASTEXITCODE
+    if ($createExit -ne 0) { return [ordered]@{ error = "schtasks create exit $createExit"; output = $createOut } }
+    schtasks.exe /run /tn $taskName 2>&1 | Out-Null
+    $deadline = (Get-Date).AddSeconds(260)
+    do { Start-Sleep -Seconds 3 } while (-not (Test-Path $resultPath) -and (Get-Date) -lt $deadline)
+    $queryOut = (schtasks.exe /query /tn $taskName /fo LIST /v 2>&1 | Out-String)
+    schtasks.exe /delete /tn $taskName /f 2>&1 | Out-Null
+    if (Test-Path $resultPath) { return (Get-Content $resultPath -Raw | ConvertFrom-Json) }
+    $lastResult = ($queryOut -split "`n" | Select-String 'Last Result' | Out-String).Trim()
+    return [ordered]@{ error = 'no result file'; lastResult = $lastResult }
 }
 
 # Wrapper: register the package for THIS user, install queues, refresh, report.
