@@ -59,22 +59,31 @@ function Run-AsUser([string]$runLevel, [string]$wrapperBody, [string]$resultPath
 function New-WrapperBody([string]$resultPath) {
     return @"
 `$ErrorActionPreference='Continue'
+`$headless=Join-Path `$env:TEMP 'PrintSink.App.headless.log'
 `$integrity=((whoami /groups | Select-String 'Mandatory Level') | Out-String).Trim()
 `$sid=([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
-try { Add-AppxPackage -Path '$msix' -ErrorAction Stop } catch { }
+`$addErr='<ok>'
+try { Add-AppxPackage -Path '$msix' -ErrorAction Stop } catch { `$addErr=`$_.Exception.Message }
 `$pkg=Get-AppxPackage -Name PrintSink
 `$alias=Join-Path `$env:LOCALAPPDATA 'Microsoft\WindowsApps\printsink-app.exe'
 `$diag=Join-Path `$env:LOCALAPPDATA "Packages\`$(`$pkg.PackageFamilyName)\LocalState\Settings\diagnostic-events.json"
 & `$alias --disable-job-ui | Out-Null
+Remove-Item `$headless -ErrorAction SilentlyContinue
 & `$alias --install-virtual-printers | Out-Null
+`$installExit=`$LASTEXITCODE
+`$installLog=if(Test-Path `$headless){Get-Content `$headless -Raw}else{'<none>'}
 Start-Sleep -Seconds 3
-Remove-Item `$diag -ErrorAction SilentlyContinue
+`$printers=@(Get-Printer -ErrorAction SilentlyContinue | Where-Object { `$_.Name -like 'PrintSink*' } | ForEach-Object { `$_.Name })
+Remove-Item `$diag,`$headless -ErrorAction SilentlyContinue
 `$t0=Get-Date
 `$p=Start-Process -FilePath `$alias -ArgumentList @('--refresh-capabilities','--endpoint','$Endpoint') -PassThru -Wait
+`$refreshLog=if(Test-Path `$headless){Get-Content `$headless -Raw}else{'<none>'}
 `$res=[ordered]@{
   integrity=`$integrity; sid=`$sid; isRid500=`$sid.EndsWith('-500'); package=`$pkg.PackageFullName
+  addPackageError=`$addErr; installExit=`$installExit; installedPrinters=`$printers
   refreshExit=`$p.ExitCode; refreshSec=[math]::Round(((Get-Date)-`$t0).TotalSeconds,1)
   diagExists=(Test-Path `$diag); diag=if(Test-Path `$diag){Get-Content `$diag -Raw}else{'<none>'}
+  refreshLog=`$refreshLog
 }
 `$res | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath '$resultPath' -Encoding utf8
 "@
