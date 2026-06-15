@@ -113,70 +113,80 @@ public sealed class PrintSupportExtensionBackgroundTask : IBackgroundTask
         var deferral = args.GetDeferral();
         try
         {
-            state.Run(() =>
-            {
-                bool mxdcConfigured = false;
-                bool pdrUpdated = false;
-                bool ippTimeoutsConfigured = false;
-                int resourceCount = 0;
-                string mxdcQualityDetail = "mxdcQuality=<unavailable>";
-                string pdrResourceNamesDetail = "pdrResourceNames=<none>";
-                string pdlPassthroughWithAttributesDetail =
-                    UniversalApiContract19PrintSupport.EnablePdlPassthroughWithJobAttributes(args);
-
-                XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
-                (XmlDocument updatedCapabilities, string pdcFeatureDetail, string pdcOptionDetail) =
-                    ApplyPrintSinkCapabilities(capabilities);
-                args.UpdatePrintDeviceCapabilities(updatedCapabilities);
-
-                if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
-                {
-                    mxdcQualityDetail = ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
-                    mxdcConfigured = true;
-                }
-
-                if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
-                {
-                    XmlDocument resources = args.GetCurrentPrintDeviceResources();
-                    Dictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
-                    resourceCount = localizedResources.Count;
-                    pdrResourceNamesDetail = FormatLocalizedResourceNames(localizedResources);
-                    if (localizedResources.Count > 0)
-                    {
-                        XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
-                        args.UpdatePrintDeviceResources(updatedResources);
-                        pdrUpdated = true;
-                    }
-                }
-
-                if (ApiInformation.IsPropertyPresent(
-                    PrintSupportCapabilitiesChangedEventArgsType,
-                    "CommunicationConfiguration"))
-                {
-                    ippTimeoutsConfigured = ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration);
-                }
-
-                AppendDiagnostic(
-                    "Capabilities updated",
+            state.Run(
+                () => UpdatePrintDeviceCapabilities(sender, args),
+                exception => AppendDiagnostic(
+                    "Capabilities update failed",
                     sender.Printer.PrinterName,
-                    string.Join(
-                        "; ",
-                        $"features={FormatBuiltInFeatureNames()}",
-                        pdcFeatureDetail,
-                        pdcOptionDetail,
-                        $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
-                        mxdcQualityDetail,
-                        $"pdr={(pdrUpdated ? "updated" : "skipped")}",
-                        pdrResourceNamesDetail,
-                        $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
-                        pdlPassthroughWithAttributesDetail,
-                        $"pdrResources={resourceCount}"));
-            });
+                    exception.ToString()));
         }
         finally
         {
             deferral.Complete();
         }
+    }
+
+    private static void UpdatePrintDeviceCapabilities(
+        PrintSupportExtensionSession sender,
+        PrintSupportPrintDeviceCapabilitiesChangedEventArgs args)
+    {
+        bool mxdcConfigured = false;
+        bool pdrUpdated = false;
+        bool ippTimeoutsConfigured = false;
+        int resourceCount = 0;
+        string mxdcQualityDetail = "mxdcQuality=<unavailable>";
+        string pdrResourceNamesDetail = "pdrResourceNames=<none>";
+
+        XmlDocument capabilities = args.GetCurrentPrintDeviceCapabilities();
+        (XmlDocument updatedCapabilities, string pdcFeatureDetail, string pdcOptionDetail) =
+            ApplyPrintSinkCapabilities(capabilities);
+        args.UpdatePrintDeviceCapabilities(updatedCapabilities);
+
+        string pdlPassthroughWithAttributesDetail =
+            UniversalApiContract19PrintSupport.EnablePdlPassthroughWithJobAttributes(args);
+
+        if (ApiInformation.IsPropertyPresent(PrintSupportCapabilitiesChangedEventArgsType, "MxdcImageQualityConfiguration"))
+        {
+            mxdcQualityDetail = ConfigureMxdcImageQuality(args.MxdcImageQualityConfiguration);
+            mxdcConfigured = true;
+        }
+
+        if (ApiInformation.IsMethodPresent(PrintSupportCapabilitiesChangedEventArgsType, "GetCurrentPrintDeviceResources"))
+        {
+            XmlDocument resources = args.GetCurrentPrintDeviceResources();
+            Dictionary<string, string> localizedResources = LoadLocalizedResources(args.ResourceLanguage);
+            resourceCount = localizedResources.Count;
+            pdrResourceNamesDetail = FormatLocalizedResourceNames(localizedResources);
+            if (localizedResources.Count > 0)
+            {
+                XmlDocument updatedResources = ApplyPrintSinkResources(resources, localizedResources);
+                args.UpdatePrintDeviceResources(updatedResources);
+                pdrUpdated = true;
+            }
+        }
+
+        if (ApiInformation.IsPropertyPresent(
+            PrintSupportCapabilitiesChangedEventArgsType,
+            "CommunicationConfiguration"))
+        {
+            ippTimeoutsConfigured = ConfigureIppCommunicationTimeouts(args.CommunicationConfiguration);
+        }
+
+        AppendDiagnostic(
+            "Capabilities updated",
+            sender.Printer.PrinterName,
+            string.Join(
+                "; ",
+                $"features={FormatBuiltInFeatureNames()}",
+                pdcFeatureDetail,
+                pdcOptionDetail,
+                $"mxdc={(mxdcConfigured ? "configured" : "unavailable")}",
+                mxdcQualityDetail,
+                $"pdr={(pdrUpdated ? "updated" : "skipped")}",
+                pdrResourceNamesDetail,
+                $"ippTimeouts={(ippTimeoutsConfigured ? "configured" : "skipped")}",
+                pdlPassthroughWithAttributesDetail,
+                $"pdrResources={resourceCount}"));
     }
 
     private static (XmlDocument Document, string FeatureDetail, string OptionDetail) ApplyPrintSinkCapabilities(
