@@ -1,0 +1,104 @@
+name: ARM64 Activation Probe
+
+# Temporary diagnostic workflow: proves WHY the PSA print-support extension
+# background task never activates on the GitHub-hosted ARM64 runner.
+# Runs on push to the investigation branch only. Remove after diagnosis.
+
+on:
+  push:
+    branches:
+      - 'investigate/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ARM64 activation environment probe
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 10
+    steps:
+      - name: Probe session, interactivity, background-app policy, and background-task activity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $out = [ordered]@{}
+
+          # --- Session / interactivity ---
+          $out.processId = $PID
+          $out.sessionId = (Get-Process -Id $PID).SessionId
+          $out.userInteractive = [Environment]::UserInteractive
+          $out.userName = [Environment]::UserName
+          $out.machineName = [Environment]::MachineName
+          $out.osVersion = [Environment]::OSVersion.VersionString
+
+          Add-Type -Namespace Probe -Name Native -MemberDefinition @'
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+            public static extern uint WTSGetActiveConsoleSessionId();
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern System.IntPtr GetProcessWindowStation();
+            [System.Runtime.InteropServices.DllImport("user32.dll", CharSet=System.Runtime.InteropServices.CharSet.Unicode)]
+            public static extern bool GetUserObjectInformation(System.IntPtr hObj, int nIndex, System.Text.StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
+'@
+          try { $out.activeConsoleSessionId = [Probe.Native]::WTSGetActiveConsoleSessionId() } catch { $out.activeConsoleSessionId = "err: $($_.Exception.Message)" }
+          try {
+            $hWinsta = [Probe.Native]::GetProcessWindowStation()
+            $sb = New-Object System.Text.StringBuilder 256
+            $needed = 0
+            [void][Probe.Native]::GetUserObjectInformation($hWinsta, 2, $sb, $sb.Capacity, [ref]$needed)  # UOI_NAME = 2
+            $out.windowStation = $sb.ToString()
+          } catch { $out.windowStation = "err: $($_.Exception.Message)" }
+
+          $out.quser = (cmd /c quser 2>&1 | Out-String)
+          $out.qwinsta = (cmd /c qwinsta 2>&1 | Out-String)
+          $out.whoamiGroups = (cmd /c "whoami /groups" 2>&1 | Out-String)
+
+          # --- Background-app policy gates (the prime suspects) ---
+          function Read-Key([string]$path) {
+            try {
+              if (Test-Path -LiteralPath $path) { return (Get-ItemProperty -LiteralPath $path | Select-Object * -ExcludeProperty PS*) }
+              return "<missing>"
+            } catch { return "err: $($_.Exception.Message)" }
+          }
+          $out.policy_AppPrivacy_HKLM = Read-Key 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'
+          $out.bg_HKCU_BackgroundAccessApplications = Read-Key 'HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications'
+          $out.bg_HKLM_BackgroundAccessApplications = Read-Key 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications'
+          $out.search_HKCU_SearchSettings = Read-Key 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
+
+          # --- Power / standby (Modern Standby can suppress background activation) ---
+          $out.powercfgAvailability = (cmd /c "powercfg /a" 2>&1 | Out-String)
+
+          # --- Is ANY background task activating system-wide? ---
+          try {
+            $log = Get-WinEvent -ListLog 'Microsoft-Windows-BackgroundTaskInfrastructure/Operational' -ErrorAction Stop
+            $out.bgTaskLog = [ordered]@{ isEnabled = $log.IsEnabled; recordCount = $log.RecordCount }
+            if ($log.RecordCount -gt 0) {
+              $out.bgTaskRecent = @(Get-WinEvent -LogName 'Microsoft-Windows-BackgroundTaskInfrastructure/Operational' -MaxEvents 25 -ErrorAction SilentlyContinue |
+                ForEach-Object { "$($_.TimeCreated.ToString('o')) [$($_.Id)] $($_.LevelDisplayName): $($_.Message)" })
+            }
+          } catch { $out.bgTaskLog = "err: $($_.Exception.Message)" }
+
+          # --- Discover PSA / print-workflow operational logs available on this image ---
+          $out.printRelatedLogs = @(Get-WinEvent -ListLog '*Print*' -ErrorAction SilentlyContinue |
+            Select-Object LogName, IsEnabled, RecordCount, LogMode)
+
+          # --- Print services + the session each runs in ---
+          $out.printServices = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'Spooler|PrintWorkflow|PrintNotify|PrintScan|PrintDevice|BrokerInfrastructure|AppReadiness|StateRepository|AppXSvc' } |
+            ForEach-Object {
+              $p = if ($_.ProcessId -gt 0) { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } else { $null }
+              [ordered]@{ name = $_.Name; state = $_.State; startMode = $_.StartMode; processId = $_.ProcessId; sessionId = if ($p) { $p.SessionId } else { $null } }
+            })
+
+          $json = $out | ConvertTo-Json -Depth 6
+          $json | Out-File -FilePath probe.json -Encoding utf8
+          Write-Host $json
+
+      - name: Upload probe
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-activation-probe
+          path: probe.json
+          if-no-files-found: error
