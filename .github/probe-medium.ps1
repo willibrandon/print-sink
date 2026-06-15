@@ -40,6 +40,9 @@ namespace PMed {
     [DllImport("advapi32.dll", SetLastError=true)] public static extern bool AdjustTokenPrivileges(IntPtr t, bool dis, ref TOKEN_PRIVS np, uint len, IntPtr prev, IntPtr retlen);
     [DllImport("userenv.dll", SetLastError=true)] public static extern bool CreateEnvironmentBlock(out IntPtr env, IntPtr token, bool inherit);
     [DllImport("userenv.dll", SetLastError=true)] public static extern bool DestroyEnvironmentBlock(IntPtr env);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferCreateLevel(uint scopeId, uint levelId, uint openFlags, out IntPtr level, IntPtr reserved);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferComputeTokenFromLevel(IntPtr level, IntPtr inToken, out IntPtr outToken, uint flags, IntPtr reserved);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferCloseLevel(IntPtr level);
     [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessAsUserW(IntPtr token, string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref SI si, out PI pi);
 
     static void EnablePriv(IntPtr tok, string name) {
@@ -67,16 +70,20 @@ namespace PMed {
     public static int StartMedium(string app, string cmd, string dir) {
       IntPtr cur; OpenProcessToken(GetCurrentProcess(), 0x0008|0x0020, out cur); // QUERY|ADJUST_PRIVILEGES
       EnablePriv(cur, "SeAssignPrimaryTokenPrivilege"); EnablePriv(cur, "SeIncreaseQuotaPrivilege"); CloseHandle(cur);
-      IntPtr tok, dup, sid, env;
-      if(!OpenProcessToken(GetCurrentProcess(), 0x0002|0x0001|0x0008|0x0080|0x0100, out tok)) throw new Exception("OpenProcessToken "+Marshal.GetLastWin32Error());
-      if(!DuplicateTokenEx(tok, 0x02000000, IntPtr.Zero, 2, 1, out dup)) throw new Exception("DuplicateTokenEx "+Marshal.GetLastWin32Error()); // MAXIMUM_ALLOWED, primary
+      // SAFER NormalUser: a proper FILTERED token (admin group dropped) so AppX activation accepts it...
+      IntPtr level, dup, sid, env;
+      if(!SaferCreateLevel(2, 0x20000, 1, out level, IntPtr.Zero)) throw new Exception("SaferCreateLevel "+Marshal.GetLastWin32Error());
+      try {
+        if(!SaferComputeTokenFromLevel(level, IntPtr.Zero, out dup, 0, IntPtr.Zero)) throw new Exception("SaferComputeTokenFromLevel "+Marshal.GetLastWin32Error());
+      } finally { SaferCloseLevel(level); }
+      // ...then lower its integrity label to Medium.
       if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
       TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20;
       uint len = (uint)Marshal.SizeOf(typeof(TML)) + GetLengthSid(sid);
       if(!SetTokenInformation(dup, 25, ref tml, len)) throw new Exception("SetTokenInformation "+Marshal.GetLastWin32Error());
       if(!CreateEnvironmentBlock(out env, dup, false)) env = IntPtr.Zero;
       SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
-      uint flags = 0x00000400 | 0x08000000; // CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW
+      uint flags = 0x00000400; // CREATE_UNICODE_ENVIRONMENT
       bool ok = CreateProcessAsUserW(dup, app, cmd, IntPtr.Zero, IntPtr.Zero, false, flags, env, dir, ref si, out pi);
       if(env!=IntPtr.Zero) DestroyEnvironmentBlock(env);
       if(!ok) throw new Exception("CreateProcessAsUser "+Marshal.GetLastWin32Error());
