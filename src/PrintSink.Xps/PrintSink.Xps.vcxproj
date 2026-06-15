@@ -108,6 +108,12 @@
     </Link>
   </ItemDefinitionGroup>
 
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)' == 'Release|ARM64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
   <ItemDefinitionGroup>
     <Link>
       <ModuleDefinitionFile>PrintSink.Xps.def</ModuleDefinitionFile>
@@ -127,7 +133,8 @@
 
   <ItemGroup>
     <ClCompile Include="pch.cpp">
-      <PrecompiledHeader>Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)' == 'Release|ARM64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)' != 'Release|ARM64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="SynchronizedSequentialStream.cpp" />
     <ClCompile Include="XpsPageWatermarker.cpp" />
