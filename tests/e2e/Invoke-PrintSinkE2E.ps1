@@ -1171,6 +1171,42 @@ function Enable-PrintSinkSystemEventLogs {
         Set-Content -LiteralPath (Join-Path $OutputDirectory 'eventlog-enable.json') -Encoding UTF8
 }
 
+function Initialize-PrintSinkUserPrintRegistry {
+    param(
+        [string] $OutputDirectory
+    )
+
+    $keys = @(
+        'HKCU:\Printers',
+        'HKCU:\Printers\Connections'
+    )
+
+    $results = foreach ($key in $keys) {
+        try {
+            if (-not (Test-Path -LiteralPath $key)) {
+                New-Item -Path $key -Force | Out-Null
+            }
+
+            [ordered]@{
+                path = $key
+                exists = Test-Path -LiteralPath $key
+                error = $null
+            }
+        }
+        catch {
+            [ordered]@{
+                path = $key
+                exists = $false
+                error = $_.Exception.Message
+            }
+        }
+    }
+
+    $results |
+        ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath (Join-Path $OutputDirectory 'user-print-registry.json') -Encoding UTF8
+}
+
 function Export-PrintSinkRunnerState {
     param(
         [string] $OutputDirectory,
@@ -1244,6 +1280,19 @@ function Export-PrintSinkRunnerState {
         $alias = Get-Command printsink-app.exe -ErrorAction SilentlyContinue |
             Select-Object Source, CommandType
 
+        $userPrintRegistry = @(
+            'HKCU:\Printers',
+            'HKCU:\Printers\Connections',
+            'HKCU:\Printers\Defaults',
+            'HKCU:\Printers\DevModePerUser'
+        ) |
+            ForEach-Object {
+                [ordered]@{
+                    path = $_
+                    exists = Test-Path -LiteralPath $_
+                }
+            }
+
         [ordered]@{
             context = $Context
             timestamp = [DateTimeOffset]::UtcNow.ToString('O')
@@ -1267,6 +1316,7 @@ function Export-PrintSinkRunnerState {
             appExecutionAlias = $alias
             services = $services
             eventLogs = $logs
+            userPrintRegistry = $userPrintRegistry
             printers = $printers
             cimPrinters = $cimPrinters
         } |
@@ -7193,6 +7243,7 @@ function Wait-ForPrintSinkJobCanceled {
 }
 
 Enable-PrintSinkSystemEventLogs -OutputDirectory $OutputDirectory
+Initialize-PrintSinkUserPrintRegistry -OutputDirectory $OutputDirectory
 
 if (-not $SkipPackageInstall) {
     if ([string]::IsNullOrWhiteSpace($PackagePath)) {
