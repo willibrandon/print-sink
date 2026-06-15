@@ -15,7 +15,6 @@ namespace PrintSink.App;
 internal sealed class ManagementScreen : Component
 {
     private static readonly object[] EmptyDependencies = [];
-    private static readonly TimeSpan HeadlessCommandTimeout = TimeSpan.FromMinutes(4);
 
     /// <summary>
     /// Renders the management dashboard.
@@ -562,8 +561,7 @@ internal sealed class ManagementScreen : Component
         VirtualEndpoint endpoint = EndpointCatalog.GetByKind(selectedKind);
         try
         {
-            string status = await RefreshCapabilitiesThroughHeadlessCommandAsync(selectedKind, CancellationToken.None)
-                .ConfigureAwait(false);
+            string status = InstalledVirtualPrinterReader.RefreshCapabilities(selectedKind);
             await AppendDiagnosticAsync(
                     "Management UI capabilities refreshed",
                     endpoint.QueueName,
@@ -588,82 +586,6 @@ internal sealed class ManagementScreen : Component
                 .ConfigureAwait(false);
             UiDispatch.Post(() => setStatusText($"Capability refresh failed: {ex.Message}"));
         }
-    }
-
-    private static async Task<string> RefreshCapabilitiesThroughHeadlessCommandAsync(
-        EndpointKind endpointKind,
-        CancellationToken cancellationToken)
-    {
-        VirtualEndpoint endpoint = EndpointCatalog.GetByKind(endpointKind);
-        string executablePath = Environment.ProcessPath
-            ?? throw new InvalidOperationException("The current PrintSink executable path is unavailable.");
-        string diagnosticLogPath = GetHeadlessDiagnosticLogPath();
-        File.Delete(diagnosticLogPath);
-
-        using System.Diagnostics.Process process = new()
-        {
-            StartInfo = new System.Diagnostics.ProcessStartInfo(executablePath)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-            },
-        };
-        process.StartInfo.ArgumentList.Add("--refresh-capabilities");
-        process.StartInfo.ArgumentList.Add("--endpoint");
-        process.StartInfo.ArgumentList.Add(endpointKind.ToString());
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Unable to start the packaged PrintSink command process.");
-        }
-
-        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(HeadlessCommandTimeout);
-
-        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(timeoutSource.Token);
-        Task<string> standardError = process.StandardError.ReadToEndAsync(timeoutSource.Token);
-        try
-        {
-            await process.WaitForExitAsync(timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-
-            string diagnosticLog = ReadHeadlessDiagnosticLog(diagnosticLogPath);
-            throw new TimeoutException(
-                $"Packaged capability refresh timed out after {HeadlessCommandTimeout.TotalSeconds:0} seconds. diagnosticLog={diagnosticLog}",
-                ex);
-        }
-
-        string output = await standardOutput.ConfigureAwait(false);
-        string error = await standardError.ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            string diagnosticLog = ReadHeadlessDiagnosticLog(diagnosticLogPath);
-            throw new InvalidOperationException(
-                $"Packaged capability refresh failed with exit code {process.ExitCode}. stdout={output}; stderr={error}; diagnosticLog={diagnosticLog}");
-        }
-
-        return $"Capabilities refreshed for {endpoint.QueueName}.";
-    }
-
-    private static string GetHeadlessDiagnosticLogPath()
-    {
-        return Path.Combine(Path.GetTempPath(), "PrintSink.App.headless.log");
-    }
-
-    private static string ReadHeadlessDiagnosticLog(string diagnosticLogPath)
-    {
-        return File.Exists(diagnosticLogPath)
-            ? File.ReadAllText(diagnosticLogPath)
-            : "<none>";
     }
 
     private static async Task LoadJobUiOptionsAsync(
