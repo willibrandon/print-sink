@@ -21,24 +21,28 @@ namespace PMed {
   [StructLayout(LayoutKind.Sequential)] public struct SIDATTR { public IntPtr Sid; public uint Attributes; }
   [StructLayout(LayoutKind.Sequential)] public struct TML { public SIDATTR Label; }
   public static class Native {
-    [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
-    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
-    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool DuplicateTokenEx(IntPtr t, uint a, IntPtr sa, int imp, int type, out IntPtr nt);
+    // SAFER: build a proper restricted "Normal User" (medium-integrity, standard-user) token.
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferCreateLevel(uint scopeId, uint levelId, uint openFlags, out IntPtr level, IntPtr reserved);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferComputeTokenFromLevel(IntPtr level, IntPtr inAccessToken, out IntPtr outAccessToken, uint flags, IntPtr reserved);
+    [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SaferCloseLevel(IntPtr level);
     [DllImport("advapi32.dll", SetLastError=true)] public static extern bool SetTokenInformation(IntPtr t, int cls, ref TML info, uint len);
     [DllImport("advapi32.dll", SetLastError=true)] public static extern bool ConvertStringSidToSid(string s, out IntPtr sid);
     [DllImport("advapi32.dll", SetLastError=true)] public static extern uint GetLengthSid(IntPtr sid);
-    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessWithTokenW(IntPtr t, uint lf, string app, string cmd, uint cf, IntPtr env, string dir, ref SI si, out PI pi);
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessAsUserW(IntPtr token, string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref SI si, out PI pi);
     public static int StartMedium(string app, string cmd, string dir) {
-      IntPtr tok, dup, sid;
-      if(!OpenProcessToken(GetCurrentProcess(), 0x0002|0x0008|0x0080|0x0001, out tok)) throw new Exception("OpenProcessToken "+Marshal.GetLastWin32Error());
-      if(!DuplicateTokenEx(tok, 0x0002|0x0008|0x0080|0x0001, IntPtr.Zero, 2, 1, out dup)) throw new Exception("DuplicateTokenEx "+Marshal.GetLastWin32Error());
-      if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
-      TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20; // SE_GROUP_INTEGRITY
-      uint len = (uint)(Marshal.SizeOf(typeof(TML))) + GetLengthSid(sid);
-      if(!SetTokenInformation(dup, 25, ref tml, len)) throw new Exception("SetTokenInformation "+Marshal.GetLastWin32Error());
-      SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
-      if(!CreateProcessWithTokenW(dup, 0, app, cmd, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessWithTokenW "+Marshal.GetLastWin32Error());
-      return (int)pi.pid;
+      IntPtr level, saferToken, sid;
+      // SAFER_SCOPEID_USER=2, SAFER_LEVELID_NORMALUSER=0x20000, SAFER_LEVEL_OPEN=1
+      if(!SaferCreateLevel(2, 0x20000, 1, out level, IntPtr.Zero)) throw new Exception("SaferCreateLevel "+Marshal.GetLastWin32Error());
+      try {
+        if(!SaferComputeTokenFromLevel(level, IntPtr.Zero, out saferToken, 0, IntPtr.Zero)) throw new Exception("SaferComputeTokenFromLevel "+Marshal.GetLastWin32Error());
+        if(!ConvertStringSidToSid("S-1-16-8192", out sid)) throw new Exception("ConvertSid "+Marshal.GetLastWin32Error()); // Medium
+        TML tml = new TML(); tml.Label.Sid = sid; tml.Label.Attributes = 0x20; // SE_GROUP_INTEGRITY
+        uint len = (uint)(Marshal.SizeOf(typeof(TML))) + GetLengthSid(sid);
+        SetTokenInformation(saferToken, 25, ref tml, len); // best-effort: pin to Medium
+        SI si = new SI(); si.cb=(uint)Marshal.SizeOf(typeof(SI)); si.desk="winsta0\\default"; PI pi;
+        if(!CreateProcessAsUserW(saferToken, app, cmd, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, dir, ref si, out pi)) throw new Exception("CreateProcessAsUser "+Marshal.GetLastWin32Error());
+        return (int)pi.pid;
+      } finally { SaferCloseLevel(level); }
     }
   }
 }
