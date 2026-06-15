@@ -24,8 +24,11 @@ internal sealed partial class ContinuousIntegrationContractTests
         Assert.Contains("platform: ARM64", workflow);
         Assert.Contains("runner: windows-2025-vs2026", workflow);
         Assert.Contains("runner: windows-11-vs2026-arm", workflow);
-        Assert.Contains("run_e2e: false", workflow);
-        Assert.Contains("run_e2e: true", workflow);
+        Assert.DoesNotContain("run_e2e: false", workflow);
+        Assert.IsGreaterThanOrEqualTo(
+            2,
+            Regex.Count(workflow, "run_e2e: true", RegexOptions.CultureInvariant),
+            "Both CI matrix platforms must run the real print-stack E2E suite.");
         Assert.Contains("Real print-stack E2E", workflow);
         Assert.Contains(".\\build.ps1 -Configuration Release -Platform ${{ matrix.platform }}", workflow);
         Assert.Contains("MSTest on Microsoft.Testing.Platform for plain .NET projects", design);
